@@ -1,6 +1,7 @@
 import unittest
 
 import teapot.routing
+import teapot.request
 
 class TestRoutingMeta(unittest.TestCase):
     def test_creation_of_class_route_information(self):
@@ -11,8 +12,8 @@ class TestRoutingMeta(unittest.TestCase):
 
         self.assertTrue(teapot.routing.isroutable(Test))
         info = teapot.routing.getrouteinfo(Test)
-        self.assertEqual(len(info._instanceroutables), 1)
-        self.assertEqual(len(info._routables), 0)
+        self.assertEqual(len(info.instanceroutables), 1)
+        self.assertEqual(len(info.routables), 0)
 
     def test_instanciation_of_object_information(self):
         class Test(metaclass=teapot.routing.RoutableMeta):
@@ -31,7 +32,7 @@ class TestRoutingMeta(unittest.TestCase):
         self.assertIs(info1, info2)
 
         self.assertIs(
-            info1._routables[0]._callable(),
+            info1.routables[0].callable(),
             instance)
 
     def test_routable_inheritance(self):
@@ -49,5 +50,57 @@ class TestRoutingMeta(unittest.TestCase):
 
         info = teapot.routing.getrouteinfo(TestSub)
 
-        self.assertEqual(len(info._instanceroutables), 2)
-        self.assertEqual(len(info._routables), 0)
+        self.assertEqual(len(info.instanceroutables), 2)
+        self.assertEqual(len(info.routables), 0)
+
+class TestRouting(unittest.TestCase):
+    @teapot.routing.rebase("/")
+    class Test(metaclass=teapot.routing.RoutableMeta):
+        @teapot.routing.route("", "index")
+        def index(self):
+            pass
+
+        @teapot.routing.rebase("foo/")
+        @teapot.routing.route("fnord")
+        def fnord(self):
+            pass
+
+    def setUp(self):
+        self._root = self.Test()
+
+    def test_route_simple(self):
+        request = teapot.request.Request(
+            teapot.request.RequestMethod.GET,
+            "/index",
+            "https",
+            {},
+            None)
+        success, data = teapot.routing.find_route(
+            self._root, request)
+        self.assertTrue(success)
+
+    def test_route_multirebase(self):
+        request = teapot.request.Request(
+            teapot.request.RequestMethod.GET,
+            "/foo/fnord",
+            "https",
+            {},
+            None)
+        success, data = teapot.routing.find_route(
+            self._root, request)
+        self.assertTrue(success)
+
+    def test_route_not_found(self):
+        request = teapot.request.Request(
+            teapot.request.RequestMethod.GET,
+            "/foo/bar",
+            "https",
+            {},
+            None)
+        success, data = teapot.routing.find_route(
+            self._root, request)
+        self.assertFalse(success)
+        self.assertIsNone(data)
+
+    def tearDown(self):
+        del self._root

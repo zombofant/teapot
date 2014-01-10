@@ -3,20 +3,79 @@ import copy
 import functools
 
 import teapot.errors
+import teapot.request
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 routeinfo_attr = "__net_zombofant_teapot_routeinfo__"
 
+__all__ = [
+    "isroutable",
+    "getrouteinfo",
+    "route"]
+
 def isroutable(obj):
+    """
+    Test whether the given *obj* has teapot routing information.
+    """
     global routeinfo_attr
     return hasattr(obj, routeinfo_attr)
 
 def getrouteinfo(obj):
+    """
+    Return the routing information of *obj*. If *obj* has no routing
+    information, :class:`AttributeError` is thrown (by Python itself).
+    """
     global routeinfo_attr
     return getattr(obj, routeinfo_attr)
 
 def setrouteinfo(obj, value):
+    """
+    Set the routing information of *obj*.
+    """
     global routeinfo_attr
     return setattr(obj, routeinfo_attr, value)
+
+class Context(teapot.request.Request):
+    """
+    The routing context is used to traverse through the request to
+    find nodes to route to.
+
+    It is a copy of the request and parts which are used during
+    routing are removed from the request.
+    """
+
+    def __init__(self, request):
+        super().__init__(
+            request.method,
+            request.path,
+            request.scheme,
+            copy.deepcopy(request.query_dict),
+            copy.deepcopy(request.accept_info),
+            original_request=request)
+
+    def __deepcopy__(self, copydict):
+        result = Context(self)
+        result._original_request = self._original_request
+        return result
+
+    def rebase(self, prefix):
+        """
+        Rebases the context by removing the given *prefix* from the
+        :attr:`path`, if the path currently has the given *prefix*. If
+        it does not, a :class:`ValueError` exception is raised.
+        """
+
+        if not self.path.startswith(prefix) or (not prefix and self.path):
+            raise ValueError("cannot rebase {!r} with prefix "
+                             "{!r}".format(
+                                 self.path,
+                                 prefix))
+
+        self.path = self.path[len(prefix):]
+
 
 @functools.total_ordering
 class Info(metaclass=abc.ABCMeta):
@@ -27,8 +86,8 @@ class Info(metaclass=abc.ABCMeta):
 
     def __init__(self, selectors, order=0, **kwargs):
         super().__init__(**kwargs)
-        self._order = order
-        self._selectors = selectors
+        self.order = order
+        self.selectors = selectors
 
     @abc.abstractmethod
     def _do_route(self, localrequest):
@@ -53,10 +112,10 @@ class Info(metaclass=abc.ABCMeta):
         :class:`ResponseError` instance, if the router hit a node
         which wants to return an HTTP error.
         """
-        localrequest = copy.copy(request)
+        localrequest = copy.deepcopy(request)
         try:
-            if not all(selector(request)
-                       for selector in self._selectors):
+            if not all(selector(localrequest)
+                       for selector in self.selectors):
                 # not all selectors did match
                 return False, None
         except teapot.errors.ResponseError as err:
@@ -74,18 +133,22 @@ class Group(Info):
 
     def __init__(self, selectors, routables, **kwargs):
         super().__init__(selectors)
-        self._routables = routables
+        self.routables = routables
 
     def _do_route(self, localrequest):
         first_error = None
-        for routable in self._routables:
-            success, data = routable.route(localrequest)
-            if success:
-                return success, data
-            elif data:
-                first_error = first_error or data
+        try:
+            logger.debug("entering routing group %r", self)
+            for routable in self.routables:
+                success, data = routable.route(localrequest)
+                if success:
+                    return success, data
+                elif data:
+                    first_error = first_error or data
 
-        return False, first_error
+            return False, first_error
+        finally:
+            logger.debug("leaving routing group %r", self)
 
 class Object(Group):
     """
@@ -117,7 +180,7 @@ class Class(Group):
                  selectors=[],
                  **kwargs):
         super().__init__(selectors, clsroutables, **kwargs)
-        self._instanceroutables = instanceroutables
+        self.instanceroutables = instanceroutables
         self._class_routables_initialized = False
 
     def _init_class_routable(self, cls, routable):
@@ -129,9 +192,9 @@ class Class(Group):
         if self._class_routables_initialized:
             return
 
-        self._routables = list(map(
+        self.routables = list(map(
             functools.partial(self._init_class_routable, cls),
-            self._routables))
+            self.routables))
         self._class_routables_initialized = True
 
     def _init_instance_routable(self, instance, cls, routable):
@@ -143,11 +206,11 @@ class Class(Group):
         routables = list(map(
             functools.partial(self._init_instance_routable,
                               instance, cls),
-            self._instanceroutables))
+            self.instanceroutables))
 
         return Object(routables,
-                      selectors=self._selectors,
-                      order=self._order)
+                      selectors=self.selectors,
+                      order=self.order)
 
     def __get__(self, instance, cls):
         if instance is None:
@@ -168,10 +231,10 @@ class Leaf(Info):
 
     def __init__(self, selectors, callable, **kwargs):
         super().__init__(selectors, **kwargs)
-        self._callable = callable
+        self.callable = callable
 
     def _do_route(self, localrequest):
-        return True, functools.partial(self._callable,
+        return True, functools.partial(self.callable,
                                        localrequest)
 
 class MethodLeaf(Leaf):
@@ -200,12 +263,12 @@ class LeafPrototype(Leaf):
             if instance is None:
                 raise ValueError("instance must not be None for "
                                  "instance leaf prototypes.")
-            return MethodLeaf(self._selectors,
-                              self._callable,
+            return MethodLeaf(self.selectors,
+                              self.callable,
                               instance,
                               **self._kwargs)
-        return MethodLeaf(self._selectors,
-                          self._callable,
+        return MethodLeaf(self.selectors,
+                          self.callable,
                           cls,
                           **self._kwargs)
 
@@ -251,8 +314,8 @@ class RoutableMeta(type):
             except AttributeError as err:
                 continue
 
-            classroutables.extend(info._routables)
-            instanceroutables.extend(info._instanceroutables)
+            classroutables.extend(info.routables)
+            instanceroutables.extend(info.instanceroutables)
 
         namespace[routeinfo_attr] = Class(
             classroutables,
@@ -260,7 +323,17 @@ class RoutableMeta(type):
 
         return type.__new__(mcls, clsname, bases, namespace)
 
-def route(path, order=0):
+def path_selector(path, request):
+    try:
+        request.rebase(path)
+    except ValueError:
+        return False
+    return True
+
+def or_selector(selectors, request):
+    return any(selector(request) for selector in selectors)
+
+def route(path, *paths, order=0):
     """
     Decorate a (static-, class- or instance-) method or function with
     routing information. Note that decorating a class using this
@@ -274,6 +347,8 @@ def route(path, order=0):
     over routes defined in the base classes, independent of the order.
     """
 
+    paths = [path] + list(paths)
+
     def decorator(obj):
         if isroutable(obj):
             raise ValueError("{!r} already has a route".format(obj))
@@ -282,7 +357,14 @@ def route(path, order=0):
             raise TypeError("{!r} is not routable (must be "
                             "callable)".format(obj))
 
-        selectors = []
+        selectors = [
+            functools.partial(
+                or_selector,
+                [
+                    functools.partial(path_selector, path)
+                    for path in paths
+                ])
+        ]
         kwargs = {"order": order}
 
         if isinstance(obj, staticmethod):
@@ -302,3 +384,39 @@ def route(path, order=0):
         return obj
 
     return decorator
+
+def rebase(prefix):
+    """
+    Decorates an object such that the routing is rebased by the given
+    path *prefix*.
+    """
+
+    def decorator(obj):
+        if not isroutable(obj):
+            raise ValueError("{!r} does not have routing "
+                             "information".format(
+                                 obj))
+
+        info = getrouteinfo(obj)
+        info.selectors.insert(
+            0,
+            functools.partial(
+                path_selector,
+                prefix))
+
+        return obj
+
+    return decorator
+
+
+def find_route(root, request):
+    """
+    Tries to find a route for the given *request* inside *root*, which
+    must be an object with routing information.
+    """
+
+    if not isroutable(root):
+        raise TypeError("{!r} is not routable".format(root))
+
+    localrequest = Context(request)
+    return getrouteinfo(root).route(localrequest)
