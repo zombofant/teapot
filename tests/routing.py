@@ -53,6 +53,33 @@ class TestRoutingMeta(unittest.TestCase):
         self.assertEqual(len(info.instanceroutables), 2)
         self.assertEqual(len(info.routables), 0)
 
+    def test_specialization_of_prototypes_in_getrouteinfo(self):
+        class TestFoo(metaclass=teapot.routing.RoutableMeta):
+            @teapot.routing.route("foo")
+            @staticmethod
+            def foo():
+                pass
+
+            @teapot.routing.route("bar")
+            @classmethod
+            def bar(cls):
+                pass
+
+            @teapot.routing.route("baz")
+            def baz(cls):
+                pass
+
+        test = TestFoo()
+        self.assertFalse(hasattr(
+            teapot.routing.getrouteinfo(test.foo),
+            "get"))
+        self.assertFalse(hasattr(
+            teapot.routing.getrouteinfo(test.bar),
+            "get"))
+        self.assertFalse(hasattr(
+            teapot.routing.getrouteinfo(test.baz),
+            "get"))
+
 class TestRouting(unittest.TestCase):
     @teapot.routing.rebase("/")
     class Test(metaclass=teapot.routing.RoutableMeta):
@@ -62,7 +89,8 @@ class TestRouting(unittest.TestCase):
 
         @teapot.routing.rebase("foo/")
         @teapot.routing.route("fnord")
-        def fnord(self):
+        @classmethod
+        def fnord(cls):
             pass
 
     def setUp(self):

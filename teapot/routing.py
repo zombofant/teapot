@@ -27,9 +27,16 @@ def getrouteinfo(obj):
     """
     Return the routing information of *obj*. If *obj* has no routing
     information, :class:`AttributeError` is thrown (by Python itself).
+
+    Note that this function also takes care of properly specializing
+    the prototypes for methods, so it is always preferred over a
+    simple attribute access.
     """
     global routeinfo_attr
-    return getattr(obj, routeinfo_attr)
+    routeinfo = getattr(obj, routeinfo_attr)
+    if hasattr(routeinfo, "get_for_external_use"):
+        return routeinfo.get_for_external_use(obj)
+    return routeinfo
 
 def setrouteinfo(obj, value):
     """
@@ -249,6 +256,15 @@ class MethodLeaf(Leaf):
             **kwargs)
 
 class LeafPrototype(Leaf):
+    """
+    Leaf prototypes are used for methods and free functions. For free
+    functions, leaf prototypes behave exactly like normal leaves. For
+    methods however, the owning :class:`Group` (usually a
+    :class:`Class`), calls the :meth:`get` method from its own
+    :meth:`Class.__get__` to fully bind the callable passed to the
+    leaf prototype.
+    """
+
     def __init__(self,
                  selectors,
                  base_callable,
@@ -257,6 +273,14 @@ class LeafPrototype(Leaf):
         super().__init__(selectors, base_callable, **kwargs)
         self._kwargs = kwargs
         self.is_instance_leaf = is_instance_leaf
+
+    def get_for_external_use(self, instance):
+        # here, instance is the function(!) object
+        if not hasattr(instance, "__self__"):
+            return self
+        if isinstance(instance.__self__, type):
+            return self.get(None, instance.__self__)
+        return self.get(instance.__self__, type(instance.__self__))
 
     def get(self, instance, cls):
         if self.is_instance_leaf:
@@ -365,11 +389,13 @@ def route(path, *paths, order=0):
 
         if isinstance(obj, staticmethod):
             info = Leaf(selectors, obj.__func__, **kwargs)
+            setrouteinfo(obj.__func__, info)
         elif isinstance(obj, classmethod):
             info = LeafPrototype(selectors,
                                  obj.__func__,
                                  False,
                                  **kwargs)
+            setrouteinfo(obj.__func__, info)
         else:
             if not hasattr(obj, "__call__"):
                 raise TypeError("{!r} is not routable (must be "
