@@ -353,10 +353,6 @@ def route(path, *paths, order=0):
         if isroutable(obj):
             raise ValueError("{!r} already has a route".format(obj))
 
-        if not hasattr(obj, "__call__"):
-            raise TypeError("{!r} is not routable (must be "
-                            "callable)".format(obj))
-
         selectors = [
             functools.partial(
                 or_selector,
@@ -375,6 +371,11 @@ def route(path, *paths, order=0):
                                  False,
                                  **kwargs)
         else:
+            if not hasattr(obj, "__call__"):
+                raise TypeError("{!r} is not routable (must be "
+                                "callable or classmethod or "
+                                "staticmethod)".format(obj))
+
             info = LeafPrototype(selectors,
                                  obj,
                                  True,
