@@ -83,7 +83,6 @@ class Context(teapot.request.Request):
 
         self.path = self.path[len(prefix):]
 
-
 @functools.total_ordering
 class Info(metaclass=abc.ABCMeta):
     """
@@ -122,7 +121,7 @@ class Info(metaclass=abc.ABCMeta):
         """
         localrequest = copy.deepcopy(request)
         try:
-            if not all(selector(localrequest)
+            if not all(selector.select(localrequest)
                        for selector in self.selectors):
                 # not all selectors did match
                 return False, None
@@ -356,15 +355,84 @@ class RoutableMeta(type):
 
         return type.__new__(mcls, clsname, bases, namespace)
 
-def path_selector(path, request):
-    try:
-        request.rebase(path)
-    except ValueError:
-        return False
-    return True
 
-def or_selector(selectors, request):
-    return any(selector(request) for selector in selectors)
+class Selector(metaclass=abc.ABCMeta):
+    """
+    Selectors are used throughout the routing tree to determine
+    whether a path is legit for a given request.
+
+    The most commonly used selector is the :class:`PathSelector` which
+    selects on a portion of the request path.
+
+    A selector class must implement two methods.
+    """
+
+    @abc.abstractmethod
+    def select(self, request):
+        """
+        This method is called to route an incoming *request* to a
+        :class:`Leaf`.
+
+        The selector shall return :data:`True` if it matches on the
+        given request object. It shall return :data:`False` if it does
+        not match on the given request object. It shall raise an
+        :class:`ResponseError` exception if it matches, but if a
+        problem would occur if that path would be taken.
+
+        The exception will be caught by the routing mechanism and
+        propagated upwards. If another path can be found which matches
+        and does not raise an error, that path is taken. Otherwise,
+        the first path which raised an exception wins and its
+        exception will be re-thrown.
+
+        `select` *may* trim any parts of the request it uses to
+        select. A path selector for example would remove the prefix it
+        has successfully selected on from the path in the request.
+        """
+
+    @abc.abstractmethod
+    def unselect(self, request):
+        """
+        This method is called to un-route from a given :class:`Leaf`.
+        Un-routing means to construct a :class:`Context` object which
+        would lead to the given :class:`Leaf` (and preferably only to
+        that leaf).
+
+        The `unselect` method must modify the *request* in such a way
+        that after the modification, a call to :meth:`select` on the
+        given *request* would succeed with a :data:`True`
+        result. Ideally, after such an hypothetical call, the
+        *request* object would have the same contents as before the
+        call to `unselect`.
+        """
+
+class PathSelector(Selector):
+    def __init__(self, prefix, **kwargs):
+        super().__init__(**kwargs)
+        self._prefix = prefix
+
+    def select(self, request):
+        try:
+            request.rebase(self._prefix)
+        except ValueError:
+            return False
+        return True
+
+    def unselect(self, request):
+        request.path = self._prefix + request.path
+
+class OrSelector(Selector):
+    def __init__(self, subselectors, **kwargs):
+        super().__init__(**kwargs)
+        self._subselectors = list(subselectors)
+
+    def select(self, request):
+        return any(selector.select(request)
+                   for selector in self._subselectors)
+
+    def unselect(self, request):
+        for selector in reversed(self._subselectors):
+            selector.unselect(request)
 
 def route(path, *paths, order=0):
     """
@@ -387,12 +455,9 @@ def route(path, *paths, order=0):
             raise ValueError("{!r} already has a route".format(obj))
 
         selectors = [
-            functools.partial(
-                or_selector,
-                [
-                    functools.partial(path_selector, path)
-                    for path in paths
-                ])
+            OrSelector(
+                PathSelector(path)
+                for path in paths)
         ]
         kwargs = {"order": order}
 
@@ -436,9 +501,7 @@ def rebase(prefix):
         info = getrouteinfo(obj)
         info.selectors.insert(
             0,
-            functools.partial(
-                path_selector,
-                prefix))
+            PathSelector(prefix))
 
         return obj
 
