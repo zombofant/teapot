@@ -12,8 +12,8 @@ class TestRoutingMeta(unittest.TestCase):
 
         self.assertTrue(teapot.routing.isroutable(Test))
         info = teapot.routing.getrouteinfo(Test)
-        self.assertEqual(len(info.instanceroutables), 1)
-        self.assertEqual(len(info.routables), 0)
+        self.assertEqual(len(info.instance_routenodes), 1)
+        self.assertEqual(len(info.routenodes), 0)
 
     def test_instanciation_of_object_information(self):
         class Test(metaclass=teapot.routing.RoutableMeta):
@@ -32,7 +32,7 @@ class TestRoutingMeta(unittest.TestCase):
         self.assertIs(info1, info2)
 
         self.assertIs(
-            info1.routables[0].callable(),
+            info1.routenodes[0].callable(),
             instance)
 
     def test_routable_inheritance(self):
@@ -50,8 +50,8 @@ class TestRoutingMeta(unittest.TestCase):
 
         info = teapot.routing.getrouteinfo(TestSub)
 
-        self.assertEqual(len(info.instanceroutables), 2)
-        self.assertEqual(len(info.routables), 0)
+        self.assertEqual(len(info.instance_routenodes), 2)
+        self.assertEqual(len(info.routenodes), 0)
 
     def test_specialization_of_prototypes_in_getrouteinfo(self):
         class TestFoo(metaclass=teapot.routing.RoutableMeta):

@@ -134,20 +134,22 @@ class Info(metaclass=abc.ABCMeta):
 
 class Group(Info):
     """
-    This is a generic group of *routables*. Upon routing, all
-    routables will be evaluated in the given order.
+    This is a generic group of *routenodes*. Upon routing, all
+    routing nodes will be evaluated in the given order.
     """
 
-    def __init__(self, selectors, routables, **kwargs):
+    def __init__(self, selectors, routenodes, **kwargs):
         super().__init__(selectors)
-        self.routables = routables
+        self.routenodes = routenodes
+        for node in routenodes:
+            node.parent = self
 
     def _do_route(self, localrequest):
         first_error = None
         try:
             logger.debug("entering routing group %r", self)
-            for routable in self.routables:
-                success, data = routable.route(localrequest)
+            for node in self.routenodes:
+                success, data = node.route(localrequest)
                 if success:
                     return success, data
                 elif data:
@@ -165,8 +167,8 @@ class Object(Group):
     routing information by supplying the objects instance.
     """
 
-    def __init__(self, routables, selectors=[], **kwargs):
-        super().__init__(selectors, routables, **kwargs)
+    def __init__(self, routenodes, selectors=[], **kwargs):
+        super().__init__(selectors, routenodes, **kwargs)
 
 class Class(Group):
     """
@@ -182,46 +184,47 @@ class Class(Group):
     """
 
     def __init__(self,
-                 clsroutables,
-                 instanceroutables,
+                 cls_routenodes,
+                 instance_routenodes,
                  selectors=[],
                  **kwargs):
-        super().__init__(selectors, clsroutables, **kwargs)
-        self.instanceroutables = instanceroutables
-        self._class_routables_initialized = False
+        super().__init__(selectors, cls_routenodes, **kwargs)
+        self.instance_routenodes = instance_routenodes
+        self._class_routenodes_initialized = False
 
-    def _init_class_routable(self, cls, routable):
-        if hasattr(routable, "get"):
-            return routable.get(None, cls)
-        return routable
+    def _init_class_routenode(self, cls, node):
+        if hasattr(node, "get"):
+            return node.get(None, cls)
+        return node
 
-    def _init_class_routables(self, cls):
-        if self._class_routables_initialized:
+    def _init_class_routenodes(self, cls):
+        if self._class_routenodes_initialized:
             return
 
-        self.routables = list(map(
-            functools.partial(self._init_class_routable, cls),
-            self.routables))
-        self._class_routables_initialized = True
+        self.routenodes = list(map(
+            functools.partial(self._init_class_routenode, cls),
+            self.routenodes))
+        self._class_routenodes_initialized = True
 
-    def _init_instance_routable(self, instance, cls, routable):
-        if hasattr(routable, "get"):
-            return routable.get(instance, cls)
-        return routable
+    def _init_instance_routenode(self, instance, cls, node):
+        if hasattr(node, "get"):
+            return node.get(instance, cls)
+        else:
+            return copy.copy(node)
 
     def _get_for_instance(self, instance, cls):
-        routables = list(map(
-            functools.partial(self._init_instance_routable,
+        nodes = list(map(
+            functools.partial(self._init_instance_routenode,
                               instance, cls),
-            self.instanceroutables))
+            self.instance_routenodes))
 
-        return Object(routables,
+        return Object(nodes,
                       selectors=self.selectors,
                       order=self.order)
 
     def __get__(self, instance, cls):
         if instance is None:
-            self._init_class_routables(cls)
+            self._init_class_routenodes(cls)
             return self
         try:
             obj = self._get_for_instance(instance, cls)
@@ -318,8 +321,8 @@ class RoutableMeta(type):
     def __new__(mcls, clsname, bases, namespace):
         # find all routables in the namespace. use a list, as we order
         # later
-        instanceroutables = list()
-        classroutables = list()
+        instance_routenodes = list()
+        class_routenodes = list()
 
         for name, obj in namespace.items():
             try:
@@ -329,8 +332,8 @@ class RoutableMeta(type):
 
             if (    not hasattr(info, "is_instance_leaf") or
                     not info.is_instance_leaf):
-                classroutables.append(info)
-            instanceroutables.append(info)
+                class_routenodes.append(info)
+            instance_routenodes.append(info)
 
         for base in bases:
             try:
@@ -338,12 +341,12 @@ class RoutableMeta(type):
             except AttributeError as err:
                 continue
 
-            classroutables.extend(info.routables)
-            instanceroutables.extend(info.instanceroutables)
+            class_routenodes.extend(info.routenodes)
+            instance_routenodes.extend(info.instance_routenodes)
 
         namespace[routeinfo_attr] = Class(
-            classroutables,
-            instanceroutables)
+            class_routenodes,
+            instance_routenodes)
 
         return type.__new__(mcls, clsname, bases, namespace)
 
