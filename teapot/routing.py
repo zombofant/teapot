@@ -35,7 +35,7 @@ def getrouteinfo(obj):
     global routeinfo_attr
     routeinfo = getattr(obj, routeinfo_attr)
     if hasattr(routeinfo, "get_for_external_use"):
-        return routeinfo.get_for_external_use(obj)
+        routeinfo = routeinfo.get_for_external_use(obj)
     return routeinfo
 
 def setrouteinfo(obj, value):
@@ -95,6 +95,7 @@ class Info(metaclass=abc.ABCMeta):
         super().__init__(**kwargs)
         self.order = order
         self.selectors = selectors
+        self.parent = None
 
     @abc.abstractmethod
     def _do_route(self, localrequest):
@@ -223,10 +224,10 @@ class Class(Group):
                       order=self.order)
 
     def __get__(self, instance, cls):
-        if instance is None:
-            self._init_class_routenodes(cls)
-            return self
         try:
+            if instance is None:
+                self._init_class_routenodes(cls)
+                return self
             obj = self._get_for_instance(instance, cls)
             setrouteinfo(instance, obj)
             return obj
@@ -282,8 +283,13 @@ class LeafPrototype(Leaf):
         if not hasattr(instance, "__self__"):
             return self
         if isinstance(instance.__self__, type):
-            return self.get(None, instance.__self__)
-        return self.get(instance.__self__, type(instance.__self__))
+            node = self.get(None, instance.__self__)
+            node.parent = getrouteinfo(instance.__self__)
+        else:
+            node = self.get(instance.__self__,
+                            type(instance.__self__))
+            node.parent = getrouteinfo(instance.__self__)
+        return node
 
     def get(self, instance, cls):
         if self.is_instance_leaf:
@@ -438,6 +444,10 @@ def rebase(prefix):
 
     return decorator
 
+def traverse_to_root(routeinfo):
+    while routeinfo:
+        yield routeinfo
+        routeinfo = routeinfo.parent
 
 def find_route(root, request):
     """

@@ -3,6 +3,18 @@ import unittest
 import teapot.routing
 import teapot.request
 
+@teapot.routing.rebase("/")
+class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
+    @teapot.routing.route("", "index")
+    def index(self):
+        pass
+
+    @teapot.routing.rebase("foo/")
+    @teapot.routing.route("fnord")
+    @classmethod
+    def fnord(cls):
+        pass
+
 class TestRoutingMeta(unittest.TestCase):
     def test_creation_of_class_route_information(self):
         class Test(metaclass=teapot.routing.RoutableMeta):
@@ -81,20 +93,8 @@ class TestRoutingMeta(unittest.TestCase):
             "get"))
 
 class TestRouting(unittest.TestCase):
-    @teapot.routing.rebase("/")
-    class Test(metaclass=teapot.routing.RoutableMeta):
-        @teapot.routing.route("", "index")
-        def index(self):
-            pass
-
-        @teapot.routing.rebase("foo/")
-        @teapot.routing.route("fnord")
-        @classmethod
-        def fnord(cls):
-            pass
-
     def setUp(self):
-        self._root = self.Test()
+        self._root = SomeRoutable()
 
     def test_route_simple(self):
         request = teapot.request.Request(
@@ -129,6 +129,22 @@ class TestRouting(unittest.TestCase):
             self._root, request)
         self.assertFalse(success)
         self.assertIsNone(data)
+
+    def tearDown(self):
+        del self._root
+
+class TestUnrouting(unittest.TestCase):
+    def setUp(self):
+        self._root = SomeRoutable()
+
+    def test_unrouting_unwinds_correctly_for_instancemethods(self):
+        routeinfo = teapot.routing.getrouteinfo(self._root.index)
+        self.assertSequenceEqual(
+            list(teapot.routing.traverse_to_root(routeinfo)),
+            [routeinfo,
+             teapot.routing.getrouteinfo(self._root)]
+        )
+
 
     def tearDown(self):
         del self._root
