@@ -129,6 +129,17 @@ class Info(metaclass=abc.ABCMeta):
             return False, err
         return self._do_route(localrequest)
 
+    def unroute(self, request):
+        """
+        Reverse the route from this node up to the root of the routing
+        tree this node belongs to. Unselect anything which would be
+        selected on the given *request*.
+        """
+        for selector in reversed(self.selectors):
+            selector.unselect(request)
+        if self.parent:
+            self.parent.unroute(request)
+
     def __lt__(self, other):
         return self.order < other.order
 
@@ -431,8 +442,9 @@ class OrSelector(Selector):
                    for selector in self._subselectors)
 
     def unselect(self, request):
-        for selector in reversed(self._subselectors):
-            selector.unselect(request)
+        # the choice is arbitrary
+        if self._subselectors:
+            self._subselectors[0].unselect(request)
 
 def route(path, *paths, order=0):
     """
@@ -523,3 +535,21 @@ def find_route(root, request):
 
     localrequest = Context(request)
     return getrouteinfo(root).route(localrequest)
+
+def unroute(routable, template_request=None):
+    """
+    Un-route the given *routable* and return a Request which would
+    point to the given *routable*, inside the request tree to which the
+    given *routable* belongs..
+    """
+
+    if template_request is None:
+        template_request = teapot.request.Request(
+            teapot.request.RequestMethod.GET,
+            "",
+            "http",
+            {},
+            None)
+    request = Context(template_request)
+    getrouteinfo(routable).unroute(request)
+    return request

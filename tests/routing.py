@@ -145,6 +145,14 @@ class TestUnrouting(unittest.TestCase):
              teapot.routing.getrouteinfo(self._root)]
         )
 
+    def test_unrouting_of_path(self):
+        self.assertEqual(
+            teapot.routing.unroute(self._root.index).path,
+            "/")
+
+        self.assertEqual(
+            teapot.routing.unroute(self._root.fnord).path,
+            "/foo/fnord")
 
     def tearDown(self):
         del self._root
