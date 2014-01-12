@@ -173,7 +173,7 @@ class TestRouting(unittest.TestCase):
 
     def test_route_simple(self):
         request = teapot.request.Request(
-            teapot.request.RequestMethod.GET,
+            teapot.request.Method.GET,
             "/index",
             "https",
             {},
@@ -184,7 +184,7 @@ class TestRouting(unittest.TestCase):
 
     def test_route_multirebase(self):
         request = teapot.request.Request(
-            teapot.request.RequestMethod.GET,
+            teapot.request.Method.GET,
             "/foo/fnord",
             "https",
             {},
@@ -195,7 +195,7 @@ class TestRouting(unittest.TestCase):
 
     def test_route_not_found(self):
         request = teapot.request.Request(
-            teapot.request.RequestMethod.GET,
+            teapot.request.Method.GET,
             "/foo/bar",
             "https",
             {},
@@ -207,7 +207,7 @@ class TestRouting(unittest.TestCase):
 
     def test_route_formatted(self):
         request = teapot.request.Request(
-            teapot.request.RequestMethod.GET,
+            teapot.request.Method.GET,
             "/p/42",
             "https",
             {},

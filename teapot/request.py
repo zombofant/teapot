@@ -1,7 +1,7 @@
 import copy
 import re
 
-class RequestMethod:
+class Method:
     __init__ = None
 
     GET = "GET"

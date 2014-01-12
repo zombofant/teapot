@@ -1082,7 +1082,7 @@ def unroute(routable, *args, template_request=None, **kwargs):
 
     if template_request is None:
         template_request = teapot.request.Request(
-            teapot.request.RequestMethod.GET,
+            teapot.request.Method.GET,
             "",
             "http",
             {},
