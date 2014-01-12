@@ -81,9 +81,18 @@ class Context(teapot.request.Request):
     def args(self):
         return self._args
 
+    @args.setter
+    def args(self, value):
+        self._args[:] = value
+
     @property
     def kwargs(self):
         return self._kwargs
+
+    @kwargs.setter
+    def kwargs(self, value):
+        self._kwargs.clear()
+        self._kwargs.update(value)
 
     def rebase(self, prefix):
         """
@@ -899,7 +908,7 @@ def find_route(root, request):
     localrequest = Context(request)
     return getrouteinfo(root).route(localrequest)
 
-def unroute(routable, template_request=None):
+def unroute(routable, *args, template_request=None, **kwargs):
     """
     Un-route the given *routable* and return a Request which would
     point to the given *routable*, inside the request tree to which the
@@ -914,5 +923,7 @@ def unroute(routable, template_request=None):
             {},
             None)
     request = Context(template_request)
+    request.args = args
+    request.kwargs = kwargs
     getrouteinfo(routable).unroute(request)
     return request

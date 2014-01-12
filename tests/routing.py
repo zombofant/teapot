@@ -19,9 +19,8 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
     def fnord(cls):
         pass
 
-    @teapot.routing.route(
-        teapot.routing.PathFormatter("p/{:2d}"))
-    def test(self, arg):
+    @teapot.routing.route("p/{:2d}")
+    def formatted(self, arg):
         self.args = [arg]
 
 class TestPathFormatter(unittest.TestCase):
@@ -245,6 +244,13 @@ class TestUnrouting(unittest.TestCase):
         self.assertEqual(
             teapot.routing.unroute(self._root.fnord).path,
             "/foo/fnord")
+
+    def test_unrouting_with_format(self):
+        self.assertEqual(
+            teapot.routing.unroute(
+                self._root.formatted,
+                42).path,
+            "/p/42")
 
     def tearDown(self):
         del self._root
