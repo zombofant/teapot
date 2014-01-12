@@ -1,6 +1,8 @@
 import abc
 import copy
 import functools
+import string
+import re
 
 import teapot.errors
 import teapot.request
@@ -52,6 +54,9 @@ class Context(teapot.request.Request):
 
     It is a copy of the request and parts which are used during
     routing are removed from the request.
+
+    In addition to a mere mirror of the request, it also contains
+    information on data which has been extracted during routing.
     """
 
     def __init__(self, request):
@@ -62,11 +67,23 @@ class Context(teapot.request.Request):
             copy.deepcopy(request.query_dict),
             copy.deepcopy(request.accept_info),
             original_request=request)
+        self._args = []
+        self._kwargs = {}
 
     def __deepcopy__(self, copydict):
         result = Context(self)
         result._original_request = self._original_request
+        result._args = self._args[:]
+        result._kwargs = copy.copy(self._kwargs)
         return result
+
+    @property
+    def args(self):
+        return self._args
+
+    @property
+    def kwargs(self):
+        return self._kwargs
 
     def rebase(self, prefix):
         """
@@ -255,8 +272,10 @@ class Leaf(Info):
         self.callable = callable
 
     def _do_route(self, localrequest):
-        return True, functools.partial(self.callable,
-                                       localrequest)
+        return True, functools.partial(
+            self.callable,
+            *localrequest.args,
+            **localrequest.kwargs)
 
 class MethodLeaf(Leaf):
     """
@@ -432,6 +451,339 @@ class PathSelector(Selector):
     def unselect(self, request):
         request.path = self._prefix + request.path
 
+class PathFormatter(Selector):
+    def __init__(self, format_string, strict=False, **kwargs):
+        super().__init__(**kwargs)
+        self._strict = strict
+        self._format_string = format_string
+        self._presentation_parsers = {
+            "d": (
+                functools.partial(self._int_regex, 10),
+                functools.partial(self._int_converter, 10)),
+            "x": (
+                functools.partial(self._int_regex, 16),
+                functools.partial(self._int_converter, 16)),
+            "X": (
+                functools.partial(self._int_regex, 16, upper_case=True),
+                functools.partial(self._int_converter, 16)),
+            "b": (
+                functools.partial(self._int_regex, 2),
+                functools.partial(self._int_converter, 2)),
+            "s": (self._str_regex, self._str_converter),
+            "f": (self._float_regex, self._float_converter)
+        }
+        self._parsed = list(self._parse_more(
+            string.Formatter().parse(format_string)))
+
+        self._numbered_count = 0
+        self._keywords = set()
+        for _, field, _ in self._parsed:
+            if field is None:
+                continue
+            if not field:
+                self._numbered_count += 1
+            else:
+                assert field not in self._keywords
+                self._keywords.add(field)
+
+    def _float_converter(self, match):
+        return float(match.group(0))
+
+    def _float_regex(self, width, precision, zero_pad, sign_pad,
+                     alternate_form):
+        if alternate_form:
+            raise ValueError("alternate form is not supported for"
+                             " floats")
+
+        digit = r"\d"
+        re_base = digit
+        if sign_pad is None:
+            sign_pad = "-"
+
+        if width is not None and self._strict:
+            if width == 0:
+                re_base = ""
+            else:
+                if zero_pad:
+                    re_base += r"{{{:d},}}".format(width)
+                else:
+                    re_base = self._get_strict_digit_padder(
+                        re_base, r" ", width)
+        else:
+            re_base += r"+"
+
+        if re_base:
+            re_base = "(" + re_base + ".?|.)"
+
+        if precision is not None and self._strict:
+            if precision > 0:
+                if not re_base:
+                    re_base = "."
+                re_base += digit + r"{{{:d}}}".format(precision)
+        else:
+            if not re_base:
+                re_base = "."
+            re_base += digit + r"*"
+
+        if not re_base:
+            raise ValueError("float with width={} and precision={} not"
+                             " supported (in strict "
+                             "mode)".format(width,
+                                            precision))
+        if self._strict:
+            if sign_pad == "+":
+                re_base = "[+-]" + re_base
+            elif sign_pad == "-":
+                re_base = "-?" + re_base
+            elif sign_pad == " ":
+                re_base = "[ -]" + re_base
+            else:
+                raise ValueError("unknown sign mode: {!r}".format(sign_pad))
+        else:
+            re_base = "[+-]?" + re_base
+
+        return re_base
+
+    def _get_strict_digit_padder(self, one_digit, one_space, width):
+        # logger.warning(
+        #     "using width and strict mode in formatter "
+        #     "with large widths and without zero "
+        #     "padding is highly inefficient!")
+        re_base = "|".join(
+            one_space+"{"+str(i)+"}"+one_digit+"{"+str(width-i)+",}"
+            for i in range(1, width))
+        re_base = ("("+one_space+"{"+str(width)+"}|"+
+                   ((re_base+"|") if re_base else "")+
+                   one_digit+"{"+str(width)+",})")
+        return re_base
+
+    def _int_converter(self, base, match):
+        return int(match.group(0).strip(), base)
+
+    def _int_regex(self,
+                   base,
+                   width,
+                   precision,
+                   zero_pad,
+                   sign_pad,
+                   alternate_form,
+                   upper_case=False):
+        if precision is not None:
+            raise ValueError("precision is not supported for"
+                             "integers")
+
+        if sign_pad is None:
+            sign_pad = "-"
+        try:
+            re_base = {
+                10: r"\d",
+                2: r"[01]",
+                16: ((r"[0-9A-F]" if upper_case else r"[0-9a-f]")
+                     if self._strict else r"[0-9a-fA-F]")
+            }[base]
+        except KeyError:
+            raise ValueError("unsupported integer base: {:d}".format(base))
+
+        if width is not None and self._strict:
+            if zero_pad:
+                re_base += r"{{{:d},}}".format(width)
+            else:
+                re_base = self._get_strict_digit_padder(
+                    re_base, r" ", width)
+
+        else:
+            re_base += r"+"
+
+        if alternate_form:
+            re_base = {
+                10: r"",
+                2: r"0b",
+                16: r"0x"
+            }[base] + re_base
+
+        if self._strict:
+            if sign_pad == "+":
+                re_base = "[+-]" + re_base
+            elif sign_pad == "-":
+                re_base = "-?" + re_base
+            elif sign_pad == " ":
+                re_base = "[ -]" + re_base
+            else:
+                raise ValueError("unknown sign mode: {!r}".format(sign_pad))
+        else:
+            re_base = "[+-]?" + re_base
+
+        return re_base
+
+    def _parse_width_and_alignment(self, spec):
+        width = None
+        zero_pad = False
+        alternate_form = False
+        sign_pad = None
+        if not spec:
+            return width, zero_pad, sign_pad, alternate_form
+
+        # numbers can only occur at the end or as the first character,
+        # if fill is set to a number
+        numbers = "".join(filter(str.isdigit, spec))
+        if spec[0].isdigit() and len(numbers) != len(spec):
+            raise ValueError("alignment is not supported")
+        remainder = spec[:-len(numbers)]
+        if remainder.endswith("#"):
+            alternate_form = True
+            remainder = remainder[:-1]
+
+        if remainder:
+            if remainder[0] in [">", "<", "=", "^"]:
+                raise ValueError("alignment is not supported")
+
+            if remainder[0] in ["+", "-", " "]:
+                sign_pad = remainder[0]
+            else:
+                raise ValueError("{!r} found where sign spec was "
+                                 "expected".format(remainder))
+
+            remainder = remainder[1:]
+            if remainder:
+                raise ValueError("no idea what that is supposed to "
+                                 "be: {!r}".format(remainder))
+
+        if numbers:
+            if numbers.startswith("0"):
+                zero_pad = True
+                numbers = numbers[1:]
+
+            if numbers:
+                width = int(numbers)
+
+        return width, zero_pad, sign_pad, alternate_form
+
+    def _parse_more(self, parsed_format):
+        for literal, field, format_spec, conversion in parsed_format:
+            if conversion is not None:
+                raise ValueError("conversion specifiers not supported")
+
+            spec = format_spec[:-1]
+            presentation = format_spec[-1:]
+            try:
+                parser = self._presentation_parsers[presentation]
+            except KeyError:
+                raise ValueError(
+                    "parsing of {!r} not supported: no "
+                    "parser for presentation "
+                    "{!r}".format(
+                        format_spec,
+                        presentation)) from None
+
+            try:
+                spec, precision = spec.rsplit(".", 1)
+            except ValueError:
+                # no precision
+                precision = None
+            else:
+                precision = int(precision)
+
+            if spec.endswith(","):
+                raise ValueError(
+                    "parsing of {!r} not supported: "
+                    "no support for thousand seperators".format(
+                        format_spec))
+
+            try:
+                width, zero_pad, sign_pad, alternate_form = \
+                    self._parse_width_and_alignment(spec)
+            except ValueError as err:
+                raise ValueError(
+                    "parsing of {!r} not supported: "
+                    "{!s}".format(format_spec, err))
+
+            regex_generator, converter = parser
+            try:
+                regex = regex_generator(
+                    width, precision, zero_pad,
+                    sign_pad, alternate_form)
+            except ValueError as err:
+                raise ValueError(
+                    "parsing of {!r} not supported: "
+                    "{!s}".format(format_spec, err))
+
+            regex = re.compile(r"^" + regex)
+
+            yield literal, field, (regex, converter)
+
+    def _str_regex(self,
+                   width,
+                   precision,
+                   zero_pad,
+                   sign_pad,
+                   alternate_form):
+        if alternate_form:
+            raise ValueError("alternate form (#) not supported for "
+                             "strings")
+        if precision is not None:
+            raise ValueError("precision is not supported for strings")
+        if sign_pad is not None:
+            raise ValueError("sign is not supported for strings")
+        if zero_pad:
+            raise ValueError("zero padding is not supported for "
+                             "strings")
+
+        if width is not None:
+            return r".{"+str(width)+"}"
+        else:
+            return r".*"
+
+    def _str_converter(self, match):
+        return match.group(0)
+
+    def parse(self, s):
+        numbered = []
+        keywords = {}
+        for literal, field, (regex, converter) in self._parsed:
+            if literal is not None:
+                if not s.startswith(literal):
+                    return False
+                s = s[len(literal):]
+
+            match = regex.match(s)
+            if not match:
+                return False
+
+            value = converter(match)
+            if not field:
+                numbered.append(value)
+            else:
+                keywords[field] = value
+
+            s = s[len(match.group(0)):]
+
+        return numbered, keywords, s
+
+    def select(self, request):
+        result = self.parse(request.path)
+        if not result:
+            return False
+
+        numbered, keywords, remainder = result
+
+        request.args.extend(numbered)
+        request.kwargs.update(keywords)
+
+        return True
+
+    def unselect(self, request):
+        if self._numbered_count:
+            args = request.args[-self._numbered_count:]
+            request.args = request.args[:-self._numbered_count]
+        else:
+            args = []
+
+        kwargs = {}
+        for keyword in self._keywords:
+            kwargs[keyword] = request.kwargs.pop(keyword)
+
+        request.path = self._format_string.format(*args, **kwargs) + request.path
+
 class OrSelector(Selector):
     def __init__(self, subselectors, **kwargs):
         super().__init__(**kwargs)
@@ -461,16 +813,16 @@ def route(path, *paths, order=0):
     """
 
     paths = [path] + list(paths)
+    paths = [path if hasattr(path, "select") else PathSelector(path)
+             for path in paths]
+
+    selectors = [OrSelector(paths)]
+    del paths
 
     def decorator(obj):
         if isroutable(obj):
             raise ValueError("{!r} already has a route".format(obj))
 
-        selectors = [
-            OrSelector(
-                PathSelector(path)
-                for path in paths)
-        ]
         kwargs = {"order": order}
 
         if isinstance(obj, staticmethod):
