@@ -1,3 +1,74 @@
+"""
+Routing
+#######
+
+Teapot request routing is it’s valuable core.
+
+Decorators for functions and methods
+====================================
+
+To make a function or other generic callable routable, one has to
+decorate it with the ``route`` decorator:
+
+.. autofunction:: route
+
+A class (and its instances) and all of its member functions can be
+made routable using the :class:`RoutableMeta` metaclass:
+
+.. autoclass:: RoutableMeta
+
+Decorators for routables
+------------------------
+
+An object which is already routable can further be modified using the
+following decorators:
+
+.. autofunction:: rebase
+
+
+Request data selectors
+======================
+
+.. autoclass:: PathSelector
+   :members:
+
+.. autoclass:: PathFormatter
+   :members:
+
+Utilities to get information from routables
+===========================================
+
+.. autofunction:: isroutable
+
+.. autofunction:: getrouteinfo
+
+.. autofunction:: setrouteinfo
+
+Internal API
+============
+
+.. autoclass:: Info
+   :members:
+
+.. autoclass:: Group
+   :members:
+
+.. autoclass:: Object
+   :members:
+
+.. autoclass:: Class
+   :members:
+
+.. autoclass:: Leaf
+   :members:
+
+.. autoclass:: MethodLeaf
+   :members:
+
+.. autoclass:: LeafPrototype
+   :members:
+
+"""
 import abc
 import copy
 import functools
@@ -354,12 +425,29 @@ class RoutableMeta(type):
     ``__net_zombofant_teapot_routeinfo__``, whose contents are to be
     considered implementation details of teapot.
 
-    .. impl-detail::
+    Access to routing information should, as always, happen through
+    :func:`getrouteinfo` and related.
 
-        The attribute contains an instance of :class:`Info`, which
-        defines the routing of the class. The :class:`Info` instance
-        most likely will contain references to methods, which are
-        resolved using a ``__get__`` override.
+    .. note::
+
+       **Implementation detail:**
+       The attribute contains an instance of :class:`Info`, which
+       defines the routing of the class. The :class:`Info` instance
+       most likely will contain references to methods, which are
+       resolved using a ``__get__`` override.
+
+    Example::
+
+      @rebase("/")
+      class Foo(metaclass=RoutableMeta):
+          @route("", "index"):
+          def index(self):
+              \"\"\"called for /index and / requests\"\"\"
+
+          @route("static"):
+          @classmethod
+          def index(cls):
+              \"\"\"called for /static requests\"\"\"
     """
 
     def __new__(mcls, clsname, bases, namespace):
@@ -446,6 +534,12 @@ class Selector(metaclass=abc.ABCMeta):
         """
 
 class PathSelector(Selector):
+    """
+    A path selector selects a static portion of the current request
+    path. If the current path does not begin with the given *prefix*,
+    the selection fails.
+    """
+
     def __init__(self, prefix, **kwargs):
         super().__init__(**kwargs)
         self._prefix = prefix
@@ -461,6 +555,71 @@ class PathSelector(Selector):
         request.path = self._prefix + request.path
 
 class PathFormatter(Selector):
+    """
+    Select a portion of the current request path and extract
+    information from it using
+    `python formatter syntax
+    <http://docs.python.org/3/library/string.html#format-string-syntax>`_.
+    The given *format_string* defines the format of the path part. It
+    is used to construct a parser for the path which will run against
+    the current request path. If it does not match, the selector
+    fails.
+
+    Anything retrieved from the parsed data, which are numbered fields
+    and named fields in the format string, is appended to the current
+    contexts arguments (see :prop:`Context.args`).
+
+    Upon unparsing, the arguments in the context are used to format
+    the given *format_string*, which is then prepended to the current
+    request path.
+
+    .. warning::
+
+       Only a subset of the python formatter syntax is
+       supported.
+
+       **Not supported features are:**
+
+       * Alignment (and, thus, filling, except zero-padding for numbers)
+       * Conversion modifiers
+       * Not all types, see below
+
+    **Supported types:**
+
+    * Integers (``d``, ``x``, ``X``, ``b``)
+    * Floats (``f``)
+    * Strings (``s``)
+
+    .. note::
+
+       When using a string type, be aware that it will match
+       everything until the end of the request path, except if you
+       specify a width. In that case, it will match exactly that
+       amount of characters, including slashes.
+
+       If no width is set, the string can be used as a catch all,
+       including slashes.
+
+    Parsing always fails gracefully. If a number is expected and a
+    string is found, the format simply does not match and a negative
+    result is returned.
+
+    If *strict* is set to :data:`True`, width, precision and
+    zero-padding are enforced when parsing. Normally, any
+    width/precision is accepted while parsing (except for strings). If
+    *strict* is set, only those strings which would be the output of a
+    format call with the same argument are accepted. For example,
+    ``{:02d}`` would match against ``22`` and ``01``, but not against
+    `` 1`` or ``1``.
+
+    .. note::
+
+       Strict mode parsing for numbers becomes expensive, due to the
+       nature of the involved regular expressions, if zero-padding is
+       not used (i.e. the values are padded with spaces).
+
+    """
+
     def __init__(self, format_string, strict=False, **kwargs):
         super().__init__(**kwargs)
         self._strict = strict
@@ -830,6 +989,12 @@ def route(path, *paths, order=0):
 
     In classes, routes defined inside the class itself take precedence
     over routes defined in the base classes, independent of the order.
+
+    Example::
+
+        @route("/index")
+        def index():
+            \"\"\"do something fancy\"\"\"
     """
 
     paths = [path] + list(paths)
