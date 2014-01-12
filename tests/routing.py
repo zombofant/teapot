@@ -219,8 +219,8 @@ class TestRouting(unittest.TestCase):
         self.assertIsNotNone(data)
         data()
         self.assertSequenceEqual(
-            self._root.args,
-            [42])
+            [42],
+            self._root.args)
 
     def tearDown(self):
         del self._root

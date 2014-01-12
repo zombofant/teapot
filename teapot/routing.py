@@ -661,7 +661,11 @@ class PathFormatter(Selector):
     def _parse_more(self, parsed_format):
         for literal, field, format_spec, conversion in parsed_format:
             if conversion is not None:
-                raise ValueError("conversion specifiers not supported")
+                raise ValueError("conversion specifiers not "
+                                 "supported")
+            if field is None:
+                yield literal, None, (None, None)
+                continue
 
             spec = format_spec[:-1]
             presentation = format_spec[-1:]
@@ -737,6 +741,11 @@ class PathFormatter(Selector):
         return match.group(0)
 
     def parse(self, s):
+        if not self._parsed:
+            if s:
+                return False
+            return [], {}, ""
+
         numbered = []
         keywords = {}
         for literal, field, (regex, converter) in self._parsed:
@@ -744,6 +753,8 @@ class PathFormatter(Selector):
                 if not s.startswith(literal):
                     return False
                 s = s[len(literal):]
+            if field is None:
+                continue
 
             match = regex.match(s)
             if not match:
@@ -813,7 +824,7 @@ def route(path, *paths, order=0):
     """
 
     paths = [path] + list(paths)
-    paths = [path if hasattr(path, "select") else PathSelector(path)
+    paths = [path if hasattr(path, "select") else PathFormatter(path)
              for path in paths]
 
     selectors = [OrSelector(paths)]
