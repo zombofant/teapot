@@ -83,14 +83,16 @@ class AcceptPreferenceList(ListTest):
 class CharsetPreferenceList(ListTest):
     def test_parsing(self):
         P = teapot.accept.CharsetPreference
-        header = """iso-8859-5, unicode-1-1;q=0.8"""
+        # diverging from the RFC here, python does not know
+        # unicode-1-1
+        header = """iso-8859-5, utf-8;q=0.8"""
         l = teapot.accept.CharsetPreferenceList()
         l.append_header(header)
         l.inject_rfc_values()
         self.assertSequenceEqual(list(l),
             [
                 P("iso-8859-5", 1.0),
-                P("unicode-1-1", 0.8),
+                P("utf-8", 0.8),
                 P("iso-8859-1", 1.0)
             ]
         )

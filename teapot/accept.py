@@ -33,6 +33,7 @@ Preference lists
 import functools
 import operator
 import itertools
+import codecs
 from fnmatch import fnmatch
 
 @functools.total_ordering
@@ -227,6 +228,12 @@ class CharsetPreference(Preference):
     Subclass of :class:`Preference` for dealing with
     ``Accept-Charset`` header values.
     """
+
+    def __init__(self, value, q, parameters={}):
+        if value != "*":
+            codec = codecs.lookup(value)
+            value = codec.name
+        super().__init__(value, q, parameters=parameters)
 
     @classmethod
     def from_header_section(cls, value,
