@@ -297,7 +297,7 @@ class LanguagePreference(Preference):
         )
 
 
-class PreferenceList(object):
+class PreferenceList(list):
     """
     Hold a list of :class:`Preference` subclass instances, where the
     exact subclass is specified by *preference_class*.
@@ -312,10 +312,9 @@ class PreferenceList(object):
        :meth:`CharsetPreferenceList.inject_rfc_values`.
     """
 
-    def __init__(self, preference_class, **kwargs):
-        super(PreferenceList, self).__init__(**kwargs)
+    def __init__(self, preference_class, *args, **kwargs):
+        super(PreferenceList, self).__init__(*args, **kwargs)
         self.preference_class = preference_class
-        self._prefs = []
 
     def append_header(self, header, drop_parameters=False):
         """
@@ -328,22 +327,21 @@ class PreferenceList(object):
             return
         # parse preferences
         pref_generator = (
-            self.preference_class.from_header_section(section, drop_parameters=drop_parameters)
+            self.preference_class.from_header_section(
+                section,
+                drop_parameters=drop_parameters)
             for section in header.split(",")
         )
 
-        self._prefs.extend(pref_generator)
+        self.extend(pref_generator)
 
-    def __iter__(self):
-        return iter(self._prefs)
-
-    def __len__(self):
-        return len(self._prefs)
+    def get_sorted_by_preference(self):
+        return sorted(self, reverse=True, key=lambda x: x.rfc_key)
 
     def get_candidates(self, own_preferences,
-            match_wildcard=True,
-            include_non_matching=False,
-            take_everything_on_empty=True):
+                       match_wildcard=True,
+                       include_non_matching=False,
+                       take_everything_on_empty=True):
         """
         Return a ordered list of tuples ``(q, pref)``, with *q* being
         the original quality value of the match and *pref*
@@ -454,8 +452,9 @@ class AcceptPreferenceList(PreferenceList):
     Subclass of :class:`PreferenceList` for HTTP ``Accept`` headers.
     """
 
-    def __init__(self, **kwargs):
-        super(AcceptPreferenceList, self).__init__(AcceptPreference, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super(AcceptPreferenceList, self).__init__(
+            AcceptPreference, *args, **kwargs)
 
 class CharsetPreferenceList(PreferenceList):
     """
@@ -463,8 +462,9 @@ class CharsetPreferenceList(PreferenceList):
     headers.
     """
 
-    def __init__(self, **kwargs):
-        super(CharsetPreferenceList, self).__init__(CharsetPreference, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super(CharsetPreferenceList, self).__init__(
+            CharsetPreference, *args, **kwargs)
 
     def inject_rfc_values(self):
         """
@@ -490,5 +490,6 @@ class LanguagePreferenceList(PreferenceList):
     headers.
     """
 
-    def __init__(self, **kwargs):
-        super(LanguagePreferenceList, self).__init__(LanguagePreference, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super(LanguagePreferenceList, self).__init__(
+            LanguagePreference, *args, **kwargs)
