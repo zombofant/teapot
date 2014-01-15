@@ -96,6 +96,40 @@ class CharsetPreferenceList(ListTest):
                 P("iso-8859-1", 1.0)
             ]
         )
+    def test_special_case_for_latin1(self):
+        P = teapot.accept.CharsetPreference
+
+        header = """iso-8859-1;q=0.8"""
+        l = teapot.accept.CharsetPreferenceList()
+        l.append_header(header)
+        l.inject_rfc_values()
+        self.assertSequenceEqual(list(l),
+            [
+                P("iso-8859-1", 0.8)
+            ]
+        )
+
+        header = """iso-8859-5;q=0.8"""
+        l = teapot.accept.CharsetPreferenceList()
+        l.append_header(header)
+        l.inject_rfc_values()
+        self.assertSequenceEqual(list(l),
+            [
+                P("iso-8859-5", 0.8),
+                P("iso-8859-1", 1.0)
+            ]
+        )
+
+        header = """iso-8859-5;q=0.8, *;q=0.6"""
+        l = teapot.accept.CharsetPreferenceList()
+        l.append_header(header)
+        l.inject_rfc_values()
+        self.assertSequenceEqual(list(l),
+            [
+                P("iso-8859-5", 0.8),
+                P("*", 0.6)
+            ]
+        )
 
     def test_empty(self):
         P = teapot.accept.CharsetPreference

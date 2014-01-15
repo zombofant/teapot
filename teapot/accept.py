@@ -476,13 +476,13 @@ class CharsetPreferenceList(PreferenceList):
         `iso-8859-1`` is present.
         """
         if len(self) == 0:
-            self._prefs.append(CharsetPreference("*", 1.0))
+            self.append(CharsetPreference("*", 1.0))
         else:
-            starcount = sum(map(lambda x: 1 if x.value == "*" else 0, self))
-            if starcount == 0:
+            if not any(pref.value == "*" for pref in self) and \
+               not any(pref.value == "iso8859-1" for pref in self):
                 # according to HTTP/1.1 spec, we _have_ to add iso-8859-1 if no "*"
                 # is in the list
-                self._prefs.append(CharsetPreference("iso-8859-1", 1.0))
+                self.append(CharsetPreference("iso-8859-1", 1.0))
 
 class LanguagePreferenceList(PreferenceList):
     """
