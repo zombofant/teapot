@@ -366,7 +366,8 @@ class Request:
         self._path = local_path
         self._scheme = scheme
         self._query_dict = query_dict
-        self._accept_info = accept_info
+        self._accept_content, self._accept_language, self._accept_charset = \
+            accept_info
 
     def __deepcopy__(self, copydict):
         return Request(
@@ -374,12 +375,26 @@ class Request:
             self._path,
             self._scheme,
             copy.deepcopy(self._query_dict, copydict),
-            copy.deepcopy(self._accept_info, copydict),
+            copy.deepcopy(self.accept_info, copydict),
             original_request=self._original_request)
 
     @property
+    def accept_charset(self):
+        return self._accept_charset
+
+    @property
+    def accept_content(self):
+        return self._accept_content
+
+    @property
     def accept_info(self):
-        return self._accept_info
+        return (self._accept_content,
+                self._accept_language,
+                self._accept_charset)
+
+    @property
+    def accept_language(self):
+        return self._accept_language
 
     @property
     def method(self):

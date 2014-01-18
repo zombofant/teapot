@@ -1092,3 +1092,67 @@ def unroute(routable, *args, template_request=None, **kwargs):
     request.kwargs = kwargs
     getrouteinfo(routable).unroute(request)
     return request
+
+class Router:
+    def __init__(self, root):
+        self._root = root
+
+    def handle_not_found(self, request):
+        raise teapot.errors.make_response_error(
+            404, "cannot find resource {!r}".format(path))
+
+    def handle_charset_negotiation_failure(self, request, response):
+        raise teapot.errors.make_response_error(
+            400, "cannot find accepted charset for response")
+
+    def wrap_result(self, request, result):
+        if hasattr(result, "__iter__"):
+            # data was a generator or pretends to be one. the only thing we need
+            # to make sure is that it didn’t put it’s data into the Response
+            # object
+            result = iter(result)
+            response = next(result)
+            try:
+                response.negotiate_charset(request.accept_charset)
+            except UnicodeEncodeError as err:
+                yield from self.wrap_result(
+                    self.handle_charset_negotiation_failure(
+                        self, request, response))
+                return
+
+            if response.body is None:
+                # function generates the data
+                yield response
+                yield from result
+                return
+        else:
+            response = result
+            try:
+                response.negotiate_charset(request.accept_charset)
+            except UnicodeEncodeError as err:
+                yield from self.wrap_result(
+                    self.handle_charset_negotiation_failure(
+                        self, request, response))
+                return
+
+        # function does not want to return any data by itself
+        # we wrap the response headers and everything else into the generator
+        # format
+        yield response
+        if hasattr(response.body, "__iter__") and \
+           not isinstance(response.body, bytes):
+            yield from response.body
+            return
+
+        yield response.body
+
+    def route_request(self, request):
+        success, data = find_route(self._root, request)
+
+        if not success:
+            if data is None:
+                return self.handle_not_found(request)
+            raise data
+
+        result = data()
+        yield from self.wrap_result(request, result)

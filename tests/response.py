@@ -53,3 +53,9 @@ class TestResponse(unittest.TestCase):
             content_type, ascii_text)
         response.negotiate_charset(client_preferences)
         self.assertEqual(response.content_type.charset, "ascii")
+
+    def test_http_attributes(self):
+        response = teapot.response.Response(
+            teapot.response.MIMEType.text_plain,
+            response_code=404)
+        self.assertEqual(response.http_response_message, "Not Found")

@@ -58,6 +58,53 @@ class MIMEType:
             self.__subtype,
             repr(self.__parameters))
 
+MIMEType.text_plain = MIMEType("text", "plain")
+
+def lookup_response_message(response_code):
+    return {
+        100: "Continue",
+        101: "Switching Protocols",
+        200: "OK",
+        201: "Created",
+        202: "Accepted",
+        203: "Non-Authoritative Information",
+        204: "No Content",
+        205: "Reset Content",
+        206: "Partial Content",
+        300: "Multiple Choices",
+        301: "Moved Permanently",
+        302: "Found",
+        303: "See Other",
+        304: "Not Modified",
+        305: "Use Proxy",
+        306: "(Unused)",
+        307: "Temporary Redirect",
+        400: "Bad Request",
+        401: "Unauthorized",
+        402: "Payment Required",
+        403: "Forbidden",
+        404: "Not Found",
+        405: "Method Not Allowed",
+        406: "Not Acceptable",
+        407: "Proxy Authentication Required",
+        408: "Request Timeout",
+        409: "Conflict",
+        410: "Gone",
+        411: "Length Required",
+        412: "Precondition Failed",
+        413: "Request Entity Too Large",
+        414: "Request-URI Too Long",
+        415: "Unsupported Media Type",
+        416: "Requested Range Not Satisfiable",
+        417: "Expectation Failed",
+        500: "Internal Server Error",
+        501: "Not Implemented",
+        502: "Bad Gateway",
+        503: "Service Unavailable",
+        504: "Gateway Timeout",
+        505: "HTTP Version Not Supported",
+    }.get(response_code, "Unknown status")
+
 class Response:
     charset_preferences = [
         # prefer UTF-8, then go through the other unicode encodings in
@@ -71,7 +118,15 @@ class Response:
         teapot.accept.CharsetPreference("latin1", 0.6)
     ]
 
-    def __init__(self, content_type, body=None):
+    def __init__(self,
+                 content_type,
+                 body=None,
+                 response_code=200,
+                 response_message=None):
+        super().__init__()
+        self.http_response_code = response_code
+        self.http_response_message = response_message or \
+                                     lookup_response_message(response_code)
         self.content_type = copy.copy(content_type)
         self.body = body
 
@@ -82,9 +137,15 @@ class Response:
                         "this.")
             self.body = self.body.encode(self.content_type.charset)
 
+    def get_header_tuples(self):
+        return [
+            ("Content-Type", str(self.content_type))
+        ]
+
     def negotiate_charset(self, preference_list, strict=False):
         if not isinstance(self.body, str):
-            # we do not change anything for already encoded blobs
+            # we do not change anything for already encoded blobs or iterables
+            # or anything like that
             return
 
         candidates = (pref.value
