@@ -1,4 +1,5 @@
 import unittest
+import copy
 
 import teapot.routing
 import teapot.request
@@ -22,6 +23,81 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
     @teapot.routing.route("p/{:2d}")
     def formatted(self, arg):
         self.args = [arg]
+
+class TestContext(unittest.TestCase):
+    method = teapot.request.Method.GET
+    path = "/foo/bar"
+    scheme = "https"
+    query_data = {}
+    accept_info = teapot.accept.all_content_types(), \
+                  teapot.accept.all_languages(), \
+                  teapot.accept.all_charsets()
+
+    def create_example_request(self):
+        return teapot.request.Request(
+            self.method,
+            self.path,
+            self.scheme,
+            self.query_data,
+            self.accept_info,
+            "")
+
+    def test_initialization_from_request(self):
+        request = self.create_example_request()
+        context = teapot.routing.Context(request)
+        self.assertEqual(context.path, request.path)
+        self.assertEqual(context.method, request.method)
+        self.assertEqual(context.scheme, request.scheme)
+        self.assertEqual(context.accept_language, request.accept_language)
+        self.assertEqual(context.accept_content, request.accept_content)
+        self.assertIs(context.original_request, request)
+
+    def test_copy_construction(self):
+        request = self.create_example_request()
+        context1 = teapot.routing.Context(request)
+        context1.args.append("foo")
+        context1.args.append("bar")
+
+        context2 = teapot.routing.Context(context1)
+        self.assertEqual(context1.path, context2.path)
+        self.assertEqual(context1.method, context2.method)
+        self.assertEqual(context1.scheme, context2.scheme)
+        self.assertEqual(context1.accept_language,
+                         context2.accept_language)
+        self.assertEqual(context1.accept_content,
+                         context2.accept_content)
+        self.assertIs(context1.original_request, request)
+        self.assertIs(context2.original_request, request)
+        self.assertTrue(context1.args)
+        self.assertFalse(context1.kwargs)
+        self.assertFalse(context2.args)
+        self.assertFalse(context2.kwargs)
+
+    def test_copy(self):
+        request = self.create_example_request()
+        context1 = teapot.routing.Context(request)
+        context1.args.append("foo")
+        context1.args.append("bar")
+
+        context2 = copy.deepcopy(context1)
+        self.assertEqual(context1.path, context2.path)
+        self.assertEqual(context1.method, context2.method)
+        self.assertEqual(context1.scheme, context2.scheme)
+        self.assertEqual(context1.accept_language,
+                         context2.accept_language)
+        self.assertEqual(context1.accept_content,
+                         context2.accept_content)
+        self.assertIs(context1.original_request, request)
+        self.assertIs(context2.original_request, request)
+        self.assertEqual(context1.args, context2.args)
+        self.assertFalse(context1.kwargs)
+        self.assertFalse(context2.kwargs)
+
+        self.assertIsNot(context1.args, context2.args)
+        self.assertIsNot(context1.kwargs, context2.kwargs)
+        self.assertIsNot(context1.query_data, context2.query_data)
+
+
 
 class TestPathFormatter(unittest.TestCase):
     def assertParses(self, format_spec, formatted, parsed, **kwargs):
@@ -172,46 +248,34 @@ class TestRouting(unittest.TestCase):
         self._root = SomeRoutable()
 
     def test_route_simple(self):
-        request = teapot.request.Request(
-            teapot.request.Method.GET,
-            "/index",
-            "https",
-            {},
-            None)
+        request = teapot.routing.Context(
+            None,
+            path="/index")
         success, data = teapot.routing.find_route(
             self._root, request)
         self.assertTrue(success)
 
     def test_route_multirebase(self):
-        request = teapot.request.Request(
-            teapot.request.Method.GET,
-            "/foo/fnord",
-            "https",
-            {},
-            None)
+        request = teapot.routing.Context(
+            None,
+            path="/foo/fnord")
         success, data = teapot.routing.find_route(
             self._root, request)
         self.assertTrue(success)
 
     def test_route_not_found(self):
-        request = teapot.request.Request(
-            teapot.request.Method.GET,
-            "/foo/bar",
-            "https",
-            {},
-            None)
+        request = teapot.routing.Context(
+            None,
+            path="/foo/bar")
         success, data = teapot.routing.find_route(
             self._root, request)
         self.assertFalse(success)
         self.assertIsNone(data)
 
     def test_route_formatted(self):
-        request = teapot.request.Request(
-            teapot.request.Method.GET,
-            "/p/42",
-            "https",
-            {},
-            None)
+        request = teapot.routing.Context(
+            None,
+            path="/p/42")
         success, data = teapot.routing.find_route(
             self._root, request)
         self.assertTrue(success)

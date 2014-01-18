@@ -127,35 +127,80 @@ def setrouteinfo(obj, value):
     global routeinfo_attr
     return setattr(obj, routeinfo_attr, value)
 
-class Context(teapot.request.Request):
+class Context:
     """
     The routing context is used to traverse through the request to
     find nodes to route to.
 
-    It is a copy of the request and parts which are used during
-    routing are removed from the request.
+    *base* can be either another :class:`Context` instance (to create a blank
+    context from another one, see below) or a :class:`~teapot.request.Request`
+    to create a new context from a request.
 
-    In addition to a mere mirror of the request, it also contains
-    information on data which has been extracted during routing.
+    There is a difference between creating a context with anotehr context as
+    *base* argument and copying that context. Upon copying, the arguments which
+    have already been found during request resolution are copied too. Thus,
+    copying is suitable to have a local copy of the context for the next routing
+    step. However, upon creating a context from a context passed as *base*
+    argument, the argument lists will be initialized as empty.
+
+    .. note::
+
+       Although they share some concepts, we found it is more reasonable to keep
+       the context and the request in separate classes. The rationale is that
+       some request information is not needed during routing (such as user agent
+       strings). Preserving the ability to cheaply copy requests and being able
+       to construct them easily at the same time is more trouble than it’s
+       worth.
+
+       In addition we now have a clear definition of which fields of the request
+       can be used for routing.
     """
 
-    def __init__(self, request):
-        super().__init__(
-            request.method,
-            request.path,
-            request.scheme,
-            copy.deepcopy(request.query_dict),
-            copy.deepcopy(request.accept_info),
-            original_request=request)
+    def __init__(self, base,
+                 request_method=teapot.request.Method.GET,
+                 path="/",
+                 scheme="http",
+                 **kwargs):
+        super().__init__(**kwargs)
+        self._accept_content = \
+            base.accept_content if base else \
+            teapot.accept.all_content_types()
+        self._accept_language = \
+            base.accept_language if base else \
+            teapot.accept.all_languages()
         self._args = []
         self._kwargs = {}
+        self._method = \
+            base.method if base else \
+            request_method
+        if hasattr(base, "original_request"):
+            self._original_request = base.original_request
+        else:
+            self._original_request = base
+        self.path = \
+            base.path if base else path
+        self._post_data = \
+            None if base else {}
+        self._query_data = \
+            copy.copy(base.query_data) if base else \
+            {}
+        self._scheme = \
+            base.scheme if base else \
+            scheme
 
     def __deepcopy__(self, copydict):
         result = Context(self)
-        result._original_request = self._original_request
-        result._args = self._args[:]
+        result._args = copy.copy(self._args)
         result._kwargs = copy.copy(self._kwargs)
         return result
+
+    @property
+    def accept_content(self):
+        return self._accept_content
+
+    @property
+    def accept_language(self):
+        return self._accept_language
 
     @property
     def args(self):
@@ -173,6 +218,26 @@ class Context(teapot.request.Request):
     def kwargs(self, value):
         self._kwargs.clear()
         self._kwargs.update(value)
+
+    @property
+    def method(self):
+        return self._method
+
+    @property
+    def original_request(self):
+        return self._original_request
+
+    @property
+    def post_data(self):
+        return self._post_data
+
+    @property
+    def query_data(self):
+        return self._query_data
+
+    @property
+    def scheme(self):
+        return self._scheme
 
     def rebase(self, prefix):
         """
@@ -1090,13 +1155,9 @@ def unroute(routable, *args, template_request=None, **kwargs):
     """
 
     if template_request is None:
-        template_request = teapot.request.Request(
-            teapot.request.Method.GET,
-            "",
-            "http",
-            {},
-            None)
-    request = Context(template_request)
+        request = Context(None, path="")
+    else:
+        request = Context(template_request)
     request.args = args
     request.kwargs = kwargs
     getrouteinfo(routable).unroute(request)

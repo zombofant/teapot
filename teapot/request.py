@@ -357,26 +357,17 @@ class Request:
                  method,
                  local_path,
                  scheme,
-                 query_dict,
+                 query_data,
                  accept_info,
-                 *,
-                 original_request=None):
-        self._original_request = original_request
+                 user_agent):
         self._method = method
         self._path = local_path
         self._scheme = scheme
-        self._query_dict = query_dict
+        self._query_data = query_data
+        self._user_agent_string = user_agent
+        self._user_agent_info = inspect_user_agent_string(user_agent)
         self._accept_content, self._accept_language, self._accept_charset = \
             accept_info
-
-    def __deepcopy__(self, copydict):
-        return Request(
-            self._method,
-            self._path,
-            self._scheme,
-            copy.deepcopy(self._query_dict, copydict),
-            copy.deepcopy(self.accept_info, copydict),
-            original_request=self._original_request)
 
     @property
     def accept_charset(self):
@@ -409,9 +400,17 @@ class Request:
         self._path = value
 
     @property
-    def query_dict(self):
-        return self._query_dict
+    def query_data(self):
+        return self._query_data
 
     @property
     def scheme(self):
         return self._scheme
+
+    @property
+    def user_agent(self):
+        return self._user_agent_string
+
+    @property
+    def user_agent_info(self):
+        return self._user_agent_info
