@@ -1,3 +1,15 @@
+"""
+WSGI interface
+##############
+
+This module provides a class to provide an interface to a WSGI compatible
+server.
+
+.. autoclass:: Application
+   :members:
+
+"""
+
 import logging
 
 import teapot.request
@@ -8,6 +20,17 @@ import teapot.routing
 logger = logging.getLogger(__name__)
 
 class Application:
+    """
+    Instances of this class are suitable for passing them as WSGI application
+    object.
+
+    The *router* should be a :class:`~teapot.routing.Router` instance which can
+    be used to resolve all requests of your application.
+
+    If *force_slash_root* is set to :data:`True`, requests pointing to empty
+    string (``b""``) will be rewritten to ``b"/"``.
+    """
+
     def __init__(self,
                  router,
                  force_slash_root=True):
@@ -15,27 +38,55 @@ class Application:
         self._force_slash_root = force_slash_root
 
     def forward_response(self, response, start_response):
+        """
+        Forwards a :class:`~teapot.response.Response` instance (such as from a
+        caught :class:`~teapot.errors.ResponseError`) to the WSGI
+        interface. This does not do anything fancy and will not even take the
+        clients requested encoding into account, which is why this method is
+        only used in exceptional cases (i. e. if an exception happens while
+        resolving the request).
+
+        *response* must be the response object to forward and *start_response*
+        must be the ``start_response`` callable WSGI handed to the application.
+        """
         response.negotiate_charset(teapot.accept.CharsetPreferenceList())
         start_response(
             "{:03d} {}".format(
                 response.http_response_code,
                 response.http_response_message),
-            [("Content-Type", str(response.content_type))]
+            response.get_header_tuples()
         )
         return [response.body]
 
     def handle_decoding_error(self, s):
+        """
+        Handler for a decoding error of any request argument *s*. By default, it
+        logs the request argument and creates a ``400 Bad Request`` response.
+        """
         logger.error("cannot decode %r as utf8", s)
         raise teapot.errors.make_response_error(
             400, "cannot decode {!r} as utf8".format(s))
 
     def handle_path_decoding_error(self, path):
+        """
+        Forward *path* to :meth:`handle_decoding_error`.
+        """
         self.handle_decoding_error(path)
 
     def handle_pre_start_response_error(self, error, start_response):
+        """
+        Handle an exception which happens before the response has started.
+
+        *error* is the exception object, which must also be a
+        :class:`~teapot.response.Response` instance and *start_response* must be
+        the well known callable from the WSGI interface.
+        """
         return self.forward_response(error, start_response)
 
     def __call__(self, environ, start_response):
+        """
+        Implementation of the WSGI interface specified in PEP 3333.
+        """
         try:
             try:
                 local_path = environ["PATH_INFO"]

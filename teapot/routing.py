@@ -44,6 +44,15 @@ Utilities to get information from routables
 
 .. autofunction:: setrouteinfo
 
+Router for server interfaces
+============================
+
+Server interfaces require a router which transforms the request into an
+iterable which contains all the response metadata and contents.
+
+.. autoclass:: Router
+   :members:
+
 Internal API
 ============
 
@@ -1094,18 +1103,75 @@ def unroute(routable, *args, template_request=None, **kwargs):
     return request
 
 class Router:
+    """
+    A intermediate layer class which transforms the multiple supported response
+    modes of the routables into a single defined response format. Routing takes
+    place in the context of the root routable object *root*.
+
+    The following result types are supported:
+
+    * A routable may simply return a completely set up
+      :class:`~teapot.response.Response` object which contains the respones to
+      be delivered.
+    * A routable may return an iterable (e. g. by being a generator), whose
+      first element must be a :class:`~teapot.response.Response` object
+      containing all required metadata to create the response headers. Iteration
+      on the iterable does not continue until the response headers are sent.
+
+      Now different things can happen:
+
+      * either, the :attr:`~teapot.response.Response.body` attribute of the
+        response is :data:`None`. In that case it is assumed that the remaining
+        elements of the iterable are :class:`bytes` objects which form the
+        response body.
+      * or, the :attr:`~teapot.response.Response.body` attribute contains a
+        bytes instance. It is returned as response body (yielded once).
+      * or, the :attr:`~teapot.response.Response.body` attribute is another
+        iterable, which is then iterated over and forwarded using
+        ``yield from``.
+
+    Before evaluating a response, the
+    :meth:`~teapot.response.Response.negotiate_charset` method is called with
+    the :prop:`~teapot.request.Request.accept_charset` preference list from the
+    request.
+    """
+
     def __init__(self, root):
         self._root = root
 
     def handle_not_found(self, request):
+        """
+        Handle a failure while routing the *request*.
+
+        By default, this raises a ``404 Not Found`` error.
+        """
         raise teapot.errors.make_response_error(
             404, "cannot find resource {!r}".format(path))
 
     def handle_charset_negotiation_failure(self, request, response):
+        """
+        Handle unability to encode the *response* in a manner which satisfies
+        the client (see *request*).
+
+        By default, this raises a ``400 Not Acceptable`` error.
+        """
         raise teapot.errors.make_response_error(
             400, "cannot find accepted charset for response")
 
     def wrap_result(self, request, result):
+        """
+        Performs converting the result in a uniform format for passing the
+        response to the web server interface.
+
+        *request* must be the request object. It is used for error handling and
+        to negotiate the response charset. *result* must be the result obtained
+        from calling the routable.
+
+        Returns an iterable, which first yields a
+        :class:`~teapot.routing.Response` object containing all metadata of the
+        request and afterwards yields zero or more :class:`bytes` instances
+        which form the body of the response.
+        """
         if hasattr(result, "__iter__"):
             # data was a generator or pretends to be one. the only thing we need
             # to make sure is that it didn’t put it’s data into the Response
@@ -1147,6 +1213,10 @@ class Router:
         yield response.body
 
     def route_request(self, request):
+        """
+        Routes a given *request* using the set up routing root and returns the
+        response format described at :meth:`wrap_result`.
+        """
         success, data = find_route(self._root, request)
 
         if not success:
