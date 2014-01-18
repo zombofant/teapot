@@ -493,3 +493,18 @@ class LanguagePreferenceList(PreferenceList):
     def __init__(self, *args, **kwargs):
         super(LanguagePreferenceList, self).__init__(
             LanguagePreference, *args, **kwargs)
+
+def all_content_types():
+    return AcceptPreferenceList([
+        AcceptPreference("*", 1.0)
+    ])
+
+def all_languages():
+    return LanguagePreferenceList([
+        LanguagePreference("*", 1.0)
+    ])
+
+def all_charsets():
+    return CharsetPreferenceList([
+        CharsetPreference("*", 1.0)
+    ])
