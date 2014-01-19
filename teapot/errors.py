@@ -9,6 +9,8 @@ class ResponseError(teapot.response.Response, Exception):
                          body=body,
                          response_code=response_code,
                          response_message=response_message)
+        self.args = ["{} {}".format(self.http_response_code,
+                                    self.http_response_message)]
 
 
 def make_response_error(response_code, plain_message, **kwargs):
