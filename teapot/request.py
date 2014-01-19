@@ -429,6 +429,18 @@ class Request:
         except KeyError:
             languages = teapot.accept.all_languages()
 
+        try:
+            if_modified_since_str = headers["If-Modified-Since"]
+        except KeyError:
+            if_modified_since = None
+        else:
+            try:
+                if_modified_since = teapot.timeutils.parse_http_date(
+                    if_modified_since_str)
+            except ValueError as err:
+                logger.warn("failed to parse If-Modified-Since header: %s", err)
+                if_modified_since = None
+
         return cls(
             request_method,
             path_info,
@@ -441,6 +453,7 @@ class Request:
             ),
             headers.get("User-Agent", ""),
             input_stream,
+            if_modified_since=if_modified_since,
             raw_http_headers=headers)
 
     def __init__(self,
@@ -451,6 +464,7 @@ class Request:
                  accept_info,
                  user_agent,
                  body_stream,
+                 if_modified_since=None,
                  raw_http_headers=[]):
         self._method = method
         self._path = local_path
@@ -463,6 +477,7 @@ class Request:
 
         self.body_stream = body_stream
         self.raw_http_headers = raw_http_headers
+        self.if_modified_since = if_modified_since
 
     @property
     def accept_charset(self):

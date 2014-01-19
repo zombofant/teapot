@@ -1234,6 +1234,29 @@ class Router:
         raise teapot.errors.make_response_error(
             400, "cannot find accepted charset for response")
 
+    def pre_headers_hook(self, request, response):
+        """
+        This is called before any headers are passed to the HTTP
+        interface. *request* contains the original request from the client and
+        *response* contains the response object returned by either the orignial
+        destination of the request or an error handler.
+
+        By default, this hook handles ``If-Modified-Since`` headers in the
+        request and raises an ``304 Not Modified`` response, if the timestamp in
+        that header does exactly match the timestamp in the response, if any.
+
+        It is expected to either return the response or raise a
+        :class:`~teapot.errors.ResponseError` exception.
+        """
+        print(response.last_modified)
+        print(request.if_modified_since)
+        if response.last_modified is not None and \
+           request.if_modified_since is not None:
+            if abs((response.last_modified -
+                    request.if_modified_since).total_seconds()) < 1:
+                raise teapot.errors.ResponseError(304, None, None)
+        return response
+
     def wrap_result(self, request, result):
         """
         Performs converting the result in a uniform format for passing the
@@ -1276,6 +1299,8 @@ class Router:
                     self.handle_charset_negotiation_failure(
                         self, request, response))
                 return
+
+        response = self.pre_headers_hook(request, response)
 
         # function does not want to return any data by itself
         # we wrap the response headers and everything else into the generator

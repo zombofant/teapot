@@ -4,6 +4,7 @@ import logging
 import itertools
 
 import teapot.accept
+import teapot.timeutils
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +70,15 @@ class Response:
                  content_type,
                  body=None,
                  response_code=200,
-                 response_message=None):
+                 response_message=None,
+                 last_modified=None):
         super().__init__()
         self.http_response_code = response_code
         self.http_response_message = response_message or \
                                      lookup_response_message(response_code)
         self.content_type = copy.copy(content_type)
         self.body = body
+        self.last_modified = last_modified
 
         if self.content_type and \
            self.content_type.charset is not None \
@@ -88,6 +91,9 @@ class Response:
     def get_header_tuples(self):
         if self.content_type:
             yield ("Content-Type", str(self.content_type))
+        if self.last_modified:
+            yield ("Last-Modified",
+                   teapot.timeutils.format_http_date(self.last_modified))
 
 
     def negotiate_charset(self, preference_list, strict=False):
