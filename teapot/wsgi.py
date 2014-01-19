@@ -79,9 +79,12 @@ class Application:
             "{:03d} {}".format(
                 response.http_response_code,
                 response.http_response_message),
-            response.get_header_tuples()
+            list(response.get_header_tuples())
         )
-        return [response.body]
+        if response.body is not None:
+            return [response.body]
+        else:
+            return []
 
     def handle_decoding_error(self, s):
         """
@@ -159,6 +162,6 @@ class Application:
             "{:03d} {}".format(
                 headers.http_response_code,
                 headers.http_response_message),
-            headers.get_header_tuples())
+            list(headers.get_header_tuples()))
 
         yield from result

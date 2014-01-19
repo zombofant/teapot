@@ -77,7 +77,8 @@ class Response:
         self.content_type = copy.copy(content_type)
         self.body = body
 
-        if self.content_type.charset is not None \
+        if self.content_type and \
+           self.content_type.charset is not None \
            and isinstance(body, str):
             logger.info("Response constructed with fixed-charset"
                         " content type. Browsers might not like"
@@ -85,9 +86,9 @@ class Response:
             self.body = self.body.encode(self.content_type.charset)
 
     def get_header_tuples(self):
-        return [
-            ("Content-Type", str(self.content_type))
-        ]
+        if self.content_type:
+            yield ("Content-Type", str(self.content_type))
+
 
     def negotiate_charset(self, preference_list, strict=False):
         if not isinstance(self.body, str):
