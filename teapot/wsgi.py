@@ -128,37 +128,19 @@ class Application:
                 query_data = self.decode_query_string(
                     environ.get("QUERY_STRING", ""))
 
-                try:
-                    charsets = teapot.accept.CharsetPreferenceList()
-                    charsets.append_header(environ["HTTP_ACCEPT_CHARSET"])
-                except KeyError:
-                    charsets = teapot.accept.all_charsets()
-                charsets.inject_rfc_values()
-
-                try:
-                    contents = teapot.accept.AcceptPreferenceList()
-                    contents.append_header(environ["HTTP_ACCEPT"])
-                except KeyError:
-                    contents = teapot.accept.all_content_types()
-
-                try:
-                    languages = teapot.accept.LanguagePreferenceList()
-                    languages.append_header(environ["HTTP_ACCEPT_LANGUAGE"])
-                except KeyError:
-                    languages = teapot.accept.all_languages()
-
-                request = teapot.request.Request(
+                request = teapot.request.Request.construct_from_http(
                     environ["REQUEST_METHOD"],
                     local_path,
                     environ["wsgi.url_scheme"],
                     query_data,
+                    environ["wsgi.input"],
+                    environ.get("CONTENT_LENGTH"),
+                    environ.get("CONTENT_TYPE"),
                     (
-                        contents,
-                        languages,
-                        charsets
-                    ),
-                    environ.get("HTTP_USER_AGENT", ""),
-                    environ["wsgi.input"])
+                        (k[5:].replace("_", "-"), v)
+                        for k, v in environ.items()
+                        if k.startswith("HTTP_")
+                    ))
 
                 result = iter(self._router.route_request(request))
                 headers = next(result)

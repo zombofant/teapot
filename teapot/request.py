@@ -1,6 +1,8 @@
 import copy
 import re
 
+import teapot.mime
+
 class Method:
     __init__ = None
 
@@ -353,6 +355,93 @@ def inspect_user_agent_string(user_agent_string):
 
 
 class Request:
+    @classmethod
+    def construct_from_http(
+            cls,
+            request_method,
+            path_info,
+            url_scheme,
+            query_data,
+            input_stream,
+            content_length,
+            content_type,
+            http_headers):
+        """
+        This is a forward-compatible way to construct a request object out of
+        the information typically available from a CGI or WSGI environment.
+
+        For details on the WSGI objects referred to here, see `PEP-3333
+        <http://www.python.org/dev/peps/pep-3333/>`_.
+
+        :param str request_method: WSGI ``REQUEST_METHOD`` equivalent
+        :param str path_info: WSGI ``PATH_INFO`` equivalent
+        :param str url_scheme: URL scheme used for the request (``http`` or
+                               ``https``, typically)
+        :param query_data: WSGI ``QUERY_STRING`` equivalent
+        :type query_data: either a ``str`` or a dict mapping the keys to lists
+                            of values
+        :param input_stream: file-like object allowing access to the body of
+                             the request sent by the client
+        :type input_stream: file-like object
+        :param content_length: the length of the request body
+        :type content_length: something which is castable to int or :data:`None`
+                              if unset
+        :param content_type: WSGI ``CONTENT_TYPE`` equivalent
+        :type content_type: a str containing the header or :data:`None` if unset
+        :param iterable http_headers: an iterable yielding all other HTTP
+                                      headers as tuples ``(header, value)``.
+        :return: A fully specified :class:`Request` object.
+
+        Any strings passed to this method must be proper unicode
+        strings. Decoding must have been done by the web interface.
+        """
+
+        if not isinstance(query_data, dict):
+            query_data = urllib.parse.parse_qs(query_data)
+
+        # XXX: do we need this? can headers be meaningfully concatenated that
+        # way?
+        headers = teapot.mime.CaseFoldedDict()
+        for header, new_value in headers:
+            try:
+                value = headers[header]
+            except KeyError:
+                headers[header] = new_value
+            else:
+                headers[header] = value + new_value
+
+        try:
+            charsets = teapot.accept.CharsetPreferenceList()
+            charsets.append_header(headers["Accept-Charset"])
+        except KeyError:
+            charsets = teapot.accept.all_charsets()
+            charsets.inject_rfc_values()
+
+        try:
+            contents = teapot.accept.AcceptPreferenceList()
+            contents.append_header(headers["Accept"])
+        except KeyError:
+            contents = teapot.accept.all_content_types()
+
+        try:
+            languages = teapot.accept.LanguagePreferenceList()
+            languages.append_header(headers["Accept-Language"])
+        except KeyError:
+            languages = teapot.accept.all_languages()
+
+        return cls(
+            request_method,
+            path_info,
+            url_scheme,
+            query_data,
+            (
+                contents,
+                languages,
+                charsets
+            ),
+            headers.get("User-Agent", ""),
+            input_stream)
+
     def __init__(self,
                  method,
                  local_path,
