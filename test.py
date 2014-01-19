@@ -1,4 +1,5 @@
 import teapot
+import teapot.mime
 import teapot.wsgi
 import teapot.response
 
@@ -11,7 +12,7 @@ class Test(metaclass=teapot.routing.RoutableMeta):
     @teapot.route("", "index")
     def index(self):
         response = teapot.response.Response(
-            teapot.response.MIMEType.text_plain,
+            teapot.mime.Type.text_plain,
             body="{}".format(self._a))
 
         return response
@@ -19,7 +20,7 @@ class Test(metaclass=teapot.routing.RoutableMeta):
     @teapot.route("foo")
     def foo(self):
         response = teapot.response.Response(
-            teapot.response.MIMEType.text_plain.with_charset("utf8"))
+            teapot.mime.Type.text_plain.with_charset("utf8"))
 
         yield response
 

@@ -1,4 +1,5 @@
 import teapot.response
+import teapot.mime
 
 class ResponseError(teapot.response.Response, Exception):
     http_response_code = 500
@@ -12,6 +13,6 @@ class ResponseError(teapot.response.Response, Exception):
 
 def make_response_error(response_code, plain_message, **kwargs):
     return ResponseError(response_code,
-                         teapot.response.MIMEType.text_plain,
+                         teapot.mime.Type.text_plain,
                          plain_message,
                          **kwargs)
