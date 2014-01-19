@@ -402,7 +402,7 @@ class Request:
         # XXX: do we need this? can headers be meaningfully concatenated that
         # way?
         headers = teapot.mime.CaseFoldedDict()
-        for header, new_value in headers:
+        for header, new_value in http_headers:
             try:
                 value = headers[header]
             except KeyError:
