@@ -1207,7 +1207,7 @@ class Router:
         By default, this raises a ``404 Not Found`` error.
         """
         raise teapot.errors.make_response_error(
-            404, "cannot find resource {!r}".format(path))
+            404, "cannot find resource {!r}".format(request.path))
 
     def handle_charset_negotiation_failure(self, request, response):
         """
