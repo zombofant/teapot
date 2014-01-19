@@ -440,7 +440,8 @@ class Request:
                 charsets
             ),
             headers.get("User-Agent", ""),
-            input_stream)
+            input_stream,
+            raw_http_headers=headers)
 
     def __init__(self,
                  method,
@@ -449,7 +450,8 @@ class Request:
                  query_data,
                  accept_info,
                  user_agent,
-                 body_stream):
+                 body_stream,
+                 raw_http_headers=[]):
         self._method = method
         self._path = local_path
         self._scheme = scheme
@@ -458,7 +460,9 @@ class Request:
         self._user_agent_info = inspect_user_agent_string(user_agent)
         self._accept_content, self._accept_language, self._accept_charset = \
             accept_info
+
         self.body_stream = body_stream
+        self.raw_http_headers = raw_http_headers
 
     @property
     def accept_charset(self):
