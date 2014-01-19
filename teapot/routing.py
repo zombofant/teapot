@@ -96,7 +96,9 @@ routeinfo_attr = "__net_zombofant_teapot_routeinfo__"
 __all__ = [
     "isroutable",
     "getrouteinfo",
-    "route"]
+    "route",
+    "rebase",
+    "RoutableMeta"]
 
 def isroutable(obj):
     """

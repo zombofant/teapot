@@ -1,26 +1,28 @@
 import unittest
 import copy
+import io
 
+import teapot
 import teapot.routing
 import teapot.request
 
-@teapot.routing.rebase("/")
+@teapot.rebase("/")
 class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
     def __init__(self):
         super().__init__()
         self.args = []
 
-    @teapot.routing.route("", "index")
+    @teapot.route("", "index")
     def index(self):
         pass
 
-    @teapot.routing.rebase("foo/")
-    @teapot.routing.route("fnord")
+    @teapot.rebase("foo/")
+    @teapot.route("fnord")
     @classmethod
     def fnord(cls):
         pass
 
-    @teapot.routing.route("p/{:2d}")
+    @teapot.route("p/{:2d}")
     def formatted(self, arg):
         self.args = [arg]
 
@@ -169,30 +171,30 @@ class TestPathFormatter(unittest.TestCase):
 
 class TestRoutingMeta(unittest.TestCase):
     def test_creation_of_class_route_information(self):
-        class Test(metaclass=teapot.routing.RoutableMeta):
-            @teapot.routing.route("foo")
+        class Test(metaclass=teapot.RoutableMeta):
+            @teapot.route("foo")
             def test(self):
                 return self
 
-        self.assertTrue(teapot.routing.isroutable(Test))
-        info = teapot.routing.getrouteinfo(Test)
+        self.assertTrue(teapot.isroutable(Test))
+        info = teapot.getrouteinfo(Test)
         self.assertEqual(len(info.instance_routenodes), 1)
         self.assertEqual(len(info.routenodes), 0)
 
     def test_instanciation_of_object_information(self):
-        class Test(metaclass=teapot.routing.RoutableMeta):
-            @teapot.routing.route("foo")
+        class Test(metaclass=teapot.RoutableMeta):
+            @teapot.route("foo")
             def test(self):
                 return self
 
-        self.assertTrue(teapot.routing.isroutable(Test))
+        self.assertTrue(teapot.isroutable(Test))
 
         instance = Test()
-        self.assertTrue(teapot.routing.isroutable(instance))
-        info1 = teapot.routing.getrouteinfo(instance)
+        self.assertTrue(teapot.isroutable(instance))
+        info1 = teapot.getrouteinfo(instance)
         self.assertNotIsInstance(info1, teapot.routing.Class)
         self.assertFalse(hasattr(info1, "_instanceroutables"))
-        info2 = teapot.routing.getrouteinfo(instance)
+        info2 = teapot.getrouteinfo(instance)
         self.assertIs(info1, info2)
 
         self.assertIs(
@@ -200,48 +202,48 @@ class TestRoutingMeta(unittest.TestCase):
             instance)
 
     def test_routable_inheritance(self):
-        class TestBase(metaclass=teapot.routing.RoutableMeta):
-            @teapot.routing.route("foo")
+        class TestBase(metaclass=teapot.RoutableMeta):
+            @teapot.route("foo")
             def test(self):
                 return TestBase
 
         class TestSub(TestBase):
-            @teapot.routing.route("bar")
+            @teapot.route("bar")
             def test(self):
                 return TestSub
 
-        self.assertTrue(teapot.routing.isroutable(TestSub))
+        self.assertTrue(teapot.isroutable(TestSub))
 
-        info = teapot.routing.getrouteinfo(TestSub)
+        info = teapot.getrouteinfo(TestSub)
 
         self.assertEqual(len(info.instance_routenodes), 2)
         self.assertEqual(len(info.routenodes), 0)
 
     def test_specialization_of_prototypes_in_getrouteinfo(self):
-        class TestFoo(metaclass=teapot.routing.RoutableMeta):
-            @teapot.routing.route("foo")
+        class TestFoo(metaclass=teapot.RoutableMeta):
+            @teapot.route("foo")
             @staticmethod
             def foo():
                 pass
 
-            @teapot.routing.route("bar")
+            @teapot.route("bar")
             @classmethod
             def bar(cls):
                 pass
 
-            @teapot.routing.route("baz")
+            @teapot.route("baz")
             def baz(cls):
                 pass
 
         test = TestFoo()
         self.assertFalse(hasattr(
-            teapot.routing.getrouteinfo(test.foo),
+            teapot.getrouteinfo(test.foo),
             "get"))
         self.assertFalse(hasattr(
-            teapot.routing.getrouteinfo(test.bar),
+            teapot.getrouteinfo(test.bar),
             "get"))
         self.assertFalse(hasattr(
-            teapot.routing.getrouteinfo(test.baz),
+            teapot.getrouteinfo(test.baz),
             "get"))
 
 class TestRouting(unittest.TestCase):
@@ -294,11 +296,11 @@ class TestUnrouting(unittest.TestCase):
         self._root = SomeRoutable()
 
     def test_unrouting_unwinds_correctly_for_instancemethods(self):
-        routeinfo = teapot.routing.getrouteinfo(self._root.index)
+        routeinfo = teapot.getrouteinfo(self._root.index)
         self.assertSequenceEqual(
             list(teapot.routing.traverse_to_root(routeinfo)),
             [routeinfo,
-             teapot.routing.getrouteinfo(self._root)]
+             teapot.getrouteinfo(self._root)]
         )
 
     def test_unrouting_of_path(self):
