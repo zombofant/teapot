@@ -156,6 +156,8 @@ class Response:
             candidates.append("utf-8")
 
         for i, candidate in enumerate(candidates):
+            if candidate == "*":
+                candidate = "utf8"
             try:
                 self.body = self.body.encode(candidate)
             except UnicodeEncodeError:

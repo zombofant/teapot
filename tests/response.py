@@ -59,3 +59,16 @@ class TestResponse(unittest.TestCase):
             teapot.response.MIMEType.text_plain,
             response_code=404)
         self.assertEqual(response.http_response_message, "Not Found")
+
+    def test_can_negotiate_with_wildcard(self):
+        client_preferences = teapot.accept.CharsetPreferenceList([
+            teapot.accept.CharsetPreference("*", 1.0),
+        ])
+        client_preferences.inject_rfc_values()
+
+        content_type = teapot.response.MIMEType("text", "plain")
+
+        response = teapot.response.Response(
+            content_type, "foobar")
+        response.negotiate_charset(client_preferences)
+        self.assertEqual(response.content_type.charset, "utf-8")
