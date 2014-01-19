@@ -359,7 +359,8 @@ class Request:
                  scheme,
                  query_data,
                  accept_info,
-                 user_agent):
+                 user_agent,
+                 body_stream):
         self._method = method
         self._path = local_path
         self._scheme = scheme
@@ -368,6 +369,7 @@ class Request:
         self._user_agent_info = inspect_user_agent_string(user_agent)
         self._accept_content, self._accept_language, self._accept_charset = \
             accept_info
+        self.body_stream = body_stream
 
     @property
     def accept_charset(self):

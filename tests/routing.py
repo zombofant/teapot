@@ -40,7 +40,8 @@ class TestContext(unittest.TestCase):
             self.scheme,
             self.query_data,
             self.accept_info,
-            "")
+            "",
+            io.BytesIO(b""))
 
     def test_initialization_from_request(self):
         request = self.create_example_request()

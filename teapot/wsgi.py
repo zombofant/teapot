@@ -11,6 +11,7 @@ server.
 """
 
 import logging
+import urllib.parse
 
 import teapot.request
 import teapot.errors
@@ -36,6 +37,30 @@ class Application:
                  force_slash_root=True):
         self._router = router
         self._force_slash_root = force_slash_root
+
+    def decode_string(self, s):
+        if isinstance(s, str):
+            try:
+                s = s.encode("latin1")
+            except UnicodeEncodeError as err:
+                # already a proper unicode string
+                return s
+
+        return s.decode("utf8")
+
+    def decode_path(self, path):
+        try:
+            return self.decode_string(path)
+        except UnicodeDecodeError as err:
+            return self.handle_path_decoding_error(path)
+
+    def decode_query_string(self, query):
+        try:
+            query = self.decode_string(query)
+        except UnicodeDecodeError as err:
+            query = self.handle_query_decoding_error(query)
+
+        return urllib.parse.parse_qs(query)
 
     def forward_response(self, response, start_response):
         """
@@ -73,6 +98,12 @@ class Application:
         """
         self.handle_decoding_error(path)
 
+    def handle_query_decoding_error(self, query):
+        """
+        Forward *query* to :meth:`handle_decoding_error`.
+        """
+        self.handle_decoding_error(query)
+
     def handle_pre_start_response_error(self, error, start_response):
         """
         Handle an exception which happens before the response has started.
@@ -90,30 +121,44 @@ class Application:
         try:
             try:
                 local_path = environ["PATH_INFO"]
-                if not local_path and self._force_slash_root:
+                if not local_path.startswith("/") and self._force_slash_root:
                     local_path = "/"
 
+                local_path = self.decode_path(local_path)
+                query_data = self.decode_query_string(
+                    environ.get("QUERY_STRING", ""))
+
                 try:
-                    local_path = local_path.encode("latin1")
-                    local_path = local_path.decode("utf8")
-                except UnicodeEncodeError as err:
-                    # in this case, the path seems to be encoded already and we
-                    # ignore the error
-                    pass
-                except UnicodeDecodeError as err:
-                    # no incoming UTF-8. we Bad Request it.
-                    return self.handle_path_decoding_error(local_path)
+                    charsets = teapot.accept.CharsetPreferenceList()
+                    charsets.append_header(environ["HTTP_ACCEPT_CHARSET"])
+                except KeyError:
+                    charsets = teapot.accept.all_charsets()
+                charsets.inject_rfc_values()
+
+                try:
+                    contents = teapot.accept.AcceptPreferenceList()
+                    contents.append_header(environ["HTTP_ACCEPT"])
+                except KeyError:
+                    contents = teapot.accept.all_content_types()
+
+                try:
+                    languages = teapot.accept.LanguagePreferenceList()
+                    languages.append_header(environ["HTTP_ACCEPT_LANGUAGE"])
+                except KeyError:
+                    languages = teapot.accept.all_languages()
 
                 request = teapot.request.Request(
                     environ["REQUEST_METHOD"],
                     local_path,
                     environ["wsgi.url_scheme"],
-                    {},
+                    query_data,
                     (
-                        None,
-                        None,
-                        teapot.accept.CharsetPreferenceList()
-                    ))
+                        contents,
+                        languages,
+                        charsets
+                    ),
+                    environ.get("HTTP_USER_AGENT", ""),
+                    environ["wsgi.input"])
 
                 result = iter(self._router.route_request(request))
                 headers = next(result)
