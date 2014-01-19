@@ -1053,24 +1053,32 @@ class OrSelector(Selector):
         if self._subselectors:
             self._subselectors[0].unselect(request)
 
-def route(path, *paths, order=0):
+def route(path, *paths, order=0, make_constructor_routable=False):
     """
-    Decorate a (static-, class- or instance-) method or function with
-    routing information. Note that decorating a class using this
-    decorator is not possible.
+    Decorate a (static-, class- or instance-) method or function with routing
+    information. Note that decorating a class using this decorator is not
+    possible.
 
-    The *order* determines the order in which routing information is
-    visited upon looking up a route. The lower the value of *order*,
-    the more precedence has a route.
+    The *order* determines the order in which routing information is visited
+    upon looking up a route. The lower the value of *order*, the more precedence
+    has a route.
 
-    In classes, routes defined inside the class itself take precedence
-    over routes defined in the base classes, independent of the order.
+    In classes, routes defined inside the class itself take precedence over
+    routes defined in the base classes, independent of the order.
 
     Example::
 
         @route("/index")
         def index():
             \"\"\"do something fancy\"\"\"
+
+    Usually, *route* will refuse to make a constructor routable, because it does
+    not make lots of sense. If you know what you are doing and if you want to
+    make a constructor routable, you can pass :data:`True` to
+    *make_constructor_routable* and decorate the class.
+
+    To make all routable methods of a class routable, see the
+    :class:`RoutableMeta` metaclass.
     """
 
     paths = [path] + list(paths)
@@ -1085,6 +1093,11 @@ def route(path, *paths, order=0):
             raise ValueError("{!r} already has a route".format(obj))
 
         kwargs = {"order": order}
+
+        if isinstance(obj, type) and not make_constructor_routable:
+            # this is a class
+            raise TypeError("I don’t want to make a constructor routable. See"
+                            "the docs for details and a workaround.")
 
         if isinstance(obj, staticmethod):
             info = Leaf(selectors, obj.__func__, **kwargs)

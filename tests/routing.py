@@ -246,6 +246,19 @@ class TestRoutingMeta(unittest.TestCase):
             teapot.getrouteinfo(test.baz),
             "get"))
 
+    def test_constructor_routability(self):
+        class Foo:
+            pass
+
+        self.assertRaises(
+            TypeError,
+            teapot.route("/index"),
+            Foo)
+
+        foo_class = teapot.route("/index", make_constructor_routable=True)(Foo)
+        self.assertIs(foo_class, Foo)
+        self.assertTrue(teapot.isroutable(Foo))
+
 class TestRouting(unittest.TestCase):
     def setUp(self):
         self._root = SomeRoutable()
