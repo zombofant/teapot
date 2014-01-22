@@ -1089,13 +1089,13 @@ class OrSelector(Selector):
             self._subselectors[0].unselect(request)
 
 class QuerySelector(Selector):
-    @classfunction
+    @classmethod
     def procargs_list(itemtype, args):
         result = list(args)
         args.clear()
         return list(map(itemtype, args))
 
-    @classfunction
+    @classmethod
     def procargs_tuple(itemtypes, args):
         if len(args) < len(itemtypes):
             raise ValueError("not enough arguments")
@@ -1107,7 +1107,7 @@ class QuerySelector(Selector):
             itemtype(item)
             for item, itemtype in zip(slied_args, itemtypes))
 
-    @classfunction
+    @classmethod
     def procargs_single(itemtype, args):
         if len(args) < 1:
             raise ValueError("not enough arguments")
