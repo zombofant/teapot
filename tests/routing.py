@@ -101,8 +101,6 @@ class TestContext(unittest.TestCase):
         self.assertIsNot(context1.kwargs, context2.kwargs)
         self.assertIsNot(context1.query_data, context2.query_data)
 
-
-
 class TestPathFormatter(unittest.TestCase):
     def assertParses(self, format_spec, formatted, parsed, **kwargs):
         formatter = teapot.routing.PathFormatter(
