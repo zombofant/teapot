@@ -259,6 +259,17 @@ class TestRoutingMeta(unittest.TestCase):
         self.assertTrue(teapot.isroutable(Foo))
 
 class TestRouting(unittest.TestCase):
+    def get_routed_args(self, **context_kwargs):
+        root = SomeRoutable()
+        request = teapot.routing.Context(None, **context_kwargs)
+        success, data = teapot.routing.find_route(root, request)
+        self.assertTrue(success)
+        self.assertIsNotNone(data)
+
+        data()
+
+        return root.args, root.kwargs
+
     def setUp(self):
         self._root = SomeRoutable()
 
@@ -288,17 +299,8 @@ class TestRouting(unittest.TestCase):
         self.assertIsNone(data)
 
     def test_route_formatted(self):
-        request = teapot.routing.Context(
-            None,
-            path="/p/42")
-        success, data = teapot.routing.find_route(
-            self._root, request)
-        self.assertTrue(success)
-        self.assertIsNotNone(data)
-        data()
-        self.assertSequenceEqual(
-            [42],
-            self._root.args)
+        args, kwargs = self.get_routed_args(path="/p/42")
+        self.assertSequenceEqual([42], args)
 
     def tearDown(self):
         del self._root
