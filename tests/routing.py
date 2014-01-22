@@ -125,9 +125,9 @@ class TestContext(unittest.TestCase):
         self.assertIsNot(context1.kwargs, context2.kwargs)
         self.assertIsNot(context1.query_data, context2.query_data)
 
-class TestPathFormatter(unittest.TestCase):
+class Test_formatted_path(unittest.TestCase):
     def assertParses(self, format_spec, formatted, parsed, **kwargs):
-        formatter = teapot.routing.PathFormatter(
+        formatter = teapot.routing.formatted_path(
             "{:"+format_spec+"}",
             **kwargs)
         result = formatter.parse(formatted)
@@ -139,7 +139,7 @@ class TestPathFormatter(unittest.TestCase):
         self.assertEqual(numbered[0], parsed)
 
     def assertParsesNot(self, format_spec, formatted, **kwargs):
-        formatter = teapot.routing.PathFormatter(
+        formatter = teapot.routing.formatted_path(
             "{:"+format_spec+"}",
             **kwargs)
         result = formatter.parse(formatted)
@@ -178,7 +178,7 @@ class TestPathFormatter(unittest.TestCase):
         self.assertParsesNot("2.1f", "0.1", strict=True)
 
     def test_parse_multiple(self):
-        formatter = teapot.routing.PathFormatter(
+        formatter = teapot.routing.formatted_path(
             "foo: {:.2f}, bar: {baz:d}")
         result = formatter.parse("foo: +3.14159, bar: 42rem")
         self.assertTrue(result)

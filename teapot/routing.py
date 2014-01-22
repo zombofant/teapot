@@ -25,7 +25,7 @@ arguments. It might seem to be straightforward to mix positional and named
 arguments arbitrarily, however, there are caveats. If you mix named and
 positional arguments, weird behaviour might occur when *unrouting*. The current
 recommendation is to only use named arguments, except for passing arguments to
-a catchall positional argument (``*foo``). Example:
+a catchall positional argument (``*foo``). Example::
 
     def foo(bar, baz, *args, kw1=None, **kwargs):
         pass
@@ -45,6 +45,8 @@ made routable using the following metaclass:
 
 .. autoclass:: RoutableMeta
 
+.. _teapot.routing.routable_decorators:
+
 Decorators for routables
 ------------------------
 
@@ -52,19 +54,14 @@ The route of an object which is routable (that is, has been made routable by
 applying the :class:`RoutableMeta` class or decorating it with :func:`route`),
 the route can further be refined using the following decorators:
 
-.. autofunction:: rebase
+.. autoclass:: rebase
 
-.. autofunction:: query
+.. autoclass:: query
 
+.. autoclass:: formatted_path
 
-Request data selectors
-======================
+.. autoclass:: one_of
 
-.. autoclass:: PathSelector
-   :members:
-
-.. autoclass:: PathFormatter
-   :members:
 
 Utilities to get information from routables
 ===========================================
@@ -600,11 +597,12 @@ class RoutableMeta(type):
 
 class Selector(metaclass=abc.ABCMeta):
     """
-    Selectors are used throughout the routing tree to determine
-    whether a path is legit for a given request.
+    Selectors are used throughout the routing tree to determine whether a path
+    is legit for a given request.
 
-    The most commonly used selector is the :class:`PathSelector` which
-    selects on a portion of the request path.
+    Selectors commonly appear in the form of decorators, which is why a
+    :meth:`__call__` method is supplied. For a list of selectors see
+    :ref:`teapot.routing.routable_decorators`.
 
     A selector class must implement two methods.
     """
@@ -648,7 +646,19 @@ class Selector(metaclass=abc.ABCMeta):
         call to `unselect`.
         """
 
-class PathSelector(Selector):
+    def __call__(self, obj):
+        """
+        Append this selector to the selectors in the routing information of
+        *obj*.
+
+        Subclasses may override this to insert in a different position in the
+        selector array to take precedence over other selectors.
+        """
+        info = requirerouteinfo(obj)
+        info.selectors.append(self)
+        return obj
+
+class rebase(Selector):
     """
     A path selector selects a static portion of the current request
     path. If the current path does not begin with the given *prefix*,
@@ -669,7 +679,12 @@ class PathSelector(Selector):
     def unselect(self, request):
         request.path = self._prefix + request.path
 
-class PathFormatter(Selector):
+    def __call__(self, obj):
+        info = requirerouteinfo(obj)
+        info.selectors.insert(0, self)
+        return obj
+
+class formatted_path(Selector):
     """
     Select a portion of the current request path and extract
     information from it using
@@ -682,7 +697,7 @@ class PathFormatter(Selector):
 
     Anything retrieved from the parsed data, which are numbered fields
     and named fields in the format string, is appended to the current
-    contexts arguments (see :prop:`Context.args`).
+    contexts arguments (see :attr:`Context.args`).
 
     Upon unparsing, the arguments in the context are used to format
     the given *format_string*, which is then prepended to the current
@@ -1078,7 +1093,7 @@ class PathFormatter(Selector):
 
         request.path = self._format_string.format(*args, **kwargs) + request.path
 
-class OrSelector(Selector):
+class one_of(Selector):
     def __init__(self, subselectors, **kwargs):
         super().__init__(**kwargs)
         self._subselectors = list(subselectors)
@@ -1092,7 +1107,36 @@ class OrSelector(Selector):
         if self._subselectors:
             self._subselectors[0].unselect(request)
 
-class QuerySelector(Selector):
+class query(Selector):
+    """
+    This routing decorator inspects the query data. The process during the
+    routing is as follows:
+
+    *argname* is looked up in the query data. The list of arguments passed with
+    that key is extracted and we call that list *args*. The result which will be
+    passed to the final routable will be called *result*.
+
+    * if *argtype* is a callable, the first argument from *args* is removed and
+      the *argtype* is called with that argument as the only argument. The
+      result of callable is stored in *result*. If *args* is empty, the selector
+      does not apply.
+    * if *argtype* is a list containing exactly one callable, the callable is
+      evaluated for all elements of *args* and the resulting list is stored in
+      *result*. *args* is cleared.
+    * if *argtype* is a tuple of length *N* containing zero or more callables,
+      the first *N* elements from *args* are removed. On each of these elements,
+      the corresponding callable is applied and the resulting tuple is stored in
+      *result*. If *args* contains less than *N* elements, the selector does not
+      apply.
+
+    All other cases are invalid and raise a TypeError upon decoration.
+
+    If *unpack_sequence* is true, *argtype* must be a sequence and *destarg*
+    must be :data:`None` (if any of these conditions is not met, a ValueError is
+    raised). In that case, the *result* sequence gets unpacked and appended to
+    the argument list of the final routable.
+    """
+
     @classmethod
     def procargs_list(cls, itemtype, args):
         result = list(args)
@@ -1119,14 +1163,16 @@ class QuerySelector(Selector):
         arg = args.pop(0)
         return itemtype(arg)
 
-    def __init__(self, argname, destarg, argtype, unpack_list=False, **kwargs):
+    def __init__(self, argname, destarg,
+                 argtype=str,
+                 unpack_sequence=False, **kwargs):
         super().__init__(**kwargs)
         self._argname = argname
         self._destarg = destarg
         self._argtype = argtype
         self._is_sequence = False
-        self._unpack_list = unpack_list
-        if unpack_list and destarg is not None:
+        self._unpack_sequence = unpack_sequence
+        if unpack_sequence and destarg is not None:
             raise ValueError("unpacking argument lists and named arguments do"
                              " not mix.")
 
@@ -1135,7 +1181,7 @@ class QuerySelector(Selector):
             procargs = functools.partial(
                 self.procargs_single,
                 argtype)
-            if self._unpack_list:
+            if self._unpack_sequence:
                 raise ValueError("cannot unpack single argument")
         elif hasattr(argtype, "__len__"):
             self._is_sequence = True
@@ -1166,7 +1212,7 @@ class QuerySelector(Selector):
             return False
 
         if self._destarg is None:
-            if self._unpack_list:
+            if self._unpack_sequence:
                 args = args[0]
             request.args.extend(args)
         else:
@@ -1175,7 +1221,7 @@ class QuerySelector(Selector):
         return True
 
     def unselect(self, request):
-        if self._unpack_list:
+        if self._unpack_sequence:
             args = request.args
             request.args.clear()
         else:
@@ -1216,10 +1262,10 @@ def route(path, *paths, order=0, make_constructor_routable=False):
     """
 
     paths = [path] + list(paths)
-    paths = [path if hasattr(path, "select") else PathFormatter(path)
+    paths = [path if hasattr(path, "select") else formatted_path(path)
              for path in paths]
 
-    selectors = [OrSelector(paths)]
+    selectors = [one_of(paths)]
     del paths
 
     def decorator(obj):
@@ -1254,64 +1300,6 @@ def route(path, *paths, order=0, make_constructor_routable=False):
                                  **kwargs)
 
         setrouteinfo(obj, info)
-        return obj
-
-    return decorator
-
-def rebase(prefix):
-    """
-    Decorates an object such that the routing is rebased by the given
-    path *prefix*.
-    """
-
-    def decorator(obj):
-        info = requirerouteinfo(obj)
-        info.selectors.insert(
-            0,
-            PathSelector(prefix))
-
-        return obj
-
-    return decorator
-
-def query(argname,
-          destarg,
-          argtype=str,
-          unpack_list=False):
-    """
-    This routing decorator inspects the query data. The process during the
-    routing is as follows:
-
-    *argname* is looked up in the query data. The list of arguments passed with
-    that key is extracted and we call that list *args*. The result which will be
-    passed to the final routable will be called *result*.
-
-    * if *argtype* is a callable, the first argument from *args* is removed and
-      the *argtype* is called with that argument as the only argument. The
-      result of callable is stored in *result*. If *args* is empty, the selector
-      does not apply.
-    * if *argtype* is a list containing exactly one callable, the callable is
-      evaluated for all elements of *args* and the resulting list is stored in
-      *result*. *args* is cleared.
-    * if *argtype* is a tuple of length *N* containing zero or more callables,
-      the first *N* elements from *args* are removed. On each of these elements,
-      the corresponding callable is applied and the resulting tuple is stored in
-      *result*. If *args* contains less than *N* elements, the selector does not
-      apply.
-
-    All other cases are invalid and raise a TypeError upon decoration.
-    """
-
-    selector = QuerySelector(
-        argname,
-        destarg,
-        argtype,
-        unpack_list=unpack_list)
-
-    def decorator(obj):
-        info = requirerouteinfo(obj)
-        info.selectors.append(selector)
-
         return obj
 
     return decorator
@@ -1379,8 +1367,8 @@ class Router:
 
     Before evaluating a response, the
     :meth:`~teapot.response.Response.negotiate_charset` method is called with
-    the :prop:`~teapot.request.Request.accept_charset` preference list from the
-    request.
+    the :attr:`~teapot.request.Request.accept_charset` preference list from
+    the request.
     """
 
     def __init__(self, root):
