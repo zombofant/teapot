@@ -11,6 +11,7 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
     def __init__(self):
         super().__init__()
         self.args = []
+        self.kwargs = {}
 
     @teapot.route("", "index")
     def index(self):
