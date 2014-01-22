@@ -1111,6 +1111,14 @@ class formatted_path(Selector):
         request.path = self._format_string.format(*args, **kwargs) + request.path
 
 class one_of(Selector):
+    """
+    Take a collection of selectors. If any of the selectors match, this selector
+    matches.
+
+    For unrouting, the first selector in the collection (which is, internally,
+    converted to a list), will be chosen to perform the unrouting.
+    """
+
     def __init__(self, subselectors, **kwargs):
         super().__init__(**kwargs)
         self._subselectors = list(subselectors)
@@ -1152,13 +1160,22 @@ class query(Selector):
     must be :data:`None` (if any of these conditions is not met, a ValueError is
     raised). In that case, the *result* sequence gets unpacked and appended to
     the argument list of the final routable.
+
+    If the callables which are converting the strings to the desired type
+    encounter any errors, they *must* throw :class:`ValueError`. All other
+    exceptions propagate upwards unhandled.
     """
 
     @classmethod
     def procargs_list(cls, itemtype, args):
         result = list(args)
         args.clear()
-        return list(map(itemtype, result))
+        try:
+            return list(map(itemtype, result))
+        except ValueError as err:
+            # revert and reraise
+            args[:] = result
+            raise
 
     @classmethod
     def procargs_tuple(cls, itemtypes, args):
@@ -1168,9 +1185,15 @@ class query(Selector):
         sliced_args = args[:len(itemtypes)]
         args[:] = args[len(itemtypes):]
 
-        return tuple(
-            itemtype(item)
-            for item, itemtype in zip(sliced_args, itemtypes))
+        try:
+            return tuple(
+                itemtype(item)
+                for item, itemtype
+                in zip(sliced_args, itemtypes))
+        except ValueError as err:
+            # revert and reraise
+            args[:0] = sliced_args
+            raise
 
     @classmethod
     def procargs_single(cls, itemtype, args):
@@ -1178,7 +1201,12 @@ class query(Selector):
             raise ValueError("not enough arguments")
 
         arg = args.pop(0)
-        return itemtype(arg)
+        try:
+            return itemtype(arg)
+        except ValueError as err:
+            # revert and reraise
+            args.insert(0, arg)
+            raise
 
     def __init__(self, argname, destarg,
                  argtype=str,
