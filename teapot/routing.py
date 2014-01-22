@@ -173,7 +173,7 @@ class Context:
     context from another one, see below) or a :class:`~teapot.request.Request`
     to create a new context from a request.
 
-    There is a difference between creating a context with anotehr context as
+    There is a difference between creating a context with another context as
     *base* argument and copying that context. Upon copying, the arguments which
     have already been found during request resolution are copied too. Thus,
     copying is suitable to have a local copy of the context for the next routing
