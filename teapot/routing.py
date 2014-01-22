@@ -197,6 +197,7 @@ class Context:
                  request_method=teapot.request.Method.GET,
                  path="/",
                  scheme="http",
+                 query_data=None,
                  **kwargs):
         super().__init__(**kwargs)
         self._accept_content = \
@@ -220,7 +221,7 @@ class Context:
             None if base else {}
         self._query_data = \
             copy.copy(base.query_data) if base else \
-            {}
+            (query_data or {})
         self._scheme = \
             base.scheme if base else \
             scheme
