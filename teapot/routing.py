@@ -1088,6 +1088,102 @@ class OrSelector(Selector):
         if self._subselectors:
             self._subselectors[0].unselect(request)
 
+class QuerySelector(Selector):
+    @classfunction
+    def procargs_list(itemtype, args):
+        result = list(args)
+        args.clear()
+        return list(map(itemtype, args))
+
+    @classfunction
+    def procargs_tuple(itemtypes, args):
+        if len(args) < len(itemtypes):
+            raise ValueError("not enough arguments")
+
+        sliced_args = args[:len(itemtypes)]
+        args[:] = args[len(itemtypes):]
+
+        return tuple(
+            itemtype(item)
+            for item, itemtype in zip(slied_args, itemtypes))
+
+    @classfunction
+    def procargs_single(itemtype, args):
+        if len(args) < 1:
+            raise ValueError("not enough arguments")
+
+        arg = args.pop(0)
+        return itemtype(arg)
+
+    def __init__(self, argname, destarg, argtype, unpack_list=False, **kwargs):
+        super().__init__(**kwargs)
+        self._argname = argname
+        self._destarg = destarg
+        self._argtype = argtype
+        self._is_sequence = False
+        self._unpack_list = unpack_list
+        if unpack_list and destarg is not None:
+            raise ValueError("unpacking argument lists and named arguments do"
+                             " not mix.")
+
+        procargs = None
+        if hasattr(argtype, "__len__"):
+            self._is_sequence = True
+            if isinstance(argtype, list):
+                if len(argtype) == 1:
+                    procargs = functools.partial(
+                        self.procargs_list,
+                        argtype[0])
+            elif isinstance(argtype, tuple):
+                procargs = functools.partial(
+                    self.procargs_tuple,
+                    argtype)
+        else:
+            procargs = functools.partial(
+                self.procargs_single,
+                argtype)
+            # force this to false
+            self._unpack_list = False
+
+        if procargs is None:
+            raise TypeError("argtype must be either a callable, or a list "
+                            "containing exactly one callable or a tuple of"
+                            " one or more callables")
+
+        self._procargs = procargs
+
+    def select(self, request):
+        try:
+            args = [self._procargs(request.query_dict.get(
+                self._argname, []))]
+        except ValueError:
+            # processing the given request arguments failed, thus the selector
+            # does not match
+            # TODO: allow different failure modes
+            return False
+
+        if self._destarg is None:
+            if self._unpack_list:
+                args = args[0]
+            request.args.extend(args)
+        else:
+            request.kwargs[self._destarg] = args[0]
+
+        return True
+
+    def unselect(self, request):
+        if self._unpack_list:
+            args = request.args
+            request.args.clear()
+        else:
+            args = request.args.pop()
+
+        if not self._is_sequence:
+            args = [args]
+
+        args = list(map(str, args))
+        request.query_data.setdefault(self._argname, [])[:0] = args
+
 def route(path, *paths, order=0, make_constructor_routable=False):
     """
     Decorate a (static-, class- or instance-) method or function with routing
@@ -1170,6 +1266,25 @@ def rebase(prefix):
         info.selectors.insert(
             0,
             PathSelector(prefix))
+
+        return obj
+
+    return decorator
+
+def query(argname,
+          destarg,
+          argtype=str,
+          unpack_list=False):
+
+    selector = QuerySelector(
+        argname,
+        destarg,
+        argtype,
+        unpack_list=unpack_list)
+
+    def decorator(obj):
+        info = requirerouteinfo(obj)
+        info.selectors.insert(0, selector)
 
         return obj
 
