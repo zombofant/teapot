@@ -39,7 +39,7 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
         self.args = args
         self.kwargs = kwargs
 
-    @teapot.query("foo", None, argtype=[str], unpack_list=True)
+    @teapot.query("foo", None, argtype=[str], unpack_sequence=True)
     @teapot.route("querytest_unpack_list")
     def fooquery_list_unpack(self, *args, **kwargs):
         self.args = args
