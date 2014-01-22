@@ -129,6 +129,12 @@ def setrouteinfo(obj, value):
     global routeinfo_attr
     return setattr(obj, routeinfo_attr, value)
 
+def requirerouteinfo(obj):
+    if not isroutable(obj):
+        raise ValueError("{!r} is not routable".format(obj))
+
+    return getrouteinfo(obj)
+
 class Context:
     """
     The routing context is used to traverse through the request to
@@ -1131,12 +1137,7 @@ def rebase(prefix):
     """
 
     def decorator(obj):
-        if not isroutable(obj):
-            raise ValueError("{!r} does not have routing "
-                             "information".format(
-                                 obj))
-
-        info = getrouteinfo(obj)
+        info = requirerouteinfo(obj)
         info.selectors.insert(
             0,
             PathSelector(prefix))
