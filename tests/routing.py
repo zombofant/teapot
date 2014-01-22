@@ -27,6 +27,30 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
     def formatted(self, arg):
         self.args = [arg]
 
+    @teapot.query("foo", "bar", argtype=str)
+    @teapot.route("querytest_single")
+    def fooquery_single(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+    @teapot.query("foo", "bar", argtype=[str])
+    @teapot.route("querytest_list")
+    def fooquery_list(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+    @teapot.query("foo", None, argtype=[str], unpack_list=True)
+    @teapot.route("querytest_unpack_list")
+    def fooquery_list_unpack(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+    @teapot.query("foo", "bar", argtype=(str, str))
+    @teapot.route("querytest_tuple")
+    def fooquery_tuple(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
 class TestContext(unittest.TestCase):
     method = teapot.request.Method.GET
     path = "/foo/bar"
@@ -301,6 +325,57 @@ class TestRouting(unittest.TestCase):
     def test_route_formatted(self):
         args, kwargs = self.get_routed_args(path="/p/42")
         self.assertSequenceEqual([42], args)
+
+    def test_route_query_single(self):
+        args, kwargs = self.get_routed_args(
+            path="/querytest_single",
+            query_data={"foo": ["value"]})
+
+        self.assertSequenceEqual(
+            [],
+            args)
+        self.assertDictEqual(
+            {"bar": "value"},
+            kwargs)
+
+    def test_route_query_list(self):
+        values = list(map(str, range(3)))
+        args, kwargs = self.get_routed_args(
+            path="/querytest_list",
+            query_data={"foo": values[:]})
+
+        self.assertSequenceEqual(
+            [],
+            args)
+        self.assertDictEqual(
+            {"bar": values},
+            kwargs)
+
+    def test_route_query_list_unpack(self):
+        values = list(map(str, range(3)))
+        args, kwargs = self.get_routed_args(
+            path="/querytest_unpack_list",
+            query_data={"foo": values[:]})
+
+        self.assertSequenceEqual(
+            values,
+            args)
+        self.assertDictEqual(
+            {},
+            kwargs)
+
+    def test_route_query_tuple(self):
+        values = list(map(str, range(3)))
+        args, kwargs = self.get_routed_args(
+            path="/querytest_tuple",
+            query_data={"foo": values[:]})
+
+        self.assertSequenceEqual(
+            [],
+            args)
+        self.assertDictEqual(
+            {"bar": tuple(values[:2])},
+            kwargs)
 
     def tearDown(self):
         del self._root

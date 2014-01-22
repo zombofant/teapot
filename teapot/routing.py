@@ -54,6 +54,8 @@ the route can further be refined using the following decorators:
 
 .. autofunction:: rebase
 
+.. autofunction:: query
+
 
 Request data selectors
 ======================
@@ -127,6 +129,7 @@ __all__ = [
     "getrouteinfo",
     "route",
     "rebase",
+    "query",
     "RoutableMeta"]
 
 def isroutable(obj):
@@ -1091,13 +1094,13 @@ class OrSelector(Selector):
 
 class QuerySelector(Selector):
     @classmethod
-    def procargs_list(itemtype, args):
+    def procargs_list(cls, itemtype, args):
         result = list(args)
         args.clear()
-        return list(map(itemtype, args))
+        return list(map(itemtype, result))
 
     @classmethod
-    def procargs_tuple(itemtypes, args):
+    def procargs_tuple(cls, itemtypes, args):
         if len(args) < len(itemtypes):
             raise ValueError("not enough arguments")
 
@@ -1106,10 +1109,10 @@ class QuerySelector(Selector):
 
         return tuple(
             itemtype(item)
-            for item, itemtype in zip(slied_args, itemtypes))
+            for item, itemtype in zip(sliced_args, itemtypes))
 
     @classmethod
-    def procargs_single(itemtype, args):
+    def procargs_single(cls, itemtype, args):
         if len(args) < 1:
             raise ValueError("not enough arguments")
 
@@ -1128,7 +1131,13 @@ class QuerySelector(Selector):
                              " not mix.")
 
         procargs = None
-        if hasattr(argtype, "__len__"):
+        if hasattr(argtype, "__call__"):
+            procargs = functools.partial(
+                self.procargs_single,
+                argtype)
+            if self._unpack_list:
+                raise ValueError("cannot unpack single argument")
+        elif hasattr(argtype, "__len__"):
             self._is_sequence = True
             if isinstance(argtype, list):
                 if len(argtype) == 1:
@@ -1139,12 +1148,6 @@ class QuerySelector(Selector):
                 procargs = functools.partial(
                     self.procargs_tuple,
                     argtype)
-        else:
-            procargs = functools.partial(
-                self.procargs_single,
-                argtype)
-            # force this to false
-            self._unpack_list = False
 
         if procargs is None:
             raise TypeError("argtype must be either a callable, or a list "
@@ -1155,9 +1158,8 @@ class QuerySelector(Selector):
 
     def select(self, request):
         try:
-            args = [self._procargs(request.query_dict.get(
-                self._argname, []))]
-        except ValueError:
+            args = [self._procargs(request.query_data.get(self._argname, []))]
+        except ValueError as err:
             # processing the given request arguments failed, thus the selector
             # does not match
             # TODO: allow different failure modes
@@ -1276,6 +1278,29 @@ def query(argname,
           destarg,
           argtype=str,
           unpack_list=False):
+    """
+    This routing decorator inspects the query data. The process during the
+    routing is as follows:
+
+    *argname* is looked up in the query data. The list of arguments passed with
+    that key is extracted and we call that list *args*. The result which will be
+    passed to the final routable will be called *result*.
+
+    * if *argtype* is a callable, the first argument from *args* is removed and
+      the *argtype* is called with that argument as the only argument. The
+      result of callable is stored in *result*. If *args* is empty, the selector
+      does not apply.
+    * if *argtype* is a list containing exactly one callable, the callable is
+      evaluated for all elements of *args* and the resulting list is stored in
+      *result*. *args* is cleared.
+    * if *argtype* is a tuple of length *N* containing zero or more callables,
+      the first *N* elements from *args* are removed. On each of these elements,
+      the corresponding callable is applied and the resulting tuple is stored in
+      *result*. If *args* contains less than *N* elements, the selector does not
+      apply.
+
+    All other cases are invalid and raise a TypeError upon decoration.
+    """
 
     selector = QuerySelector(
         argname,
@@ -1285,7 +1310,7 @@ def query(argname,
 
     def decorator(obj):
         info = requirerouteinfo(obj)
-        info.selectors.insert(0, selector)
+        info.selectors.append(selector)
 
         return obj
 
