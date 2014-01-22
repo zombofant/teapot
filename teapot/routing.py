@@ -2,7 +2,35 @@
 Routing
 #######
 
-Teapot request routing is it’s valuable core.
+Teapot request routing is it’s valuable core. First on nomenclature. We call the
+process of dispatching the clients HTTP (or whatever) request to the correct
+python function “routing”.
+
+During the process, different attributes of the request are processed to
+determine which function is to be called (and with which arguments!). The most
+obvious attribute here is the request path, followed by query arguments (the
+part behind the ``?`` in the URL) and so on.
+
+There are several methods available for declaring the ``route``, that is, the
+set of attributes which must match for the function to be called. These ways are
+described below and are mostly implemented using decorators.
+
+The opposite of routing is “unrouting”. When *unrouting*, the user (that is
+you!) specifies a function and a set of (possibly named) arguments and teapot
+calculates a request object which would select the given function and would make
+it being called with the given arguments, if that is possible.
+
+Care has to be taken when using decorators which modify or specify the functions
+arguments. It might seem to be straightforward to mix positional and named
+arguments arbitrarily, however, there are caveats. If you mix named and
+positional arguments, weird behaviour might occur when *unrouting*. The current
+recommendation is to only use named arguments, except for passing arguments to
+a catchall positional argument (``*foo``). Example:
+
+    def foo(bar, baz, *args, kw1=None, **kwargs):
+        pass
+
+Further description of problems is TBD
 
 Decorators for functions and methods
 ====================================
@@ -13,15 +41,16 @@ decorate it with the ``route`` decorator:
 .. autofunction:: route
 
 A class (and its instances) and all of its member functions can be
-made routable using the :class:`RoutableMeta` metaclass:
+made routable using the following metaclass:
 
 .. autoclass:: RoutableMeta
 
 Decorators for routables
 ------------------------
 
-An object which is already routable can further be modified using the
-following decorators:
+The route of an object which is routable (that is, has been made routable by
+applying the :class:`RoutableMeta` class or decorating it with :func:`route`),
+the route can further be refined using the following decorators:
 
 .. autofunction:: rebase
 
