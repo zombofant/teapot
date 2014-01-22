@@ -72,6 +72,8 @@ Utilities to get information from routables
 
 .. autofunction:: setrouteinfo
 
+.. autofunction:: requirerouteinfo
+
 Router for server interfaces
 ============================
 
@@ -79,6 +81,21 @@ Server interfaces require a router which transforms the request into an
 iterable which contains all the response metadata and contents.
 
 .. autoclass:: Router
+   :members:
+
+Extension API
+=============
+
+If you want to extend the routing or implement custom functionallity for the
+router, the following classes are of special interest for you. The ``Selector``
+class is the base class of all the decorators from the
+:ref:`teapot.routing.routable_decorators` section. The ``Context`` class is the
+data class on which the selectors operate.
+
+.. autoclass:: Selector
+   :members: select, unselect, __call__
+
+.. autoclass:: Context
    :members:
 
 Internal API
