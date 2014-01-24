@@ -75,7 +75,7 @@ the route can further be refined using the following decorators:
 
 .. autoclass:: queryarg
 
-.. autoclass:: querydict
+.. autoclass:: queryargs
 
 .. autoclass:: formatted_path
 
@@ -116,6 +116,10 @@ data class on which the selectors operate.
 
 .. autoclass:: Selector
    :members: select, unselect, __call__
+
+.. autoclass:: RequestArgumentSelector
+
+.. autoclass:: RequestArgumentsSelector
 
 .. autoclass:: Context
    :members:
@@ -170,7 +174,7 @@ __all__ = [
     "route",
     "rebase",
     "queryarg",
-    "querydict",
+    "queryargs",
     "RoutableMeta"]
 
 def isroutable(obj):
@@ -742,6 +746,233 @@ class Selector(metaclass=abc.ABCMeta):
         info.selectors.append(self)
         return obj
 
+class RequestArgumentSelector(Selector):
+    """
+    This abstract :class:`Selector` is the base class for request argument
+    selectors that pick a specified argument from the set of all available
+    arguments. Popular examples of such selectors are the :class:`queryarg`
+    or the :class:`postarg` selector respectively. It behaves as follows:
+
+    First, *argname* is looked up in the request data. The list of arguments
+    passed with that key is extracted and we call that list *args*. The result
+    which will be passed to the final routable will be called *result*.
+
+    * if *argtype* is a callable, the first argument from *args* is removed and
+      the *argtype* is called with that argument as the only argument. The
+      result of callable is stored in *result*. If *args* is empty, the selector
+      does not apply.
+    * if *argtype* is a list containing exactly one callable, the callable is
+      evaluated for all elements of *args* and the resulting list is stored in
+      *result*. *args* is cleared.
+    * if *argtype* is a tuple of length *N* containing zero or more callables,
+      the first *N* elements from *args* are removed. On each of these elements,
+      the corresponding callable is applied and the resulting tuple is stored in
+      *result*. If *args* contains less than *N* elements, the selector does not
+      apply.
+
+    All other cases are invalid and raise a TypeError upon decoration.
+
+    If *unpack_sequence* is true, *argtype* must be a sequence and *destarg*
+    must be :data:`None` (if any of these conditions is not met, a ValueError is
+    raised). In that case, the *result* sequence gets unpacked and appended to
+    the argument list of the final routable.
+
+    If the callables which are converting the strings to the desired type
+    encounter any errors, they *must* throw :class:`ValueError`. All other
+    exceptions propagate upwards unhandled.
+
+    Subclasses of this abstract base class have to implement the
+    :meth:`get_data_dict` method in order to supply the request parameter data.
+    """
+
+    @classmethod
+    def procargs_list(cls, itemtype, args):
+        result = list(args)
+        args.clear()
+        try:
+            return list(map(itemtype, result))
+        except ValueError as err:
+            # revert and reraise
+            args[:] = result
+            raise
+
+    @classmethod
+    def procargs_tuple(cls, itemtypes, args):
+        if len(args) < len(itemtypes):
+            raise ValueError("not enough arguments")
+
+        sliced_args = args[:len(itemtypes)]
+        args[:] = args[len(itemtypes):]
+
+        try:
+            return tuple(
+                itemtype(item)
+                for item, itemtype
+                in zip(sliced_args, itemtypes))
+        except ValueError as err:
+            # revert and reraise
+            args[:0] = sliced_args
+            raise
+
+    @classmethod
+    def procargs_single(cls, itemtype, args):
+        if len(args) < 1:
+            raise ValueError("not enough arguments")
+
+        arg = args.pop(0)
+        try:
+            return itemtype(arg)
+        except ValueError as err:
+            # revert and reraise
+            args.insert(0, arg)
+            raise
+
+    def __init__(self, argname, destarg,
+                 argtype=str,
+                 unpack_sequence=False, **kwargs):
+        super().__init__(**kwargs)
+        self._argname = argname
+        self._destarg = destarg
+        self._argtype = argtype
+        self._is_sequence = False
+        self._sequence_length = None
+        self._unpack_sequence = unpack_sequence
+        if unpack_sequence and destarg is not None:
+            raise ValueError("unpacking argument lists and named arguments do"
+                             " not mix.")
+
+        procargs = None
+        if hasattr(argtype, "__call__"):
+            procargs = functools.partial(
+                self.procargs_single,
+                argtype)
+            if self._unpack_sequence:
+                raise ValueError("cannot unpack single argument")
+        elif hasattr(argtype, "__len__"):
+            self._is_sequence = True
+            if isinstance(argtype, list):
+                if len(argtype) == 1:
+                    procargs = functools.partial(
+                        self.procargs_list,
+                        argtype[0])
+            elif isinstance(argtype, tuple):
+                self._sequence_length = len(argtype)
+                procargs = functools.partial(
+                    self.procargs_tuple,
+                    argtype)
+
+        if procargs is None:
+            raise TypeError("argtype must be either a callable, or a list "
+                            "containing exactly one callable or a tuple of"
+                            " one or more callables")
+
+        self._procargs = procargs
+
+    @abc.abstractmethod
+    def get_data_dict(self, request):
+        raise NotImplementedError("no data can be get in {!r}".format(self))
+
+    def select(self, request):
+        try:
+            args = [self._procargs(
+                self.get_data_dict(request).get(self._argname, [])
+                )]
+        except ValueError as err:
+            # processing the given request arguments failed, thus the selector
+            # does not match
+            # TODO: allow different failure modes
+            return False
+
+        if self._destarg is None:
+            if self._unpack_sequence:
+                args = args[0]
+            request.args.extend(args)
+        else:
+            request.kwargs[self._destarg] = args[0]
+
+        return True
+
+    def unselect(self, request):
+        logger.debug("queryarg: is_sequence=%s, unpack_sequence=%s,"
+                     " sequence_length=%s",
+                     self._is_sequence,
+                     self._unpack_sequence,
+                     self._sequence_length)
+        logger.debug("queryarg: request.args=%r, request.kwargs=%r",
+                     request.args,
+                     request.kwargs)
+
+        if self._unpack_sequence:
+            if self._sequence_length is None:
+                args = request.args[:]
+                request.args.clear()
+            else:
+                args = request.args[:self._sequence_length]
+                if len(args) != self._sequence_length:
+                    raise ValueError("not enough arguments")
+                request.args[:] = request.args[self._sequence_length:]
+        else:
+            try:
+                if self._destarg is None:
+                    args = request.args.pop()
+                else:
+                    args = request.kwargs[self._destarg]
+            except KeyError as err:
+                raise ValueError("missing argument: {}".format(str(err))) \
+                    from None
+            except IndexError as err:
+                raise ValueError("not enough arguments") from None
+
+        logger.debug("queryarg: args=%r", args)
+
+        if not self._is_sequence:
+            args = [args]
+
+        args = list(map(str, args))
+        self.get_data_dict(request).setdefault(self._argname, [])[:0] = args
+
+class RequestArgumentsSelector(Selector):
+    """
+    This abstract :class:`Selector` is the base class for request argument
+    selectors that select all available arguments and pass them as a
+    :data:`dict` to the final routable. Popular examples of such selectors
+    are the :class:`queryargs` or the :class:`postargs` selector respectively.
+
+    If *destarg* is :class:`None` the dict is appended to the argument
+    list of the final routable.
+
+    If *destarg* is set, the resulting :class:`dict` of all arguments is
+    passed as a keyword argument with the given name.
+    """
+    def __init__(self, destarg=None, **kwargs):
+        super().__init__(**kwargs)
+        self._destarg = destarg
+
+    abc.abstractmethod
+    def get_data_dict(self, request):
+        raise NotImplementedError("no data can be get in {!r}".format(self))
+
+    def select(self, request):
+        args = {}
+        if request.query_data is not None:
+            args = request.query_data
+
+        if self._destarg is None:
+            request.args.append(args)
+        else:
+            request.kwargs[self._destarg] = args
+
+        return True
+
+    def unselect(self, request):
+        if self._destarg is None:
+            args = request.args.pop()
+        else:
+            args = request.kwargs[self._destarg]
+        request.query_data.clear()
+        request.query_data.update(args)
+
+
 class AnnotationProcessor(Selector):
     def inject_request(request, argname):
         request.kwargs[argname] = request.original_request
@@ -1240,229 +1471,36 @@ class one_of(Selector):
         if self._subselectors:
             self._subselectors[0].unselect(request)
 
-class queryarg(Selector):
+class queryarg(RequestArgumentSelector):
     """
-    This routing decorator inspects the query data. The process during the
-    routing is as follows:
-
-    *argname* is looked up in the query data. The list of arguments passed with
-    that key is extracted and we call that list *args*. The result which will be
-    passed to the final routable will be called *result*.
-
-    * if *argtype* is a callable, the first argument from *args* is removed and
-      the *argtype* is called with that argument as the only argument. The
-      result of callable is stored in *result*. If *args* is empty, the selector
-      does not apply.
-    * if *argtype* is a list containing exactly one callable, the callable is
-      evaluated for all elements of *args* and the resulting list is stored in
-      *result*. *args* is cleared.
-    * if *argtype* is a tuple of length *N* containing zero or more callables,
-      the first *N* elements from *args* are removed. On each of these elements,
-      the corresponding callable is applied and the resulting tuple is stored in
-      *result*. If *args* contains less than *N* elements, the selector does not
-      apply.
-
-    All other cases are invalid and raise a TypeError upon decoration.
-
-    If *unpack_sequence* is true, *argtype* must be a sequence and *destarg*
-    must be :data:`None` (if any of these conditions is not met, a ValueError is
-    raised). In that case, the *result* sequence gets unpacked and appended to
-    the argument list of the final routable.
-
-    If the callables which are converting the strings to the desired type
-    encounter any errors, they *must* throw :class:`ValueError`. All other
-    exceptions propagate upwards unhandled.
+    A :class:`RequestArgumentSelector` that looks up the query data for a
+    specified argument and passes it to the decorated routable if found.
     """
+    def get_data_dict(self, request):
+        return request.query_data
 
-    @classmethod
-    def procargs_list(cls, itemtype, args):
-        result = list(args)
-        args.clear()
-        try:
-            return list(map(itemtype, result))
-        except ValueError as err:
-            # revert and reraise
-            args[:] = result
-            raise
-
-    @classmethod
-    def procargs_tuple(cls, itemtypes, args):
-        if len(args) < len(itemtypes):
-            raise ValueError("not enough arguments")
-
-        sliced_args = args[:len(itemtypes)]
-        args[:] = args[len(itemtypes):]
-
-        try:
-            return tuple(
-                itemtype(item)
-                for item, itemtype
-                in zip(sliced_args, itemtypes))
-        except ValueError as err:
-            # revert and reraise
-            args[:0] = sliced_args
-            raise
-
-    @classmethod
-    def procargs_single(cls, itemtype, args):
-        if len(args) < 1:
-            raise ValueError("not enough arguments")
-
-        arg = args.pop(0)
-        try:
-            return itemtype(arg)
-        except ValueError as err:
-            # revert and reraise
-            args.insert(0, arg)
-            raise
-
-    def __init__(self, argname, destarg,
-                 argtype=str,
-                 unpack_sequence=False, **kwargs):
-        super().__init__(**kwargs)
-        self._argname = argname
-        self._destarg = destarg
-        self._argtype = argtype
-        self._is_sequence = False
-        self._sequence_length = None
-        self._unpack_sequence = unpack_sequence
-        if unpack_sequence and destarg is not None:
-            raise ValueError("unpacking argument lists and named arguments do"
-                             " not mix.")
-
-        procargs = None
-        if hasattr(argtype, "__call__"):
-            procargs = functools.partial(
-                self.procargs_single,
-                argtype)
-            if self._unpack_sequence:
-                raise ValueError("cannot unpack single argument")
-        elif hasattr(argtype, "__len__"):
-            self._is_sequence = True
-            if isinstance(argtype, list):
-                if len(argtype) == 1:
-                    procargs = functools.partial(
-                        self.procargs_list,
-                        argtype[0])
-            elif isinstance(argtype, tuple):
-                self._sequence_length = len(argtype)
-                procargs = functools.partial(
-                    self.procargs_tuple,
-                    argtype)
-
-        if procargs is None:
-            raise TypeError("argtype must be either a callable, or a list "
-                            "containing exactly one callable or a tuple of"
-                            " one or more callables")
-
-        self._procargs = procargs
-
-    def select(self, request):
-        try:
-            args = [self._procargs(request.query_data.get(self._argname, []))]
-        except ValueError as err:
-            # processing the given request arguments failed, thus the selector
-            # does not match
-            # TODO: allow different failure modes
-            return False
-
-        if self._destarg is None:
-            if self._unpack_sequence:
-                args = args[0]
-            request.args.extend(args)
-        else:
-            request.kwargs[self._destarg] = args[0]
-
-        return True
-
-    def unselect(self, request):
-        logger.debug("queryarg: is_sequence=%s, unpack_sequence=%s,"
-                     " sequence_length=%s",
-                     self._is_sequence,
-                     self._unpack_sequence,
-                     self._sequence_length)
-        logger.debug("queryarg: request.args=%r, request.kwargs=%r",
-                     request.args,
-                     request.kwargs)
-
-        if self._unpack_sequence:
-            if self._sequence_length is None:
-                args = request.args[:]
-                request.args.clear()
-            else:
-                args = request.args[:self._sequence_length]
-                if len(args) != self._sequence_length:
-                    raise ValueError("not enough arguments")
-                request.args[:] = request.args[self._sequence_length:]
-        else:
-            try:
-                if self._destarg is None:
-                    args = request.args.pop()
-                else:
-                    args = request.kwargs[self._destarg]
-            except KeyError as err:
-                raise ValueError("missing argument: {}".format(str(err))) \
-                    from None
-            except IndexError as err:
-                raise ValueError("not enough arguments") from None
-
-        logger.debug("queryarg: args=%r", args)
-
-        if not self._is_sequence:
-            args = [args]
-
-        args = list(map(str, args))
-        request.query_data.setdefault(self._argname, [])[:0] = args
-
-class querydict(Selector):
+class queryargs(RequestArgumentsSelector):
     """
-    This routing decorator selects all query data and passes it as a
-    :data:`dict` argument to the final routable.
-
-    If *destarg* is :class:`None` the dict is appended to the argument
-    list of the final routable.
+    A :class:`RequestArgumentsSelector` that selects all available query
+    arguments and passes it to the decorated routable.
 
     Example::
 
-       @teapot.routing.querydict()
+       @teapot.routing.queryargs()
        @teapot.route("/foo")
-       def handle_foo(query_dict):
+       def handle_foo(queryargs_dict):
            \"\"\"do something\"\"\"
 
-    If *destarg* is set, the resulting :class:`dict` of all query arguments
-    is passed as a keyword argument with the given name.
-
     Example::
 
-       @teapot.routing.querydict("query_dict")
+       @teapot.routing.queryargs("queryargs_dict")
        @teapot.route("/foo")
        def handle_foo(**kwargs):
-           query_dict = kwargs["query_dict"]
+           queryargs_dict = kwargs["queryargs_dict"]
            \"\"\"do something\"\"\"
     """
-    def __init__(self, destarg=None, **kwargs):
-        super().__init__(**kwargs)
-        self._destarg = destarg
-
-    def select(self, request):
-        args = {}
-        if request.query_data is not None:
-            args = request.query_data
-
-        if self._destarg is None:
-            request.args.append(args)
-        else:
-            request.kwargs[self._destarg] = args
-
-        return True
-
-    def unselect(self, request):
-        if self._destarg is None:
-            args = request.args.pop()
-        else:
-            args = request.kwargs[self._destarg]
-        request.query_data.clear()
-        request.query_data.update(args)
+    def get_data_dict(self, request):
+        return request.query_data
 
 def route(path, *paths, order=0, make_constructor_routable=False):
     """

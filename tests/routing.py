@@ -51,13 +51,13 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
         self.args = args
         self.kwargs = kwargs
 
-    @teapot.querydict()
+    @teapot.queryargs()
     @teapot.route("querytest_all")
     def querytest_all(self, *args, **kwargs):
         self.args = args
         self.kwargs = kwargs
 
-    @teapot.querydict("query_dict")
+    @teapot.queryargs("query_dict")
     @teapot.route("querytest_all_destarg")
     def querytest_all_destarg(self, *args, **kwargs):
         self.args = args
