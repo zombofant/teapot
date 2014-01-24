@@ -75,6 +75,8 @@ the route can further be refined using the following decorators:
 
 .. autoclass:: queryarg
 
+.. autoclass:: querydict
+
 .. autoclass:: formatted_path
 
 .. autoclass:: one_of
@@ -168,6 +170,7 @@ __all__ = [
     "route",
     "rebase",
     "queryarg",
+    "querydict",
     "RoutableMeta"]
 
 def isroutable(obj):
@@ -1375,6 +1378,56 @@ class queryarg(Selector):
 
         args = list(map(str, args))
         request.query_data.setdefault(self._argname, [])[:0] = args
+
+class querydict(Selector):
+    """
+    This routing decorator selects all query data and passes it as a
+    :data:`dict` argument to the final routable.
+
+    If *destarg* is :class:`None` the dict is appended to the argument
+    list of the final routable.
+
+    Example::
+
+       @teapot.routing.querydict()
+       @teapot.route("/foo")
+       def handle_foo(query_dict):
+           \"\"\"do something\"\"\"
+
+    If *destarg* is set, the resulting :class:`dict` of all query arguments
+    is passed as a keyword argument with the given name.
+
+    Example::
+
+       @teapot.routing.querydict("query_dict")
+       @teapot.route("/foo")
+       def handle_foo(**kwargs):
+           query_dict = kwargs["query_dict"]
+           \"\"\"do something\"\"\"
+    """
+    def __init__(self, destarg=None, **kwargs):
+        super().__init__(**kwargs)
+        self._destarg = destarg
+
+    def select(self, request):
+        args = {}
+        if isinstance(request.query_data, dict):
+            args = request.query_data
+
+        if self._destarg is None:
+            request.args.append(args)
+        else:
+            request.kwargs[self._destarg] = args
+
+        return True
+
+    def unselect(self, request):
+        if self._destarg is None:
+            args = request.args.pop()
+        else:
+            args = request.kwargs[self._destarg]
+        request.query_data.clear()
+        request.query_data.update(args)
 
 def route(path, *paths, order=0, make_constructor_routable=False):
     """

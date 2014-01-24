@@ -51,6 +51,18 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
         self.args = args
         self.kwargs = kwargs
 
+    @teapot.querydict()
+    @teapot.route("querytest_all")
+    def querytest_all(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+    @teapot.querydict("query_dict")
+    @teapot.route("querytest_all_destarg")
+    def querytest_all_destarg(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
     @teapot.route("finaltest", order=0)
     def finaltest_1(self):
         self.args = [1]
@@ -389,6 +401,28 @@ class TestRouting(unittest.TestCase):
             {"bar": tuple(values[:2])},
             kwargs)
 
+    def test_route_query_all(self):
+        the_dict = {"foo": "bar"}
+        args, kwargs = self.get_routed_args(
+                path="/querytest_all",
+                query_data=the_dict)
+
+        self.assertDictEqual({}, kwargs)
+        self.assertSequenceEqual([the_dict], args)
+
+    def test_route_query_all_destarg(self):
+        the_dict = {"foo": "bar"}
+        args, kwargs = self.get_routed_args(
+                path="/querytest_all_destarg",
+                query_data=the_dict)
+
+        self.assertDictEqual(
+                {"query_dict": the_dict},
+                kwargs)
+        self.assertSequenceEqual(
+                [],
+                args)
+
     def test_ambigous_nonfinal_routing(self):
         args, kwargs = self.get_routed_args(
             path="/finaltest")
@@ -471,11 +505,28 @@ class TestUnrouting(unittest.TestCase):
         self.assertDictEqual(
             request.query_data,
             {"foo": values})
-
         self.assertRaises(
             ValueError,
             teapot.routing.unroute,
             self._root.fooquery_single)
+
+    def test_query_all(self):
+        the_dict = {"foo": "value"}
+        request = teapot.routing.unroute(
+                self._root.querytest_all,
+                the_dict)
+        self.assertDictEqual(
+                request.query_data,
+                the_dict)
+
+    def test_query_destarg(self):
+        the_dict = {"foo": "value"}
+        request = teapot.routing.unroute(
+                self._root.querytest_all_destarg,
+                query_dict=the_dict)
+        self.assertDictEqual(
+                request.query_data,
+                the_dict)
 
     def tearDown(self):
         del self._root
