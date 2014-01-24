@@ -1,5 +1,6 @@
 import copy
 import re
+import urllib
 
 import teapot.mime
 
@@ -362,6 +363,7 @@ class Request:
             path_info,
             url_scheme,
             query_data,
+            post_data,
             input_stream,
             content_length,
             content_type,
@@ -446,6 +448,7 @@ class Request:
             path_info,
             url_scheme,
             query_data,
+            post_data,
             (
                 contents,
                 languages,
@@ -461,6 +464,7 @@ class Request:
                  local_path,
                  scheme,
                  query_data,
+                 post_data,
                  accept_info,
                  user_agent,
                  body_stream,
@@ -474,6 +478,7 @@ class Request:
         self._user_agent_info = inspect_user_agent_string(user_agent)
         self._accept_content, self._accept_language, self._accept_charset = \
             accept_info
+        self._post_data = post_data
 
         self.body_stream = body_stream
         self.raw_http_headers = raw_http_headers
@@ -512,6 +517,10 @@ class Request:
     @property
     def query_data(self):
         return self._query_data
+
+    @property
+    def post_data(self):
+        return self._post_data
 
     @property
     def scheme(self):

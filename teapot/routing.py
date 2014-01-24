@@ -77,6 +77,10 @@ the route can further be refined using the following decorators:
 
 .. autoclass:: queryargs
 
+.. autoclass:: postarg
+
+.. autoclass:: postargs
+
 .. autoclass:: formatted_path
 
 .. autoclass:: one_of
@@ -175,6 +179,8 @@ __all__ = [
     "rebase",
     "queryarg",
     "queryargs",
+    "postarg",
+    "postargs",
     "RoutableMeta"]
 
 def isroutable(obj):
@@ -271,7 +277,6 @@ class Context:
             accept_language=base.accept_language,
             original_request=original_request,
             path=base.path,
-#            post_data=copy.copy(base.post_data),
             query_data=copy.copy(base.query_data),
             request_method=base.method,
             scheme=base.scheme)
@@ -302,7 +307,7 @@ class Context:
         self._method = request_method
         self._original_request = original_request
         self.path = path
-        self._post_data = post_data if post_data is not None else {}
+        self._post_data = post_data
         self._query_data = query_data if query_data is not None else {}
         self._scheme = scheme
 
@@ -352,6 +357,12 @@ class Context:
     @property
     def query_data(self):
         return self._query_data
+
+    @property
+    def post_data(self):
+        if self._post_data is None:
+            self._post_data = self._original_request.post_data
+        return self._post_data
 
     @property
     def scheme(self):
@@ -955,7 +966,7 @@ class RequestArgumentsSelector(Selector):
     def select(self, request):
         args = {}
         if request.query_data is not None:
-            args = request.query_data
+            args = self.get_data_dict(request)
 
         if self._destarg is None:
             request.args.append(args)
@@ -969,8 +980,8 @@ class RequestArgumentsSelector(Selector):
             args = request.args.pop()
         else:
             args = request.kwargs[self._destarg]
-        request.query_data.clear()
-        request.query_data.update(args)
+        self.get_data_dict(request).clear()
+        self.get_data_dict(request).update(args)
 
 
 class AnnotationProcessor(Selector):
@@ -1473,16 +1484,16 @@ class one_of(Selector):
 
 class queryarg(RequestArgumentSelector):
     """
-    A :class:`RequestArgumentSelector` that looks up the query data for a
-    specified argument and passes it to the decorated routable if found.
+    A :class:`RequestArgumentSelector` implementation that looks up the query
+    data for a specified argument and passes it to the final routable.
     """
     def get_data_dict(self, request):
         return request.query_data
 
 class queryargs(RequestArgumentsSelector):
     """
-    A :class:`RequestArgumentsSelector` that selects all available query
-    arguments and passes it to the decorated routable.
+    A :class:`RequestArgumentsSelector` implementation that selects all
+    available query arguments and passes them to the final routable.
 
     Example::
 
@@ -1501,6 +1512,28 @@ class queryargs(RequestArgumentsSelector):
     """
     def get_data_dict(self, request):
         return request.query_data
+
+class postarg(RequestArgumentSelector):
+    """
+    A :class:`RequestArgumentSelector` implementation that looks up a POST
+    argument of the specified name and passes it to the final routable.
+
+    File uploads will be passed as :data:`file-like` objects. You should not
+    call read() on them, since this will load the whole file into memory.
+    """
+    def get_data_dict(self, request):
+        return request.post_data
+
+class postargs(RequestArgumentsSelector):
+    """
+    A :class:`RequestArgumentsSelector` implementation that selects all
+    available POST arguments and passes them to the final routable.
+
+    File uploads will be passed as :data:`file-like` objects. You should not
+    call read() on them, since this will load the whole file into memory.
+    """
+    def get_data_dict(self, request):
+        return request.post_data
 
 def route(path, *paths, order=0, make_constructor_routable=False):
     """
