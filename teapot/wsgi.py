@@ -134,18 +134,25 @@ class Application:
 
                 # FIXME: replace FieldStorage with our own implementation
                 #        for parsing post data
-                post_data = {}
-                environ["QUERY_STRING"] = '' # prevent bug in FieldStorage
+                post_env = {}
+                for key in (
+                        "CONTENT_TYPE",
+                        "CONTENT_LENGTH",
+                        "REQUEST_METHOD"):
+                    if key in environ:
+                        post_env[key] = environ[key]
                 field_storage = cgi.FieldStorage(
                         fp=environ["wsgi.input"],
-                        environ=environ,
+                        environ=post_env,
                         keep_blank_values=True)
-                for key in field_storage.keys():
-                    value = field_storage[key]
-                    if value.filename is not None:
-                        post_data[key] = value.file # store filelike object
+                post_data = {}
+                data = field_storage.list or []
+                for item in data:
+                    if item.filename:
+                        value = item.file
                     else:
-                        post_data[key] = value.value
+                        value = item.value
+                    post_data.setdefault(item.name, []).append(value)
 
                 request = teapot.request.Request.construct_from_http(
                     environ["REQUEST_METHOD"],
