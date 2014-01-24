@@ -27,25 +27,25 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
     def formatted(self, arg):
         self.args = [arg]
 
-    @teapot.query("foo", "bar", argtype=str)
+    @teapot.queryarg("foo", "bar", argtype=str)
     @teapot.route("querytest_single")
     def fooquery_single(self, *args, **kwargs):
         self.args = args
         self.kwargs = kwargs
 
-    @teapot.query("foo", "bar", argtype=[str])
+    @teapot.queryarg("foo", "bar", argtype=[str])
     @teapot.route("querytest_list")
     def fooquery_list(self, *args, **kwargs):
         self.args = args
         self.kwargs = kwargs
 
-    @teapot.query("foo", None, argtype=[str], unpack_sequence=True)
+    @teapot.queryarg("foo", None, argtype=[str], unpack_sequence=True)
     @teapot.route("querytest_unpack_list")
     def fooquery_list_unpack(self, *args, **kwargs):
         self.args = args
         self.kwargs = kwargs
 
-    @teapot.query("foo", "bar", argtype=(str, str))
+    @teapot.queryarg("foo", "bar", argtype=(str, str))
     @teapot.route("querytest_tuple")
     def fooquery_tuple(self, *args, **kwargs):
         self.args = args
