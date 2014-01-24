@@ -25,12 +25,29 @@ arguments. It might seem to be straightforward to mix positional and named
 arguments arbitrarily, however, there are caveats. If you mix named and
 positional arguments, weird behaviour might occur when *unrouting*. The current
 recommendation is to only use named arguments, except for passing arguments to
-a catchall positional argument (``*foo``). Example::
+a catchall positional argument (``*foo``). **Don’t-Do-This** Example::
 
+    @teapot.queryarg("arg1", None)   # positional argument
+    @teapot.queryarg("arg2", "baz")  # named argument
+    @teapot.queryarg("arg3", "kw1")  # named argument
+    @teapot.route("/")
     def foo(bar, baz, *args, kw1=None, **kwargs):
         pass
 
-Further description of problems is TBD
+This works perfectly fine for routing, but not for unrouting. In unrouting, you
+could want do this, because it makes sense::
+
+    teapot.routing.unroute(foo, "value1", "value2", kw1="value3")
+
+It would not work, however, because the second queryarg will look for ``baz`` in
+the *kwargs* dict and won’t find it, thus an error will occur. The only way to
+avoid this, to our knowledge, would be to re-implement the argument passing
+logic of python, which is not only lots of work, but also error-prone and
+possibly (CPython) implementation-specific (not the logic itself, but inspection
+of the function signature).
+
+To work around this, a safe way is to only use positional arguments for the
+catchall argument and otherwise only keyword arguments.
 
 Decorators for functions and methods
 ====================================
@@ -271,8 +288,8 @@ class Context:
         self._method = request_method
         self._original_request = original_request
         self.path = path
-        self._post_data = post_data
-        self._query_data = query_data
+        self._post_data = post_data if post_data is not None else {}
+        self._query_data = query_data if query_data is not None else {}
         self._scheme = scheme
 
     def __deepcopy__(self, copydict):
@@ -1254,6 +1271,7 @@ class queryarg(Selector):
         self._destarg = destarg
         self._argtype = argtype
         self._is_sequence = False
+        self._sequence_length = None
         self._unpack_sequence = unpack_sequence
         if unpack_sequence and destarg is not None:
             raise ValueError("unpacking argument lists and named arguments do"
@@ -1274,6 +1292,7 @@ class queryarg(Selector):
                         self.procargs_list,
                         argtype[0])
             elif isinstance(argtype, tuple):
+                self._sequence_length = len(argtype)
                 procargs = functools.partial(
                     self.procargs_tuple,
                     argtype)
@@ -1304,11 +1323,36 @@ class queryarg(Selector):
         return True
 
     def unselect(self, request):
+        logger.debug("queryarg: is_sequence=%s, unpack_sequence=%s,"
+                     " sequence_length=%s",
+                     self._is_sequence,
+                     self._unpack_sequence,
+                     self._sequence_length)
+        logger.debug("queryarg: request.args=%r, request.kwargs=%r",
+                     request.args,
+                     request.kwargs)
         if self._unpack_sequence:
-            args = request.args
-            request.args.clear()
+            if self._sequence_length is None:
+                args = request.args[:]
+                request.args.clear()
+            else:
+                args = request.args[:self._sequence_length]
+                if len(args) != self._sequence_length:
+                    raise ValueError("not enough arguments")
+                request.args[:] = request.args[self._sequence_length:]
         else:
-            args = request.args.pop()
+            try:
+                if self._destarg is None:
+                    args = request.args.pop()
+                else:
+                    args = request.kwargs[self._destarg]
+            except KeyError as err:
+                raise ValueError("missing argument: {}".format(str(err))) \
+                    from None
+            except IndexError as err:
+                raise ValueError("not enough arguments") from None
+
+        logger.debug("queryarg: args=%r", args)
 
         if not self._is_sequence:
             args = [args]

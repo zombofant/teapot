@@ -403,7 +403,7 @@ class TestUnrouting(unittest.TestCase):
     def setUp(self):
         self._root = SomeRoutable()
 
-    def test_unrouting_unwinds_correctly_for_instancemethods(self):
+    def test_unwinds_correctly_for_instancemethods(self):
         routeinfo = teapot.getrouteinfo(self._root.index)
         self.assertSequenceEqual(
             list(teapot.routing.traverse_to_root(routeinfo)),
@@ -411,7 +411,7 @@ class TestUnrouting(unittest.TestCase):
              teapot.getrouteinfo(self._root)]
         )
 
-    def test_unrouting_of_path(self):
+    def test_path(self):
         self.assertEqual(
             teapot.routing.unroute(self._root.index).path,
             "/")
@@ -420,12 +420,47 @@ class TestUnrouting(unittest.TestCase):
             teapot.routing.unroute(self._root.fnord).path,
             "/foo/fnord")
 
-    def test_unrouting_with_format(self):
+    def test_with_format(self):
         self.assertEqual(
             teapot.routing.unroute(
                 self._root.formatted,
                 42).path,
             "/p/42")
+
+    def test_query_single(self):
+        request = teapot.routing.unroute(
+            self._root.fooquery_single,
+            bar="value")
+        self.assertDictEqual(
+            request.query_data,
+            {"foo": ["value"]})
+
+    def test_query_list(self):
+        values = list(map(str, range(10)))
+        request = teapot.routing.unroute(
+            self._root.fooquery_list,
+            bar=values)
+        self.assertDictEqual(
+            request.query_data,
+            {"foo": values})
+
+    def test_query_list_unpacked(self):
+        values = list(map(str, range(10)))
+        request = teapot.routing.unroute(
+            self._root.fooquery_list_unpack,
+            *values)
+        self.assertDictEqual(
+            request.query_data,
+            {"foo": values})
+
+    def test_query_tuple(self):
+        values = list(map(str, range(2)))
+        request = teapot.routing.unroute(
+            self._root.fooquery_tuple,
+            bar=values)
+        self.assertDictEqual(
+            request.query_data,
+            {"foo": values})
 
     def tearDown(self):
         del self._root
