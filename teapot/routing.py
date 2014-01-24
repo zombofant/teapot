@@ -73,7 +73,7 @@ the route can further be refined using the following decorators:
 
 .. autoclass:: rebase
 
-.. autoclass:: query
+.. autoclass:: queryarg
 
 .. autoclass:: formatted_path
 
