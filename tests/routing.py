@@ -324,21 +324,21 @@ class TestRouting(unittest.TestCase):
     def setUp(self):
         self._root = SomeRoutable()
 
-    def test_route_simple(self):
+    def test_simple(self):
         request = teapot.routing.Context(
             path="/index")
         success, data = teapot.routing.find_route(
             self._root, request)
         self.assertTrue(success)
 
-    def test_route_multirebase(self):
+    def test_multirebase(self):
         request = teapot.routing.Context(
             path="/foo/fnord")
         success, data = teapot.routing.find_route(
             self._root, request)
         self.assertTrue(success)
 
-    def test_route_not_found(self):
+    def test_not_found(self):
         request = teapot.routing.Context(
             path="/foo/bar")
         success, data = teapot.routing.find_route(
@@ -346,11 +346,11 @@ class TestRouting(unittest.TestCase):
         self.assertFalse(success)
         self.assertIsNone(data)
 
-    def test_route_formatted(self):
+    def test_formatted(self):
         args, kwargs = self.get_routed_args(path="/p/42")
         self.assertSequenceEqual([42], args)
 
-    def test_route_query_single(self):
+    def test_query_single(self):
         args, kwargs = self.get_routed_args(
             path="/querytest_single",
             query_data={"foo": ["value"]})
@@ -362,7 +362,7 @@ class TestRouting(unittest.TestCase):
             {"bar": "value"},
             kwargs)
 
-    def test_route_query_list(self):
+    def test_query_list(self):
         values = list(map(str, range(3)))
         args, kwargs = self.get_routed_args(
             path="/querytest_list",
@@ -375,7 +375,7 @@ class TestRouting(unittest.TestCase):
             {"bar": values},
             kwargs)
 
-    def test_route_query_list_unpack(self):
+    def test_query_list_unpack(self):
         values = list(map(str, range(3)))
         args, kwargs = self.get_routed_args(
             path="/querytest_unpack_list",
@@ -388,7 +388,7 @@ class TestRouting(unittest.TestCase):
             {},
             kwargs)
 
-    def test_route_query_tuple(self):
+    def test_query_tuple(self):
         values = list(map(str, range(3)))
         args, kwargs = self.get_routed_args(
             path="/querytest_tuple",
