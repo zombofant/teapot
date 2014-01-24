@@ -66,6 +66,9 @@ the route can further be refined using the following decorators:
 Utilities to get information from routables
 ===========================================
 
+These utilities can be used to introspect the routing information of a given
+object.
+
 .. autofunction:: isroutable
 
 .. autofunction:: getrouteinfo
@@ -100,6 +103,10 @@ data class on which the selectors operate.
 
 Internal API
 ============
+
+This API is subject to unnotified change. Not only the names, attributes and
+methods can change, but also the usage. Do not rely on anything here, even if it
+is tested against in a testsuite.
 
 .. autoclass:: Info
    :members:

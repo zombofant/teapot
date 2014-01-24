@@ -20,3 +20,7 @@ point you like to modify.
     already decoded into unicode objects
   * Uploaded files should be accessible as ``bytes`` objects, also through the
     decorator.
+
+* Regex path formatter
+
+  This has some special difficulty, because unselecting is everything but trivial.
