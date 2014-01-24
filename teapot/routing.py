@@ -710,7 +710,15 @@ class Selector(metaclass=abc.ABCMeta):
         result. Ideally, after such an hypothetical call, the
         *request* object would have the same contents as before the
         call to `unselect`.
+
+        If unselection fails due to missing arguments or arguments of the wrong
+        type, :class:`ValueError` should be raised. If unselection is impossible
+        in general for the selector, call ``super().unselect(request)``, which
+        will raise an appropriate, implementation defined error.
         """
+
+        raise NotImplementedError(
+            "unselection is not possible with {!r}".format(self))
 
     def __call__(self, obj):
         """

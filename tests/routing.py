@@ -435,6 +435,11 @@ class TestUnrouting(unittest.TestCase):
             request.query_data,
             {"foo": ["value"]})
 
+        self.assertRaises(
+            ValueError,
+            teapot.routing.unroute,
+            self._root.fooquery_single)
+
     def test_query_list(self):
         values = list(map(str, range(10)))
         request = teapot.routing.unroute(
@@ -443,6 +448,11 @@ class TestUnrouting(unittest.TestCase):
         self.assertDictEqual(
             request.query_data,
             {"foo": values})
+
+        self.assertRaises(
+            ValueError,
+            teapot.routing.unroute,
+            self._root.fooquery_single)
 
     def test_query_list_unpacked(self):
         values = list(map(str, range(10)))
@@ -461,6 +471,11 @@ class TestUnrouting(unittest.TestCase):
         self.assertDictEqual(
             request.query_data,
             {"foo": values})
+
+        self.assertRaises(
+            ValueError,
+            teapot.routing.unroute,
+            self._root.fooquery_single)
 
     def tearDown(self):
         del self._root
