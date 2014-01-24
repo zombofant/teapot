@@ -78,6 +78,11 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
         self.args = [3]
         self.kwargs = {}
 
+    @teapot.route("annotationtest")
+    def annotationtest(self, request: teapot.request.Request):
+        self.args = request
+        self.kwargs = {}
+
 class TestContext(unittest.TestCase):
     method = teapot.request.Method.GET
     path = "/foo/bar"
@@ -429,6 +434,27 @@ class TestRouting(unittest.TestCase):
 
         self.assertSequenceEqual([1], args)
         self.assertDictEqual({}, kwargs)
+
+    def test_request_annotation(self):
+        root = SomeRoutable()
+        request = teapot.request.Request(
+            teapot.request.Method.GET,
+            "/annotationtest",
+            "http",
+            {},
+            (
+                teapot.accept.all_content_types(),
+                teapot.accept.all_languages(),
+                teapot.accept.all_charsets()
+            ),
+            "",
+            None)
+        success, data = teapot.routing.find_route(root, request)
+        self.assertTrue(success)
+        self.assertIsNotNone(data)
+        data()
+
+        self.assertIs(request, root.args)
 
     def tearDown(self):
         del self._root

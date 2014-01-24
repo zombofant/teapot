@@ -742,6 +742,41 @@ class Selector(metaclass=abc.ABCMeta):
         info.selectors.append(self)
         return obj
 
+class AnnotationProcessor(Selector):
+    def inject_request(request, argname):
+        request.kwargs[argname] = request.original_request
+
+    annotation_processors = {
+        teapot.request.Request: inject_request
+    }
+
+    def __init__(self, callable, **kwargs):
+        super().__init__(**kwargs)
+        # if callable is an object with __call__ method, we have to traverse
+        # until we find the actual function with its annotations
+        while not hasattr(callable, "__annotations__"):
+            if hasattr(callable, "__func__"):
+                callable = callable.__func__
+            else:
+                callable = callable.__call__
+
+        annotations = callable.__annotations__
+        processors = []
+        for arg, annotation in annotations.items():
+            processors.append(
+                (arg, self.annotation_processors[annotation]))
+
+        self.processors = processors
+
+    def select(self, request):
+        for arg, processor in self.processors:
+            processor(request, arg)
+
+        return True
+
+    def unselect(self, request):
+        return True
+
 class rebase(Selector):
     """
     A path selector selects a static portion of the current request
@@ -1469,6 +1504,7 @@ def route(path, *paths, order=0, make_constructor_routable=False):
             raise ValueError("{!r} already has a route".format(obj))
 
         kwargs = {"order": order}
+        obj_selectors = selectors[:]
 
         if isinstance(obj, type) and not make_constructor_routable:
             # this is a class
@@ -1476,13 +1512,16 @@ def route(path, *paths, order=0, make_constructor_routable=False):
                             "the docs for details and a workaround.")
 
         if isinstance(obj, staticmethod):
-            info = Leaf(selectors, obj.__func__, **kwargs)
+            obj_selectors.append(AnnotationProcessor(obj.__func__))
+            info = Leaf(obj_selectors, obj.__func__, **kwargs)
             setrouteinfo(obj.__func__, info)
         elif isinstance(obj, classmethod):
-            info = LeafPrototype(selectors,
-                                 obj.__func__,
-                                 False,
-                                 **kwargs)
+            obj_selectors.append(AnnotationProcessor(obj.__func__))
+            info = LeafPrototype(
+                obj_selectors,
+                obj.__func__,
+                False,
+                **kwargs)
             setrouteinfo(obj.__func__, info)
         else:
             if not hasattr(obj, "__call__"):
@@ -1490,10 +1529,13 @@ def route(path, *paths, order=0, make_constructor_routable=False):
                                 "callable or classmethod or "
                                 "staticmethod)".format(obj))
 
-            info = LeafPrototype(selectors,
-                                 obj,
-                                 True,
-                                 **kwargs)
+            if not isinstance(obj, type):
+                obj_selectors.append(AnnotationProcessor(obj))
+            info = LeafPrototype(
+                obj_selectors,
+                obj,
+                True,
+                **kwargs)
 
         setrouteinfo(obj, info)
         return obj
