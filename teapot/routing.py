@@ -200,6 +200,13 @@ def setrouteinfo(obj, value):
     return setattr(obj, routeinfo_attr, value)
 
 def requirerouteinfo(obj):
+    """
+    Return the routing information of *obj*. If *obj* does not have routing
+    information, a :class:`ValueError` with an appropriate error message is
+    thrown.
+
+    Internally, :meth:`getrouteinfo` is used, thus the same features apply.
+    """
     if not isroutable(obj):
         raise ValueError("{!r} is not routable".format(obj))
 
