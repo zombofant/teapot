@@ -72,7 +72,7 @@ class TestContext(unittest.TestCase):
 
     def test_initialization_from_request(self):
         request = self.create_example_request()
-        context = teapot.routing.Context(request)
+        context = teapot.routing.Context.from_request(request)
         self.assertEqual(context.path, request.path)
         self.assertEqual(context.method, request.method)
         self.assertEqual(context.scheme, request.scheme)
@@ -82,11 +82,11 @@ class TestContext(unittest.TestCase):
 
     def test_copy_construction(self):
         request = self.create_example_request()
-        context1 = teapot.routing.Context(request)
+        context1 = teapot.routing.Context.from_request(request)
         context1.args.append("foo")
         context1.args.append("bar")
 
-        context2 = teapot.routing.Context(context1)
+        context2 = teapot.routing.Context.from_request(context1)
         self.assertEqual(context1.path, context2.path)
         self.assertEqual(context1.method, context2.method)
         self.assertEqual(context1.scheme, context2.scheme)
@@ -103,7 +103,7 @@ class TestContext(unittest.TestCase):
 
     def test_copy(self):
         request = self.create_example_request()
-        context1 = teapot.routing.Context(request)
+        context1 = teapot.routing.Context.from_request(request)
         context1.args.append("foo")
         context1.args.append("bar")
 
@@ -285,7 +285,7 @@ class TestRoutingMeta(unittest.TestCase):
 class TestRouting(unittest.TestCase):
     def get_routed_args(self, **context_kwargs):
         root = SomeRoutable()
-        request = teapot.routing.Context(None, **context_kwargs)
+        request = teapot.routing.Context(**context_kwargs)
         success, data = teapot.routing.find_route(root, request)
         self.assertTrue(success)
         self.assertIsNotNone(data)
@@ -299,7 +299,6 @@ class TestRouting(unittest.TestCase):
 
     def test_route_simple(self):
         request = teapot.routing.Context(
-            None,
             path="/index")
         success, data = teapot.routing.find_route(
             self._root, request)
@@ -307,7 +306,6 @@ class TestRouting(unittest.TestCase):
 
     def test_route_multirebase(self):
         request = teapot.routing.Context(
-            None,
             path="/foo/fnord")
         success, data = teapot.routing.find_route(
             self._root, request)
@@ -315,7 +313,6 @@ class TestRouting(unittest.TestCase):
 
     def test_route_not_found(self):
         request = teapot.routing.Context(
-            None,
             path="/foo/bar")
         success, data = teapot.routing.find_route(
             self._root, request)

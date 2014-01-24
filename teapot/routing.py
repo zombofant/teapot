@@ -186,9 +186,8 @@ class Context:
     The routing context is used to traverse through the request to
     find nodes to route to.
 
-    *base* can be either another :class:`Context` instance (to create a blank
-    context from another one, see below) or a :class:`~teapot.request.Request`
-    to create a new context from a request.
+    To create a :class:`Context` from a :class:`~teapot.request.Request`, use
+    the :meth:`from_request` class method.
 
     There is a difference between creating a context with another context as
     *base* argument and copying that context. Upon copying, the arguments which
@@ -210,41 +209,67 @@ class Context:
        can be used for routing.
     """
 
-    def __init__(self, base,
+    @classmethod
+    def from_request(cls, base):
+        """
+        Create a blank :class:`Context` from a
+        :class:`~teapot.request.Request`.
+
+        .. note::
+
+           *original_request* can also be another :class:`Context` instance, to
+           copy a context without carrying any information generated during
+           routing, such as function arguments.
+        """
+
+        # handy
+        if hasattr(base, "original_request"):
+            original_request = base.original_request
+        else:
+            original_request = base
+
+        return cls(
+            accept_content=base.accept_content,
+            accept_language=base.accept_language,
+            original_request=original_request,
+            path=base.path,
+#            post_data=copy.copy(base.post_data),
+            query_data=copy.copy(base.query_data),
+            request_method=base.method,
+            scheme=base.scheme)
+
+    def __init__(self, *,
+                 accept_content=None,
+                 accept_language=None,
                  request_method=teapot.request.Method.GET,
+                 original_request=None,
                  path="/",
-                 scheme="http",
+                 post_data=None,
                  query_data=None,
-                 **kwargs):
-        super().__init__(**kwargs)
-        self._accept_content = \
-            base.accept_content if base else \
-            teapot.accept.all_content_types()
-        self._accept_language = \
-            base.accept_language if base else \
-            teapot.accept.all_languages()
+                 scheme="http"):
+        super().__init__()
         self._args = []
         self._kwargs = {}
-        self._method = \
-            base.method if base else \
-            request_method
-        if hasattr(base, "original_request"):
-            self._original_request = base.original_request
-        else:
-            self._original_request = base
-        self.path = \
-            base.path if base else path
-        self._post_data = \
-            None if base else {}
-        self._query_data = \
-            copy.copy(base.query_data) if base else \
-            (query_data or {})
-        self._scheme = \
-            base.scheme if base else \
-            scheme
+
+        self._accept_content = \
+            accept_content \
+            if accept_content is not None \
+            else teapot.accept.all_content_types()
+
+        self._accept_language = \
+            accept_language \
+            if accept_language is not None \
+            else teapot.accept.all_languages()
+
+        self._method = request_method
+        self._original_request = original_request
+        self.path = path
+        self._post_data = post_data
+        self._query_data = query_data
+        self._scheme = scheme
 
     def __deepcopy__(self, copydict):
-        result = Context(self)
+        result = Context.from_request(self)
         result._args = copy.copy(self._args)
         result._kwargs = copy.copy(self._kwargs)
         return result
@@ -1363,7 +1388,7 @@ def find_route(root, request):
     if not isroutable(root):
         raise TypeError("{!r} is not routable".format(root))
 
-    localrequest = Context(request)
+    localrequest = Context.from_request(request)
     return getrouteinfo(root).route(localrequest)
 
 def unroute(routable, *args, template_request=None, **kwargs):
@@ -1374,9 +1399,9 @@ def unroute(routable, *args, template_request=None, **kwargs):
     """
 
     if template_request is None:
-        request = Context(None, path="")
+        request = Context(path="")
     else:
-        request = Context(template_request)
+        request = Context.from_request(template_request)
     request.args = args
     request.kwargs = kwargs
     getrouteinfo(routable).unroute(request)
