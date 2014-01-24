@@ -143,7 +143,7 @@ __all__ = [
     "getrouteinfo",
     "route",
     "rebase",
-    "query",
+    "queryarg",
     "RoutableMeta"]
 
 def isroutable(obj):
@@ -1163,7 +1163,7 @@ class one_of(Selector):
         if self._subselectors:
             self._subselectors[0].unselect(request)
 
-class query(Selector):
+class queryarg(Selector):
     """
     This routing decorator inspects the query data. The process during the
     routing is as follows:
