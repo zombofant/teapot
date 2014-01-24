@@ -790,11 +790,14 @@ class formatted_path(Selector):
        nature of the involved regular expressions, if zero-padding is
        not used (i.e. the values are padded with spaces).
 
+    If *final* is false, the selector will even match if the parsing cannot
+    consume the whole (remaining) request path.
     """
 
-    def __init__(self, format_string, strict=False, **kwargs):
+    def __init__(self, format_string, strict=False, final=True, **kwargs):
         super().__init__(**kwargs)
         self._strict = strict
+        self._final = final
         self._format_string = format_string
         self._presentation_parsers = {
             "d": (
@@ -1116,6 +1119,9 @@ class formatted_path(Selector):
             return False
 
         numbered, keywords, remainder = result
+
+        if self._final and remainder:
+            return False
 
         request.args.extend(numbered)
         request.kwargs.update(keywords)

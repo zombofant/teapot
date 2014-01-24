@@ -51,6 +51,21 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
         self.args = args
         self.kwargs = kwargs
 
+    @teapot.route("finaltest", order=0)
+    def finaltest_1(self):
+        self.args = [1]
+        self.kwargs = {}
+
+    @teapot.route("finaltestfoo", order=1)
+    def finaltest_2(self):
+        self.args = [2]
+        self.kwargs = {}
+
+    @teapot.route("finaltestbar", order=-1)
+    def finaltest_3(self):
+        self.args = [3]
+        self.kwargs = {}
+
 class TestContext(unittest.TestCase):
     method = teapot.request.Method.GET
     path = "/foo/bar"
@@ -373,6 +388,13 @@ class TestRouting(unittest.TestCase):
         self.assertDictEqual(
             {"bar": tuple(values[:2])},
             kwargs)
+
+    def test_ambigous_nonfinal_routing(self):
+        args, kwargs = self.get_routed_args(
+            path="/finaltest")
+
+        self.assertSequenceEqual([1], args)
+        self.assertDictEqual({}, kwargs)
 
     def tearDown(self):
         del self._root
