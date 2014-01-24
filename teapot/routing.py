@@ -81,6 +81,10 @@ the route can further be refined using the following decorators:
 
 .. autoclass:: postargs
 
+.. autoclass:: requestarg
+
+.. autoclass:: requestargs
+
 .. autoclass:: formatted_path
 
 .. autoclass:: one_of
@@ -1487,6 +1491,7 @@ class queryarg(RequestArgumentSelector):
     A :class:`RequestArgumentSelector` implementation that looks up the query
     data for a specified argument and passes it to the final routable.
     """
+
     def get_data_dict(self, request):
         return request.query_data
 
@@ -1494,22 +1499,8 @@ class queryargs(RequestArgumentsSelector):
     """
     A :class:`RequestArgumentsSelector` implementation that selects all
     available query arguments and passes them to the final routable.
-
-    Example::
-
-       @teapot.routing.queryargs()
-       @teapot.route("/foo")
-       def handle_foo(queryargs_dict):
-           \"\"\"do something\"\"\"
-
-    Example::
-
-       @teapot.routing.queryargs("queryargs_dict")
-       @teapot.route("/foo")
-       def handle_foo(**kwargs):
-           queryargs_dict = kwargs["queryargs_dict"]
-           \"\"\"do something\"\"\"
     """
+
     def get_data_dict(self, request):
         return request.query_data
 
@@ -1521,6 +1512,7 @@ class postarg(RequestArgumentSelector):
     File uploads will be passed as :data:`file-like` objects. You should not
     call read() on them, since this will load the whole file into memory.
     """
+
     def get_data_dict(self, request):
         return request.post_data
 
@@ -1532,8 +1524,66 @@ class postargs(RequestArgumentsSelector):
     File uploads will be passed as :data:`file-like` objects. You should not
     call read() on them, since this will load the whole file into memory.
     """
+
     def get_data_dict(self, request):
         return request.post_data
+
+class requestarg(RequestArgumentSelector):
+    """
+    A convenience implementation of :class:`RequestArgumentSelector` that
+    looks up an argument in the QUERY and POST request arguments and passes
+    it to the final routable if found.
+
+    The *prefered_method*'s arguments are inspected first.
+
+    File uploads will be passed as :data:`file-like` objects. You should not
+    call read() on them, since this will load the whole file into memory.
+    """
+
+    def __init__(
+            self,
+            argname,
+            destarg,
+            prefered_method=teapot.request.Method.POST,
+            argtype=str,
+            unpack_sequence=False,
+            **kwargs):
+        super().__init__(argname, destarg, argtype, unpack_sequence, **kwargs)
+        self._prefered_method = prefered_method
+
+    def get_data_dict(self, request):
+        dict1 = request.post_data
+        dict2 = request.query_data
+        if self._prefered_method == teapot.request.Method.GET:
+            dict2, dict1 = dict1, dict2
+        return dict(list(dict2.items()) + list(dict1.items()))
+
+class requestargs(RequestArgumentsSelector):
+    """
+    A convenience implementation of :class:`RequestArgumentsSelector` that
+    selects all available QUERY and POST arguments and passes them to the final
+    routable.
+
+    On name conflicts, *prefered_method* defines which value to use.
+
+    File uploads will be passed as :data:`file-like` objects. You should not
+    call read() on them, since this will load the whole file into memory.
+    """
+
+    def __init__(
+            self,
+            destarg=None,
+            prefered_method=teapot.request.Method.POST,
+            **kwargs):
+        super().__init__(destarg, **kwargs)
+        self._prefered_method = prefered_method
+
+    def get_data_dict(self, request):
+        dict1 = request.post_data
+        dict2 = request.query_data
+        if self._prefered_method == teapot.request.Method.GET:
+            dict2, dict1 = dict1, dict2
+        return dict(list(dict2.items()) + list(dict1.items()))
 
 def route(path, *paths, order=0, make_constructor_routable=False):
     """
