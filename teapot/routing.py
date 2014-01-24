@@ -1331,6 +1331,7 @@ class queryarg(Selector):
         logger.debug("queryarg: request.args=%r, request.kwargs=%r",
                      request.args,
                      request.kwargs)
+
         if self._unpack_sequence:
             if self._sequence_length is None:
                 args = request.args[:]
