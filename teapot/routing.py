@@ -1411,7 +1411,7 @@ class querydict(Selector):
 
     def select(self, request):
         args = {}
-        if isinstance(request.query_data, dict):
+        if request.query_data is not None:
             args = request.query_data
 
         if self._destarg is None:
