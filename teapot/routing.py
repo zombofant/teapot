@@ -81,10 +81,6 @@ the route can further be refined using the following decorators:
 
 .. autoclass:: postargs
 
-.. autoclass:: requestarg
-
-.. autoclass:: requestargs
-
 .. autoclass:: formatted_path
 
 .. autoclass:: one_of
