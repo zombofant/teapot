@@ -489,15 +489,13 @@ class Request:
         self.if_modified_since = if_modified_since
 
     def _parse_post_data(self):
-        # create environment for FieldStorage
-        post_env = {
-                "CONTENT_TYPE": self.content_type,
-                "CONTENT_LENGTH": self.content_length,
-                "REQUEST_METHOD": self.method
-                }
         field_storage = cgi.FieldStorage(
                 fp=self.body_stream,
-                environ=post_env,
+                environ={
+                    "CONTENT_TYPE": self.content_type,
+                    "CONTENT_LENGTH": self.content_length,
+                    "REQUEST_METHOD": self.method,
+                    },
                 keep_blank_values=True)
         post_data = {}
         data = field_storage.list or []
