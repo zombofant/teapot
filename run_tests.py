@@ -178,7 +178,17 @@ parser.add_argument(
     help="Print statistics to stderr instead of stdout; This is useful to"
     " separate unittest output from wrapper script output."
 )
+parser.add_argument(
+    "--log-level", "-l",
+    choices={"debug", "info", "warn", "error", "critical", "fatal"},
+    default=None,
+    help="Enable logging output with minimum level for tests with errors"
+)
 args = parser.parse_args()
+
+if args.log_level is not None:
+    import logging
+    logging.basicConfig(level=getattr(logging, args.log_level.upper()))
 
 Colors = Colors()
 if args.colors == "off" or (args.colors == "auto" and not have_tty):
