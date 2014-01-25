@@ -1036,10 +1036,14 @@ class rebase(Selector):
         self._prefix = prefix
 
     def select(self, request):
+        logging.debug("rebase: request.path=%r, prefix=%r",
+                      request.path, self._prefix)
         try:
             request.rebase(self._prefix)
         except ValueError:
+            logging.debug("rebase: mismatch")
             return False
+        logging.debug("rebase: match")
         return True
 
     def unselect(self, request):
@@ -1438,18 +1442,23 @@ class formatted_path(Selector):
         return numbered, keywords, s
 
     def select(self, request):
+        logging.debug("formatted_path: request.path=%r, format_string=%r",
+                      request.path, self._format_string)
         result = self.parse(request.path)
         if not result:
+            logging.debug("formatted_path: mismatch")
             return False
 
         numbered, keywords, remainder = result
 
         if self._final and remainder:
+            logging.debug("formatted_path: mismatch (nonfinal)")
             return False
 
         request.args.extend(numbered)
         request.kwargs.update(keywords)
 
+        logging.debug("formatted_path: match")
         return True
 
     def unselect(self, request):
