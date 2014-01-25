@@ -461,13 +461,13 @@ class Request:
             raw_http_headers=headers)
 
     def __init__(self,
-                 method,
-                 local_path,
-                 scheme,
-                 query_data,
-                 accept_info,
-                 user_agent,
-                 body_stream,
+                 method=Method.GET,
+                 local_path="/",
+                 scheme="http",
+                 query_data=None,
+                 accept_info=None,
+                 user_agent="",
+                 body_stream=None,
                  content_length=0,
                  content_type=None,
                  if_modified_since=None,
@@ -475,11 +475,16 @@ class Request:
         self._method = method
         self._path = local_path
         self._scheme = scheme
-        self._query_data = query_data
+        self._query_data = {} if query_data is None else query_data
         self._user_agent_string = user_agent
         self._user_agent_info = inspect_user_agent_string(user_agent)
-        self._accept_content, self._accept_language, self._accept_charset = \
-            accept_info
+        if accept_info is not None:
+            self._accept_content, self._accept_language, self._accept_charset = \
+                accept_info
+        else:
+            self._accept_content = teapot.accept.all_content_types()
+            self._accept_language = teapot.accept.all_languages()
+            self._accept_charset = teapot.accept.all_charsets()
         self._post_data = None
 
         self.body_stream = body_stream
