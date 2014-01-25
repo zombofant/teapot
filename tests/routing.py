@@ -6,6 +6,8 @@ import teapot
 import teapot.routing
 import teapot.request
 
+from datetime import datetime, timedelta
+
 @teapot.rebase("/")
 class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
     def __init__(self):
@@ -558,3 +560,51 @@ class TestUnrouting(unittest.TestCase):
 
     def tearDown(self):
         del self._root
+
+
+class TestRouter(unittest.TestCase):
+    class Routable(metaclass=teapot.RoutableMeta):
+        def __init__(self, last_modified):
+            self._last_modified = last_modified
+
+        @teapot.route("/")
+        def index(self):
+            response = teapot.response.Response(
+                teapot.mime.Type.text_plain.with_charset("utf8"),
+                last_modified=self._last_modified)
+
+            yield response
+
+            yield "ohai".encode(response.content_type.charset)
+
+    def get_router(self):
+        return teapot.routing.Router(
+            self._root)
+
+    def setUp(self):
+        self._now = datetime.utcnow()
+        self._root = self.Routable(self._now)
+
+    def test_response(self):
+        router = self.get_router()
+        request = teapot.request.Request()
+
+        result = list(router.route_request(request))
+        response = result.pop(0)
+        self.assertEqual(response.content_type,
+                         teapot.mime.Type.text_plain.with_charset("utf8"))
+        self.assertSequenceEqual(result, [b"ohai"])
+
+    def test_304_not_modified(self):
+        router = self.get_router()
+        request = teapot.request.Request(
+            if_modified_since=self._now)
+
+        with self.assertRaises(teapot.errors.ResponseError) as ctx:
+            list(router.route_request(request))
+
+        self.assertEqual(ctx.exception.http_response_code, 304)
+
+    def tearDown(self):
+        del self._root
+        del self._now
