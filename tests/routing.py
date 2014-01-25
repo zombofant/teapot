@@ -99,10 +99,10 @@ class TestContext(unittest.TestCase):
             self.path,
             self.scheme,
             self.query_data,
-            self.post_data,
             self.accept_info,
             "",
-            io.BytesIO(b""))
+            io.BytesIO(b""),
+            )
 
     def test_initialization_from_request(self):
         request = self.create_example_request()
@@ -443,7 +443,6 @@ class TestRouting(unittest.TestCase):
             teapot.request.Method.GET,
             "/annotationtest",
             "http",
-            {},
             {},
             (
                 teapot.accept.all_content_types(),

@@ -12,7 +12,6 @@ server.
 
 import logging
 import urllib.parse
-import cgi
 
 import teapot.request
 import teapot.errors
@@ -132,31 +131,11 @@ class Application:
                 query_data = self.decode_query_string(
                     environ.get("QUERY_STRING", ""))
 
-                # TODO: decide if we want to replace FieldStorage with our own
-                #       implementation for parsing post data
-                post_env = {}
-                for key in (
-                        "CONTENT_TYPE",
-                        "CONTENT_LENGTH",
-                        "REQUEST_METHOD"):
-                    if key in environ:
-                        post_env[key] = environ[key]
-                field_storage = cgi.FieldStorage(
-                        fp=environ["wsgi.input"],
-                        environ=post_env,
-                        keep_blank_values=True)
-                post_data = {}
-                data = field_storage.list or []
-                for item in data:
-                    value = item.file if item.filename else item.value
-                    post_data.setdefault(item.name, []).append(value)
-
                 request = teapot.request.Request.construct_from_http(
                     environ["REQUEST_METHOD"],
                     local_path,
                     environ["wsgi.url_scheme"],
                     query_data,
-                    post_data,
                     environ["wsgi.input"],
                     environ.get("CONTENT_LENGTH"),
                     environ.get("CONTENT_TYPE"),

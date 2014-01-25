@@ -1,6 +1,7 @@
 import copy
 import re
 import urllib
+import cgi
 
 import teapot.mime
 
@@ -363,7 +364,6 @@ class Request:
             path_info,
             url_scheme,
             query_data,
-            post_data,
             input_stream,
             content_length,
             content_type,
@@ -448,7 +448,6 @@ class Request:
             path_info,
             url_scheme,
             query_data,
-            post_data,
             (
                 contents,
                 languages,
@@ -456,6 +455,8 @@ class Request:
             ),
             headers.get("User-Agent", ""),
             input_stream,
+            content_length,
+            content_type,
             if_modified_since=if_modified_since,
             raw_http_headers=headers)
 
@@ -464,10 +465,11 @@ class Request:
                  local_path,
                  scheme,
                  query_data,
-                 post_data,
                  accept_info,
                  user_agent,
                  body_stream,
+                 content_length=0,
+                 content_type=None,
                  if_modified_since=None,
                  raw_http_headers=[]):
         self._method = method
@@ -478,11 +480,31 @@ class Request:
         self._user_agent_info = inspect_user_agent_string(user_agent)
         self._accept_content, self._accept_language, self._accept_charset = \
             accept_info
-        self._post_data = post_data
+        self._post_data = None
 
         self.body_stream = body_stream
+        self.content_length = content_length
+        self.content_type = content_type
         self.raw_http_headers = raw_http_headers
         self.if_modified_since = if_modified_since
+
+    def _parse_post_data(self):
+        # create environment for FieldStorage
+        post_env = {
+                "CONTENT_TYPE": self.content_type,
+                "CONTENT_LENGTH": self.content_length,
+                "REQUEST_METHOD": self.method
+                }
+        field_storage = cgi.FieldStorage(
+                fp=self.body_stream,
+                environ=post_env,
+                keep_blank_values=True)
+        post_data = {}
+        data = field_storage.list or []
+        for item in data:
+            value = item.file if item.filename else item.value
+            post_data.setdefault(item.name, []).append(value)
+        self._post_data = post_data
 
     @property
     def accept_charset(self):
@@ -520,6 +542,8 @@ class Request:
 
     @property
     def post_data(self):
+        if self._post_data is None:
+            self._parse_post_data()
         return self._post_data
 
     @property
