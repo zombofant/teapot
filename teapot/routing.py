@@ -121,9 +121,9 @@ data class on which the selectors operate.
 .. autoclass:: Selector
    :members: select, unselect, __call__
 
-.. autoclass:: RequestArgumentSelector
+.. autoclass:: ArgumentSelector
 
-.. autoclass:: RequestArgumentsSelector
+.. autoclass:: ArgumentsSelector
 
 .. autoclass:: Context
    :members:
@@ -758,7 +758,7 @@ class Selector(metaclass=abc.ABCMeta):
         info.selectors.append(self)
         return obj
 
-class RequestArgumentSelector(Selector):
+class ArgumentSelector(Selector):
     """
     This abstract :class:`Selector` is the base class for request argument
     selectors that pick a specified argument from the set of all available
@@ -882,6 +882,10 @@ class RequestArgumentSelector(Selector):
 
     @abc.abstractmethod
     def get_data_dict(self, request):
+        """
+        :class:`ArgumentSelector` subclasses must implement this method
+        to supply the data dictionary.
+        """
         raise NotImplementedError("no data can be get in {!r}".format(self))
 
     def select(self, request):
@@ -943,7 +947,7 @@ class RequestArgumentSelector(Selector):
         args = list(map(str, args))
         self.get_data_dict(request).setdefault(self._argname, [])[:0] = args
 
-class RequestArgumentsSelector(Selector):
+class ArgumentsSelector(Selector):
     """
     This abstract :class:`Selector` is the base class for request argument
     selectors that select all available arguments and pass them as a
@@ -962,6 +966,10 @@ class RequestArgumentsSelector(Selector):
 
     @abc.abstractmethod
     def get_data_dict(self, request):
+        """
+        :class:`ArgumentsSelector` subclasses must implement this method
+        to supply the data dictionary.
+        """
         raise NotImplementedError("no data can be get in {!r}".format(self))
 
     def select(self, request):
@@ -1492,28 +1500,28 @@ class one_of(Selector):
         if self._subselectors:
             self._subselectors[0].unselect(request)
 
-class queryarg(RequestArgumentSelector):
+class queryarg(ArgumentSelector):
     """
-    A :class:`RequestArgumentSelector` implementation that looks up the query
+    A :class:`ArgumentSelector` implementation that looks up the query
     data for a specified argument and passes it to the final routable.
     """
 
     def get_data_dict(self, request):
         return request.query_data
 
-class queryargs(RequestArgumentsSelector):
+class queryargs(ArgumentsSelector):
     """
-    A :class:`RequestArgumentsSelector` implementation that selects all
-    available query arguments and passes them to the final routable.
+    A :class:`ArgumentsSelector` implementation that selects all available
+    query arguments and passes them to the final routable.
     """
 
     def get_data_dict(self, request):
         return request.query_data
 
-class postarg(RequestArgumentSelector):
+class postarg(ArgumentSelector):
     """
-    A :class:`RequestArgumentSelector` implementation that looks up a POST
-    argument of the specified name and passes it to the final routable.
+    A :class:`ArgumentSelector` implementation that looks up all POST
+    arguments with the specified name and passes them to the final routable.
 
     File uploads will be passed as :data:`file-like` objects. You should not
     call read() on them, since this will load the whole file into memory.
@@ -1522,10 +1530,10 @@ class postarg(RequestArgumentSelector):
     def get_data_dict(self, request):
         return request.post_data
 
-class postargs(RequestArgumentsSelector):
+class postargs(ArgumentsSelector):
     """
-    A :class:`RequestArgumentsSelector` implementation that selects all
-    available POST arguments and passes them to the final routable.
+    A :class:`ArgumentsSelector` implementation that selects all available
+    POST arguments and passes them to the final routable.
 
     File uploads will be passed as :data:`file-like` objects. You should not
     call read() on them, since this will load the whole file into memory.
