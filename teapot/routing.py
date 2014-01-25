@@ -1705,6 +1705,12 @@ class Router:
         raise teapot.errors.make_response_error(
             400, "cannot find accepted charset for response")
 
+    def pre_route_hook(self, request):
+        """
+        This is called before any routing takes place. It must modify the
+        request in-place, the return value is ignored.
+        """
+
     def pre_headers_hook(self, request, response):
         """
         This is called before any headers are passed to the HTTP
@@ -1782,6 +1788,8 @@ class Router:
         Routes a given *request* using the set up routing root and returns the
         response format described at :meth:`wrap_result`.
         """
+        self.pre_route_hook(request)
+
         success, data = find_route(self._root, request)
 
         if not success:
