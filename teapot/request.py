@@ -364,6 +364,7 @@ class Request:
             path_info,
             url_scheme,
             query_data,
+            cookie_data,
             input_stream,
             content_length,
             content_type,
@@ -382,6 +383,7 @@ class Request:
         :param query_data: WSGI ``QUERY_STRING`` equivalent
         :type query_data: either a ``str`` or a dict mapping the keys to lists
                             of values
+        :param cookie_data: a dict of key/value cookie data
         :param input_stream: file-like object allowing access to the body of
                              the request sent by the client
         :type input_stream: file-like object
@@ -448,6 +450,7 @@ class Request:
             path_info,
             url_scheme,
             query_data,
+            cookie_data,
             (
                 contents,
                 languages,
@@ -465,6 +468,7 @@ class Request:
                  local_path="/",
                  scheme="http",
                  query_data=None,
+                 cookie_data=None,
                  accept_info=None,
                  user_agent="",
                  body_stream=None,
@@ -476,6 +480,7 @@ class Request:
         self._path = local_path
         self._scheme = scheme
         self._query_data = {} if query_data is None else query_data
+        self._cookie_data = {} if cookie_data is None else cookie_data
         self._user_agent_string = user_agent
         self._user_agent_info = inspect_user_agent_string(user_agent)
         if accept_info is not None:
@@ -548,6 +553,10 @@ class Request:
         if self._post_data is None:
             self._parse_post_data()
         return self._post_data
+
+    @property
+    def cookie_data(self):
+        return self._cookie_data
 
     @property
     def scheme(self):

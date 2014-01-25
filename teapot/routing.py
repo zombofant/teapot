@@ -81,6 +81,10 @@ the route can further be refined using the following decorators:
 
 .. autoclass:: postargs
 
+.. autoclass:: cookie
+
+.. autoclass:: cookies
+
 .. autoclass:: formatted_path
 
 .. autoclass:: one_of
@@ -278,6 +282,7 @@ class Context:
             original_request=original_request,
             path=base.path,
             query_data=copy.copy(base.query_data),
+            cookie_data=copy.copy(base.cookie_data),
             request_method=base.method,
             scheme=base.scheme)
 
@@ -287,8 +292,9 @@ class Context:
                  request_method=teapot.request.Method.GET,
                  original_request=None,
                  path="/",
-                 post_data=None,
                  query_data=None,
+                 post_data=None,
+                 cookie_data=None,
                  scheme="http"):
         super().__init__()
         self._args = []
@@ -307,8 +313,9 @@ class Context:
         self._method = request_method
         self._original_request = original_request
         self.path = path
-        self._post_data = post_data
-        self._query_data = query_data if query_data is not None else {}
+        self._query_data = {} if query_data is None else query_data
+        self._post_data = {} if post_data is None else post_data
+        self._cookie_data = {} if cookie_data is None else cookie_data
         self._scheme = scheme
 
     def __deepcopy__(self, copydict):
@@ -351,18 +358,21 @@ class Context:
         return self._original_request
 
     @property
-    def post_data(self):
-        return self._post_data
-
-    @property
     def query_data(self):
         return self._query_data
 
     @property
     def post_data(self):
         if self._post_data is None:
-            self._post_data = self._original_request.post_data
+            if self._original_request is None:
+                self._post_data = {}
+            else:
+                self._post_data = self._original_request.post_data
         return self._post_data
+
+    @property
+    def cookie_data(self):
+        return self._cookie_data
 
     @property
     def scheme(self):
@@ -1541,6 +1551,22 @@ class postargs(ArgumentsSelector):
 
     def get_data_dict(self, request):
         return request.post_data
+
+class cookie(ArgumentSelector):
+    """
+    This :class:`ArgumentSelector` selects all cookies with the given name and
+    passes their values to the final routable.
+    """
+    def get_data_dict(self, request):
+        return request.cookie_data
+
+class cookies(ArgumentsSelector):
+    """
+    This :class:`ArgumentsSelector` implementation selects all cookies and
+    passes them to the final routable.
+    """
+    def get_data_dict(self, request):
+        return request.cookie_data
 
 def route(path, *paths, order=0, make_constructor_routable=False):
     """

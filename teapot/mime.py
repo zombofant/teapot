@@ -62,6 +62,7 @@ class Type:
         return not (self == other)
 
 Type.text_plain = Type("text", "plain")
+Type.text_html = Type("text", "html")
 
 class CaseFoldedDict(dict):
     class __undefined:
