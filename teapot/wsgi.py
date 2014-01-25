@@ -132,8 +132,8 @@ class Application:
                 query_data = self.decode_query_string(
                     environ.get("QUERY_STRING", ""))
 
-                # FIXME: replace FieldStorage with our own implementation
-                #        for parsing post data
+                # TODO: decide if we want to replace FieldStorage with our own
+                #       implementation for parsing post data
                 post_env = {}
                 for key in (
                         "CONTENT_TYPE",
