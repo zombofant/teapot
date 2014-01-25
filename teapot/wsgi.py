@@ -148,10 +148,7 @@ class Application:
                 post_data = {}
                 data = field_storage.list or []
                 for item in data:
-                    if item.filename:
-                        value = item.file
-                    else:
-                        value = item.value
+                    value = item.file if item.filename else item.value
                     post_data.setdefault(item.name, []).append(value)
 
                 request = teapot.request.Request.construct_from_http(
