@@ -24,3 +24,6 @@ point you like to modify.
 * Regex path formatter
 
   This has some special difficulty, because unselecting is everything but trivial.
+
+* Think about file splitting. I know that pythoneers tend to love large files,
+  but I start to get a _bad_, uneasy feeling for the teapot/routing.py file.
