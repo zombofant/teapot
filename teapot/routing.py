@@ -772,8 +772,9 @@ class ArgumentSelector(Selector):
     """
     This abstract :class:`Selector` is the base class for request argument
     selectors that pick a specified argument from the set of all available
-    arguments. Popular examples of such selectors are the :class:`queryarg`
-    or the :class:`postarg` selector respectively. It behaves as follows:
+    arguments. Popular examples of such selectors are the
+    :class:`queryarg`, the :class:`postarg` or the :class:`cookie`
+    selector respectively. It behaves as follows:
 
     First, *argname* is looked up in the request data. The list of arguments
     passed with that key is extracted and we call that list *args*. The result
@@ -962,7 +963,8 @@ class ArgumentsSelector(Selector):
     This abstract :class:`Selector` is the base class for request argument
     selectors that select all available arguments and pass them as a
     :data:`dict` to the final routable. Popular examples of such selectors
-    are the :class:`queryargs` or the :class:`postargs` selector respectively.
+    are the :class:`queryargs`, the :class:`postargs` or the
+    :class:`cookies` selector respectively.
 
     If *destarg* is :class:`None` the dict is appended to the argument
     list of the final routable.
@@ -1555,7 +1557,7 @@ class postargs(ArgumentsSelector):
 class cookie(ArgumentSelector):
     """
     This :class:`ArgumentSelector` selects all cookies with the given name and
-    passes their values to the final routable.
+    passes them to the final routable.
     """
     def get_data_dict(self, request):
         return request.cookie_data
