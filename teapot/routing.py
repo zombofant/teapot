@@ -501,9 +501,10 @@ class Class(Group):
     def __init__(self,
                  cls_routenodes,
                  instance_routenodes,
-                 selectors=[],
+                 selectors=None,
                  **kwargs):
-        super().__init__(selectors, cls_routenodes, **kwargs)
+        super().__init__([] if selectors is None else selectors,
+                         cls_routenodes, **kwargs)
         self.instance_routenodes = instance_routenodes
         self._class_routenodes_initialized = False
 
