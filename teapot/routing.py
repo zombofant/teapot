@@ -1719,8 +1719,6 @@ class Router:
         It is expected to either return the response or raise a
         :class:`~teapot.errors.ResponseError` exception.
         """
-        print(response.last_modified)
-        print(request.if_modified_since)
         if response.last_modified is not None and \
            request.if_modified_since is not None:
             if abs((response.last_modified -
