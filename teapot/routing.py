@@ -963,7 +963,7 @@ class RequestArgumentsSelector(Selector):
         super().__init__(**kwargs)
         self._destarg = destarg
 
-    abc.abstractmethod
+    @abc.abstractmethod
     def get_data_dict(self, request):
         raise NotImplementedError("no data can be get in {!r}".format(self))
 
