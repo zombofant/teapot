@@ -53,6 +53,14 @@ class Type:
             self.__subtype,
             repr(self.__parameters))
 
+    def __eq__(self, other):
+        return (self.__type == other.__type and
+                self.__subtype == other.__subtype and
+                self.__parameters == other.__parameters)
+
+    def __neq__(self, other):
+        return not (self == other)
+
 Type.text_plain = Type("text", "plain")
 
 class CaseFoldedDict(dict):
