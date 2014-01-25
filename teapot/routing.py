@@ -1753,12 +1753,6 @@ class Router:
                     self.handle_charset_negotiation_failure(
                         self, request, response))
                 return
-
-            if response.body is None:
-                # function generates the data
-                yield response
-                yield from result
-                return
         else:
             response = result
             try:
@@ -1775,12 +1769,13 @@ class Router:
         # we wrap the response headers and everything else into the generator
         # format
         yield response
-        if hasattr(response.body, "__iter__") and \
-           not isinstance(response.body, bytes):
+        if response.body is None:
+            yield from result
+        elif (hasattr(response.body, "__iter__") and
+              not isinstance(response.body, bytes)):
             yield from response.body
-            return
-
-        yield response.body
+        else:
+            yield response.body
 
     def route_request(self, request):
         """
