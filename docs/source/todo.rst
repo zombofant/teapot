@@ -16,8 +16,8 @@ point you like to modify.
 * POST data processing (including file upload, limiting)
 
   * Normal fields should be accessible like query data (but with their own
-    decorator, do not reuse :class:`teapot.routing.query` for that), ideally
-    already decoded into unicode objects
+    decorator, do not reuse :class:`teapot.routing.info.queryargs` for that),
+    ideally already decoded into unicode objects
   * Uploaded files should be accessible as ``bytes`` objects, also through the
     decorator.
 

@@ -3,13 +3,14 @@ import copy
 import io
 
 import teapot
-import teapot.routing
 import teapot.request
+import teapot.routing
+import teapot.routing.info
 
 from datetime import datetime, timedelta
 
 @teapot.rebase("/")
-class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
+class SomeRoutable(metaclass=teapot.RoutableMeta):
     def __init__(self):
         super().__init__()
         self.args = []
@@ -191,7 +192,7 @@ class TestContext(unittest.TestCase):
 
 class Test_formatted_path(unittest.TestCase):
     def assertParses(self, format_spec, formatted, parsed, **kwargs):
-        formatter = teapot.routing.formatted_path(
+        formatter = teapot.formatted_path(
             "{:"+format_spec+"}",
             **kwargs)
         result = formatter.parse(formatted)
@@ -203,7 +204,7 @@ class Test_formatted_path(unittest.TestCase):
         self.assertEqual(numbered[0], parsed)
 
     def assertParsesNot(self, format_spec, formatted, **kwargs):
-        formatter = teapot.routing.formatted_path(
+        formatter = teapot.formatted_path(
             "{:"+format_spec+"}",
             **kwargs)
         result = formatter.parse(formatted)
@@ -242,7 +243,7 @@ class Test_formatted_path(unittest.TestCase):
         self.assertParsesNot("2.1f", "0.1", strict=True)
 
     def test_parse_multiple(self):
-        formatter = teapot.routing.formatted_path(
+        formatter = teapot.formatted_path(
             "foo: {:.2f}, bar: {baz:d}")
         result = formatter.parse("foo: +3.14159, bar: 42rem")
         self.assertTrue(result)
@@ -279,7 +280,7 @@ class TestRoutingMeta(unittest.TestCase):
         instance = Test()
         self.assertTrue(teapot.isroutable(instance))
         info1 = teapot.getrouteinfo(instance)
-        self.assertNotIsInstance(info1, teapot.routing.Class)
+        self.assertNotIsInstance(info1, teapot.routing.info.Class)
         self.assertFalse(hasattr(info1, "_instanceroutables"))
         info2 = teapot.getrouteinfo(instance)
         self.assertIs(info1, info2)
