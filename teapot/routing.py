@@ -158,11 +158,10 @@ import copy
 import functools
 import string
 import re
+import logging
 
 import teapot.errors
 import teapot.request
-
-import logging
 
 logger = logging.getLogger(__name__)
 
