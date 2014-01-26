@@ -991,6 +991,15 @@ class rebase(Selector):
     A path selector selects a static portion of the current request
     path. If the current path does not begin with the given *prefix*,
     the selection fails.
+
+    Example::
+
+        @teapot.rebase("/foo")
+        class MyRoutable(metaclass=teapot.routing.RoutableMeta):
+
+            @teapot.route("/bar")
+            def handle_foo_bar(self):
+                \"\"\"this will match /foo/bar\"\"\"
     """
 
     def __init__(self, prefix, **kwargs):
