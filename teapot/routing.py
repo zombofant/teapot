@@ -999,7 +999,7 @@ class rebase(Selector):
 
             @teapot.route("/bar")
             def handle_foo_bar(self):
-                \"\"\"this will match /foo/bar\"\"\"
+                \"\"\"this will match requests to /foo/bar\"\"\"
     """
 
     def __init__(self, prefix, **kwargs):
