@@ -49,6 +49,64 @@ of the function signature).
 To work around this, a safe way is to only use positional arguments for the
 catchall argument and otherwise only keyword arguments.
 
+Return protocols
+================
+
+Return protocols define the kind of values returned by the routed methods. They
+are defined (or supported) by the interface which communicates with the client
+(the HTTP interface). However, the default :class:`Router` supports conversion
+from different return protocols to the unified return protocol which MUST be
+supported by every client interface.
+
+The default :class:`Router` supports three return protocols. In addition to the
+specified return values, a callable may also throw
+:class:`~teapot.errors.ResponseError` instances. In that case, the thrown
+response is treated as if the callable had returned it via the return-by-value
+protocol.
+
+return-by-generator
+-------------------
+
+The callable is a generator or returns an iterable. The first element of that
+iterable is a :class:`~teapot.response.Response` instance with a :data:`None`
+value in the :attr:`~teapot.response.Response.body` attribute. The remaining
+elements are :class:`bytes` instances which constitute the body of the
+response.
+
+The callable takes care of properly encoding the response in a way which the
+clients understands.
+
+.. note::
+
+   This is the protocol returned by the :class:`Router` intermediate layer and
+   it MUST be natively supported by all client interfaces. Client interfaces
+   MUST NOT check for the body attribute of the response, except if they also
+   implement the other return protocols (not recommended).
+
+return-by-generator-with-body
+-----------------------------
+
+The callable is a generator or returns an iterable. The first element of that
+iterable is a :class:`~teapot.response.Response` instance with a proper value in
+the :attr:`~teapot.response.Response.body` attribute. After charset
+negotiation (via :meth:`~teapot.response.Response.negotiate_charset`), the
+:attr:`~teapot.response.Response.body` attribute must be a :class:`bytes`
+object or :data:`None`, if no body is to be returned. It is forwarded as the
+response body to the client interface.
+
+If the iterator has a :attr:`close` attribute, it is called. The remainder of
+the iterator is ignored.
+
+return-by-value
+---------------
+
+The callable returns a single value. It is a :class:`~teapot.response.Response`
+instance with a proper value in the :attr:`~teapot.response.Response.body`
+attribute. After charset negotiation, the :attr:`~teapot.response.Response.body`
+attribute must be either an object supporting the buffer protocol
+(e.g. :class:`bytes`) or :data:`None`, if no response body is desired. It is
+forwarded as the response body to the client interface.
+
 Decorators for functions and methods
 ====================================
 
@@ -1892,7 +1950,12 @@ class Router:
                         self, request, response))
                 return
 
-        response = self.pre_headers_hook(request, response)
+        try:
+            response = self.pre_headers_hook(request, response)
+        except:
+            if hasattr(result, "close"):
+                result.close()
+            raise
 
         # function does not want to return any data by itself
         # we wrap the response headers and everything else into the generator
@@ -1900,11 +1963,14 @@ class Router:
         yield response
         if response.body is None:
             yield from result
-        elif (hasattr(response.body, "__iter__") and
-              not isinstance(response.body, bytes)):
-            yield from response.body
         else:
-            yield response.body
+            if hasattr(result, "close"):
+                result.close()
+            if (    hasattr(response.body, "__iter__") and
+                    not isinstance(response.body, bytes)):
+                yield from response.body
+            else:
+                yield response.body
 
     def route_request(self, request):
         """
