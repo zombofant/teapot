@@ -5,6 +5,13 @@ import teapot.response
 import teapot.accept
 import teapot.mime
 
+class Test_lookup_response_message(unittest.TestCase):
+    def test_default(self):
+        self.assertEqual(teapot.response.lookup_response_message(0),
+                         "Unknown Status")
+        self.assertEqual(teapot.response.lookup_response_message(0, "foobar"),
+                         "foobar")
+
 class TestResponse(unittest.TestCase):
     def test_charset_negotiation(self):
         client_preferences = teapot.accept.CharsetPreferenceList([

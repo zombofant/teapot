@@ -8,7 +8,12 @@ import teapot.timeutils
 
 logger = logging.getLogger(__name__)
 
-def lookup_response_message(response_code):
+def lookup_response_message(response_code, default="Unknown Status"):
+    """
+    Look up the status code message as defined in RFC 2616 using the given
+    *response_code*. If the *response_code* is unknown, the given *default* is
+    used.
+    """
     return {
         100: "Continue",
         101: "Switching Protocols",
@@ -51,7 +56,7 @@ def lookup_response_message(response_code):
         503: "Service Unavailable",
         504: "Gateway Timeout",
         505: "HTTP Version Not Supported",
-    }.get(response_code, "Unknown status")
+    }.get(response_code, default)
 
 class Response:
     charset_preferences = [
