@@ -94,6 +94,24 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
         # correct method was picked
         return "image/png"
 
+    @teapot.method(teapot.request.Method.GET,
+                   teapot.request.Method.HEAD)
+    @teapot.route("method")
+    def process_GET(self):
+        self.args = ["GET"]
+        self.kwargs = {}
+
+    @teapot.method(teapot.request.Method.POST)
+    @teapot.route("method")
+    def process_POST(self):
+        self.args = ["POST"]
+        self.kwargs = {}
+
+    @teapot.method(teapot.request.Method.PUT)
+    @teapot.route("method")
+    def process_PUT(self):
+        self.args = ["PUT"]
+        self.kwargs = {}
 
 class TestContext(unittest.TestCase):
     method = teapot.request.Method.GET
@@ -543,6 +561,31 @@ class TestRouting(unittest.TestCase):
         success, data = teapot.routing.find_route(self._root, request)
         self.assertTrue(success)
         self.assertEqual(data(), "text/plain")
+
+    def test_request_method(self):
+        args, kwargs = self.get_routed_args(
+            path="/method",
+            request_method=teapot.request.Method.GET)
+        self.assertSequenceEqual(args, ["GET"])
+        self.assertFalse(kwargs)
+
+        args, kwargs = self.get_routed_args(
+            path="/method",
+            request_method=teapot.request.Method.HEAD)
+        self.assertSequenceEqual(args, ["GET"])
+        self.assertFalse(kwargs)
+
+        args, kwargs = self.get_routed_args(
+            path="/method",
+            request_method=teapot.request.Method.POST)
+        self.assertSequenceEqual(args, ["POST"])
+        self.assertFalse(kwargs)
+
+        args, kwargs = self.get_routed_args(
+            path="/method",
+            request_method=teapot.request.Method.PUT)
+        self.assertSequenceEqual(args, ["PUT"])
+        self.assertFalse(kwargs)
 
     def tearDown(self):
         del self._root

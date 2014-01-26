@@ -143,6 +143,8 @@ the route can further be refined using the following decorators:
 
 .. autoclass:: content_type
 
+.. autoclass:: method
+
 
 Utilities to get information from routables
 ===========================================
@@ -237,6 +239,7 @@ __all__ = [
     "postarg",
     "cookie",
     "content_type",
+    "method",
     "RoutableMeta"]
 
 def isroutable(obj):
@@ -1653,6 +1656,27 @@ class content_type(Selector):
 
     def unselect(self, request):
         pass
+
+class method(Selector):
+    """
+    Select against the given HTTP *request methods*. If the request uses any of
+    the given methods, the selector succeeds. At least one method must be
+    supplied.
+
+    For unrouting, the first method is used.
+    """
+
+    def __init__(self, unroute_request_method, *more_request_methods, **kwargs):
+        super().__init__(**kwargs)
+        self._request_method_default = unroute_request_method
+        self._request_methods = set(more_request_methods)
+        self._request_methods.add(unroute_request_method)
+
+    def select(self, request):
+        return request.method in self._request_methods
+
+    def unselect(self, request):
+        request.method = self._request_method_default
 
 def route(path, *paths, order=0, make_constructor_routable=False):
     """
