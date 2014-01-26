@@ -80,6 +80,21 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
         self.args = request
         self.kwargs = {}
 
+    @teapot.content_type("text/plain", None)
+    @teapot.route("content-negotiation", order=1)
+    def content_plaintext(self):
+        # not an actual controller, but useful in testing to detect that the
+        # correct method was picked
+        return "text/plain"
+
+    @teapot.content_type("image/png")
+    @teapot.route("content-negotiation", order=2)
+    def content_png(self):
+        # not an actual controller, but useful in testing to detect that the
+        # correct method was picked
+        return "image/png"
+
+
 class TestContext(unittest.TestCase):
     method = teapot.request.Method.GET
     path = "/foo/bar"
@@ -459,6 +474,76 @@ class TestRouting(unittest.TestCase):
 
         self.assertIs(request, root.args)
 
+    def test_content_negotiation(self):
+        request = teapot.request.Request(
+            local_path="/content-negotiation",
+            accept_info=(
+                teapot.accept.AcceptPreferenceList([
+                    teapot.accept.AcceptPreference("image/png", q=1.0),
+                    teapot.accept.AcceptPreference("text/plain", q=0.9)]),
+                teapot.accept.all_languages(),
+                teapot.accept.all_charsets()))
+
+        success, data = teapot.routing.find_route(self._root, request)
+        self.assertTrue(success)
+        self.assertEqual(data(), "image/png")
+
+        # test that catchall does not take precedence
+        request = teapot.request.Request(
+            local_path="/content-negotiation",
+            accept_info=(
+                teapot.accept.AcceptPreferenceList([
+                    teapot.accept.AcceptPreference("image/png", q=1.0),
+                    teapot.accept.AcceptPreference("text/html", q=1.0)]),
+                teapot.accept.all_languages(),
+                teapot.accept.all_charsets()))
+
+        success, data = teapot.routing.find_route(self._root, request)
+        self.assertTrue(success)
+        self.assertEqual(data(), "image/png")
+
+        # test basic content negotiation
+        request = teapot.request.Request(
+            local_path="/content-negotiation",
+            accept_info=(
+                teapot.accept.AcceptPreferenceList([
+                    teapot.accept.AcceptPreference("image/png", q=0.9),
+                    teapot.accept.AcceptPreference("text/plain", q=1.0)]),
+                teapot.accept.all_languages(),
+                teapot.accept.all_charsets()))
+
+        success, data = teapot.routing.find_route(self._root, request)
+        self.assertTrue(success)
+        self.assertEqual(data(), "text/plain")
+
+        # test that the catchall works
+        request = teapot.request.Request(
+            local_path="/content-negotiation",
+            accept_info=(
+                teapot.accept.AcceptPreferenceList([
+                    teapot.accept.AcceptPreference("text/html", q=1.0)]),
+                teapot.accept.all_languages(),
+                teapot.accept.all_charsets()))
+
+        success, data = teapot.routing.find_route(self._root, request)
+        self.assertTrue(success)
+        self.assertEqual(data(), "text/plain")
+
+        # this test makes sure that the order= attribute takes precedence if the
+        # client is okay with multiple of our options
+        request = teapot.request.Request(
+            local_path="/content-negotiation",
+            accept_info=(
+                teapot.accept.AcceptPreferenceList([
+                    teapot.accept.AcceptPreference("text/plain", q=1.0),
+                    teapot.accept.AcceptPreference("text/png", q=1.0)]),
+                teapot.accept.all_languages(),
+                teapot.accept.all_charsets()))
+
+        success, data = teapot.routing.find_route(self._root, request)
+        self.assertTrue(success)
+        self.assertEqual(data(), "text/plain")
+
     def tearDown(self):
         del self._root
 
@@ -565,20 +650,6 @@ class TestRouter(unittest.TestCase):
 
             yield "ohai".encode(response.content_type.charset)
 
-        @teapot.content_type("text/plain", None)
-        @teapot.route("/content-negotiation", order=1)
-        def content_plaintext(self):
-            # not an actual controller, but useful in testing to detect that the
-            # correct method was picked
-            return "text/plain"
-
-        @teapot.content_type("image/png")
-        @teapot.route("/content-negotiation", order=2)
-        def content_png(self):
-            # not an actual controller, but useful in testing to detect that the
-            # correct method was picked
-            return "image/png"
-
     def get_router(self):
         return teapot.routing.Router(
             self._root)
@@ -606,77 +677,6 @@ class TestRouter(unittest.TestCase):
             list(router.route_request(request))
 
         self.assertEqual(ctx.exception.http_response_code, 304)
-
-    def test_content_negotiation(self):
-        request = teapot.request.Request(
-            local_path="/content-negotiation",
-            accept_info=(
-                teapot.accept.AcceptPreferenceList([
-                    teapot.accept.AcceptPreference("image/png", q=1.0),
-                    teapot.accept.AcceptPreference("text/plain", q=0.9)]),
-                teapot.accept.all_languages(),
-                teapot.accept.all_charsets()))
-
-        success, data = teapot.routing.find_route(self._root, request)
-        self.assertTrue(success)
-        self.assertEqual(data(), "image/png")
-
-        # test that catchall does not take precedence
-        request = teapot.request.Request(
-            local_path="/content-negotiation",
-            accept_info=(
-                teapot.accept.AcceptPreferenceList([
-                    teapot.accept.AcceptPreference("image/png", q=1.0),
-                    teapot.accept.AcceptPreference("text/html", q=1.0)]),
-                teapot.accept.all_languages(),
-                teapot.accept.all_charsets()))
-
-        success, data = teapot.routing.find_route(self._root, request)
-        self.assertTrue(success)
-        self.assertEqual(data(), "image/png")
-
-        # test basic content negotiation
-        request = teapot.request.Request(
-            local_path="/content-negotiation",
-            accept_info=(
-                teapot.accept.AcceptPreferenceList([
-                    teapot.accept.AcceptPreference("image/png", q=0.9),
-                    teapot.accept.AcceptPreference("text/plain", q=1.0)]),
-                teapot.accept.all_languages(),
-                teapot.accept.all_charsets()))
-
-        success, data = teapot.routing.find_route(self._root, request)
-        self.assertTrue(success)
-        self.assertEqual(data(), "text/plain")
-
-        # test that the catchall works
-        request = teapot.request.Request(
-            local_path="/content-negotiation",
-            accept_info=(
-                teapot.accept.AcceptPreferenceList([
-                    teapot.accept.AcceptPreference("text/html", q=1.0)]),
-                teapot.accept.all_languages(),
-                teapot.accept.all_charsets()))
-
-        success, data = teapot.routing.find_route(self._root, request)
-        self.assertTrue(success)
-        self.assertEqual(data(), "text/plain")
-
-        # this test makes sure that the order= attribute takes precedence if the
-        # client is okay with multiple of our options
-        request = teapot.request.Request(
-            local_path="/content-negotiation",
-            accept_info=(
-                teapot.accept.AcceptPreferenceList([
-                    teapot.accept.AcceptPreference("text/plain", q=1.0),
-                    teapot.accept.AcceptPreference("text/png", q=1.0)]),
-                teapot.accept.all_languages(),
-                teapot.accept.all_charsets()))
-
-        success, data = teapot.routing.find_route(self._root, request)
-        self.assertTrue(success)
-        self.assertEqual(data(), "text/plain")
-
 
     def tearDown(self):
         del self._root
