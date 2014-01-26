@@ -158,6 +158,7 @@ import copy
 import functools
 import string
 import re
+import itertools
 import logging
 
 import teapot.errors
@@ -175,6 +176,7 @@ __all__ = [
     "queryarg",
     "postarg",
     "cookie",
+    "content_type",
     "RoutableMeta"]
 
 def isroutable(obj):
@@ -286,6 +288,8 @@ class Context:
         super().__init__()
         self._args = []
         self._kwargs = {}
+        self.content_types = None
+        self.languages = None
 
         self._accept_content = \
             accept_content \
@@ -309,6 +313,8 @@ class Context:
         result = Context.from_request(self)
         result._args = copy.copy(self._args)
         result._kwargs = copy.copy(self._kwargs)
+        result.content_types = copy.copy(self.content_types)
+        result.languages = copy.copy(self.languages)
         return result
 
     @property
@@ -401,11 +407,12 @@ class Info(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def _do_route(self, localrequest):
         """
-        Subclasses must implement this. This method has to finalize or
-        forward the routing to other :class:`Info` instances.
+        Subclasses must implement this. This *generator* method has to finalize
+        or forward the routing to other :class:`Info` instances.
 
         The request object passed is the modified and rebased request.
         """
+        return []
 
     def route(self, request):
         """
@@ -426,10 +433,11 @@ class Info(metaclass=abc.ABCMeta):
             if not all(selector.select(localrequest)
                        for selector in self.selectors):
                 # not all selectors did match
-                return False, None
+                return None
         except teapot.errors.ResponseError as err:
-            return False, err
-        return self._do_route(localrequest)
+            return err
+        result = yield from self._do_route(localrequest)
+        return result
 
     def unroute(self, request):
         """
@@ -462,13 +470,11 @@ class Group(Info):
         try:
             logger.debug("entering routing group %r", self)
             for node in self.routenodes:
-                success, data = node.route(localrequest)
-                if success:
-                    return success, data
-                elif data:
-                    first_error = first_error or data
+                error = yield from node.route(localrequest)
+                if first_error is None and error is not None:
+                    first_error = error
 
-            return False, first_error
+            return first_error
         finally:
             logger.debug("leaving routing group %r", self)
 
@@ -558,10 +564,13 @@ class Leaf(Info):
         self.callable = callable
 
     def _do_route(self, localrequest):
-        return True, functools.partial(
-            self.callable,
-            *localrequest.args,
-            **localrequest.kwargs)
+        yield RouteDestination(
+            functools.partial(
+                self.callable,
+                *localrequest.args,
+                **localrequest.kwargs),
+            content_types=localrequest.content_types,
+            languages=localrequest.languages)
 
 class MethodLeaf(Leaf):
     """
@@ -687,6 +696,23 @@ class RoutableMeta(type):
             instance_routenodes)
 
         return type.__new__(mcls, clsname, bases, namespace)
+
+
+class RouteDestination:
+    def __init__(self,
+                 callable,
+                 content_types=None,
+                 languages=None,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self._callable = callable
+        self.content_types = {None} if content_types is None \
+                             else set(content_types)
+        self.languages = {None} if languages is None \
+                         else set(languages)
+
+    def __call__(self):
+        return self._callable()
 
 
 class Selector(metaclass=abc.ABCMeta):
@@ -1517,6 +1543,57 @@ class cookie(ArgumentSelector):
     def get_data_dict(self, request):
         return request.cookie_data
 
+class content_type(Selector):
+    """
+    This :class:`Selector` adds a result content type to the possible results of
+    the routable. If no ``content_type`` selector is attached to a routable, it
+    is assumed that it can serve all content types and will perform content
+    negotiation by itself.
+
+    Specify the supported content types as arguments to the decorator. It is
+    possible to attach the decorator multiple times. The effect is the same as
+    if the content types had been passed one by one to one call of the
+    decorator.
+
+    Example::
+
+        @teapot.content_type(
+            "text/plain"),
+            None)
+        @teapot.route("/")
+        def index_text(self):
+            pass
+
+        @teapot.content_type("image/png")
+        @teapot.route("/")
+        def index_image(self):
+            pass
+
+    In the above example, if a request where ``image/png`` is the most preferred
+    MIME type is received, ``index_image`` will be picked. If a request with
+    none of the above mentioned content types is received, ``index_text`` will
+    be picked, because it has the catch all content type :data:`None`. Any
+    specific content type takes precedence over :data:`None`, which is why
+    ``index_image`` is picked in favour of ``index_text`` if the client accepts
+    ``image/png``, but not ``text/plain``.
+
+    For unrouting, this selector has no effect.
+    """
+
+    def __init__(self, *content_types, **kwargs):
+        super().__init__(**kwargs)
+        self._content_types = frozenset(content_types)
+
+    def select(self, request):
+        if request.content_types is not None:
+            request.content_types |= self._content_types
+        else:
+            request.content_types = set(self._content_types)
+        return True
+
+    def unselect(self, request):
+        pass
+
 def route(path, *paths, order=0, make_constructor_routable=False):
     """
     Decorate a (static-, class- or instance-) method or function with routing
@@ -1600,17 +1677,84 @@ def traverse_to_root(routeinfo):
         yield routeinfo
         routeinfo = routeinfo.parent
 
+def get_routing_result(routecall):
+    error = yield from routecall
+    if error is not None:
+        raise error
+
+def map_unique(func, l):
+    values = set()
+    for item in l:
+        value = func(item)
+        if value not in values:
+            values.add(value)
+            yield value
+
 def find_route(root, request):
     """
     Tries to find a route for the given *request* inside *root*, which
     must be an object with routing information.
+
+    This first takes all candidates and then performs content negotiation,
+    whereas result content type takes precedence over language selectors.
     """
 
     if not isroutable(root):
         raise TypeError("{!r} is not routable".format(root))
 
     localrequest = Context.from_request(request)
-    return getrouteinfo(root).route(localrequest)
+    error = None
+    try:
+        candidates = list(get_routing_result(
+            getrouteinfo(root).route(localrequest)))
+    except teapot.errors.ResponseError as err:
+        error = err
+
+    if not candidates:
+        return False, error
+
+    # content_types = [
+    #     (candidate_type, candidate)
+    #     for candidate in candidates
+    #     for candidate_type in candidate.content_types
+    # ]
+
+    unique_content_types = list(map_unique(
+        lambda x: x,
+        (content_type
+         for candidate in candidates
+         for content_type in candidate.content_types)))
+
+    content_type_candidates = request.accept_content.get_candidates(
+        [teapot.accept.AcceptPreference(content_type, q=1.0)
+         for content_type in unique_content_types
+         if content_type is not None],
+        match_wildcard=True)
+
+    candidate = None
+
+    if not content_type_candidates:
+        if None in unique_content_types:
+            best_match = None
+        else:
+            # no matches at all, we use our preferences.
+            # FIXME: check for HTTP/1.1, otherwise we might have to reply with
+            # 406.
+            candidate = candidates[0]
+    else:
+        # if we ever do more than one lookup here, we might be better off with a
+        # dictionary: type_map = dict(reversed(content_types))
+
+        # FIXME: language selection
+        best_match = content_type_candidates.pop()[1]
+
+    if candidate is None:
+        # we will find a match here
+        for candidate in candidates:
+            if best_match in candidate.content_types:
+                break
+
+    return True, candidate
 
 def unroute(routable, *args, template_request=None, **kwargs):
     """
