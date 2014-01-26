@@ -95,6 +95,11 @@ class Application:
         raise teapot.errors.make_response_error(
             400, "cannot decode {!r} as utf8".format(s))
 
+    def handle_exception(self, exc):
+        logger.exception(exc)
+        raise teapot.errors.make_response_error(
+            500, teapot.response.lookup_response_message(500))
+
     def handle_path_decoding_error(self, path):
         """
         Forward *path* to :meth:`handle_decoding_error`.
@@ -151,12 +156,12 @@ class Application:
                 # forward to next layer of processing
                 raise
             except Exception as err:
-                logger.exception(err)
-                raise teapot.errors.make_response_error(
-                    500, str(err))
+                yield from self.handle_exception(err)
+                return
         except teapot.errors.ResponseError as err:
-            return self.handle_pre_start_response_error(
+            yield from self.handle_pre_start_response_error(
                 err, start_response)
+            return
 
         start_response(
             "{:03d} {}".format(
