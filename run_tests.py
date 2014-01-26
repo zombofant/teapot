@@ -42,6 +42,8 @@ import itertools
 import platform
 import time
 
+PROGNAME = os.path.basename(sys.argv[0])
+
 STATE_PASS = 0
 STATE_SKIP = 1
 STATE_ERROR = 2
@@ -389,7 +391,7 @@ results = AwesomeTextResult(args.tty_width, args.quiet, args.strip_module_prefix
 results.tty_width = tty_width
 tests = loader.discover(args.only_sub_dir, args.pattern, args.project_dir)
 if tests.countTestCases() == 0:
-    print("unitest.py: error: no tests found", file=sys.stderr)
+    print("{}: error: no tests found".format(PROGNAME), file=sys.stderr)
     sys.exit(7)
 if not args.quiet:
     print("Running {0} unittests (detected from auto-discovery)".format(tests.countTestCases()))
