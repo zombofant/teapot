@@ -365,7 +365,6 @@ class Context:
                 self._cookie_data = {}
             else:
                 self._cookie_data = self._original_request.cookie_data
-        print(self._cookie_data)
         return self._cookie_data
 
     @property
