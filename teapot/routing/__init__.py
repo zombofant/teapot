@@ -49,6 +49,8 @@ of the function signature).
 To work around this, a safe way is to only use positional arguments for the
 catchall argument and otherwise only keyword arguments.
 
+.. _teapot.routing.return_protocols:
+
 Return protocols
 ================
 
