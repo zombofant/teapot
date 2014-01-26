@@ -75,15 +75,9 @@ the route can further be refined using the following decorators:
 
 .. autoclass:: queryarg
 
-.. autoclass:: queryargs
-
 .. autoclass:: postarg
 
-.. autoclass:: postargs
-
 .. autoclass:: cookie
-
-.. autoclass:: cookies
 
 .. autoclass:: formatted_path
 
@@ -126,8 +120,6 @@ data class on which the selectors operate.
    :members: select, unselect, __call__
 
 .. autoclass:: ArgumentSelector
-
-.. autoclass:: ArgumentsSelector
 
 .. autoclass:: Context
    :members:
@@ -182,9 +174,8 @@ __all__ = [
     "route",
     "rebase",
     "queryarg",
-    "queryargs",
     "postarg",
-    "postargs",
+    "cookie",
     "RoutableMeta"]
 
 def isroutable(obj):
@@ -957,53 +948,6 @@ class ArgumentSelector(Selector):
 
         args = list(map(str, args))
         self.get_data_dict(request).setdefault(self._argname, [])[:0] = args
-
-class ArgumentsSelector(Selector):
-    """
-    This abstract :class:`Selector` is the base class for request argument
-    selectors that select all available arguments and pass them as a
-    :data:`dict` to the final routable. Popular examples of such selectors
-    are the :class:`queryargs`, the :class:`postargs` or the
-    :class:`cookies` selector respectively.
-
-    If *destarg* is :class:`None` the dict is appended to the argument
-    list of the final routable.
-
-    If *destarg* is set, the resulting :class:`dict` of all arguments is
-    passed as a keyword argument with the given name.
-    """
-    def __init__(self, destarg=None, **kwargs):
-        super().__init__(**kwargs)
-        self._destarg = destarg
-
-    @abc.abstractmethod
-    def get_data_dict(self, request):
-        """
-        :class:`ArgumentsSelector` subclasses must implement this method
-        to supply the data dictionary.
-        """
-        raise NotImplementedError("no data can be get in {!r}".format(self))
-
-    def select(self, request):
-        args = {}
-        if request.query_data is not None:
-            args = self.get_data_dict(request)
-
-        if self._destarg is None:
-            request.args.append(args)
-        else:
-            request.kwargs[self._destarg] = args
-
-        return True
-
-    def unselect(self, request):
-        if self._destarg is None:
-            args = request.args.pop()
-        else:
-            args = request.kwargs[self._destarg]
-        self.get_data_dict(request).clear()
-        self.get_data_dict(request).update(args)
-
 
 class AnnotationProcessor(Selector):
     def inject_request(request, argname):

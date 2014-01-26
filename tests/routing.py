@@ -91,6 +91,7 @@ class TestContext(unittest.TestCase):
     scheme = "https"
     query_data = {}
     post_data = {}
+    cookie_data = {}
     accept_info = teapot.accept.all_content_types(), \
                   teapot.accept.all_languages(), \
                   teapot.accept.all_charsets()
@@ -101,6 +102,7 @@ class TestContext(unittest.TestCase):
             self.path,
             self.scheme,
             self.query_data,
+            self.cookie_data,
             self.accept_info,
             "",
             io.BytesIO(b""),
@@ -445,6 +447,7 @@ class TestRouting(unittest.TestCase):
             teapot.request.Method.GET,
             "/annotationtest",
             "http",
+            {},
             {},
             (
                 teapot.accept.all_content_types(),
