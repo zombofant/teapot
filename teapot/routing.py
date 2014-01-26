@@ -1458,17 +1458,15 @@ class one_of(Selector):
 
 class queryarg(ArgumentSelector):
     """
-    A :class:`ArgumentSelector` implementation that looks up the query
-    data for a specified argument and passes it to the final routable.
-    """
+    This :class:`ArgumentSelector` implementation looks up an HTTP
+    query argument.
 
-    def get_data_dict(self, request):
-        return request.query_data
+    Example::
 
-class queryargs(ArgumentsSelector):
-    """
-    A :class:`ArgumentsSelector` implementation that selects all available
-    query arguments and passes them to the final routable.
+        @teapot.routing.queryarg("argname", "my_arg", str)
+        @teapot.route("/query")
+        def handle_query(self, my_arg):
+            \"\"\"do something\"\"\"
     """
 
     def get_data_dict(self, request):
@@ -1476,23 +1474,19 @@ class queryargs(ArgumentsSelector):
 
 class postarg(ArgumentSelector):
     """
-    A :class:`ArgumentSelector` implementation that looks up all POST
-    arguments with the specified name and passes them to the final routable.
+    This :class:`ArgumentSelector` implementation looks up an HTTP
+    POST argument.
 
-    File uploads will be passed as :data:`file-like` objects. You should not
-    call read() on them, since this will load the whole file into memory.
-    """
+    File uploads will be passed as :data:`file-like` objects. You
+    should not call read() on them, since this will load the whole
+    file into memory.
 
-    def get_data_dict(self, request):
-        return request.post_data
+    Example::
 
-class postargs(ArgumentsSelector):
-    """
-    A :class:`ArgumentsSelector` implementation that selects all available
-    POST arguments and passes them to the final routable.
-
-    File uploads will be passed as :data:`file-like` objects. You should not
-    call read() on them, since this will load the whole file into memory.
+        @teapot.routing.postarg("argname", "my_arg")
+        @teapot.route("/post")
+        def handle_post(self, my_arg):
+            \"\"\"do something\"\"\"
     """
 
     def get_data_dict(self, request):
@@ -1500,16 +1494,15 @@ class postargs(ArgumentsSelector):
 
 class cookie(ArgumentSelector):
     """
-    This :class:`ArgumentSelector` selects all cookies with the given name and
-    passes them to the final routable.
-    """
-    def get_data_dict(self, request):
-        return request.cookie_data
+    This :class:`ArgumentSelector` implementation looks up an HTTP
+    cookie.
 
-class cookies(ArgumentsSelector):
-    """
-    This :class:`ArgumentsSelector` implementation selects all cookies and
-    passes them to the final routable.
+    Example::
+
+        @teapot.routing.cookie("cookiename", "cookie")
+        @teapot.route("/")
+        def handle_index(self, cookie):
+            \"\"\"do something\"\"\"
     """
     def get_data_dict(self, request):
         return request.cookie_data
