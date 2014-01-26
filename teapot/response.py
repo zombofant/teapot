@@ -1,3 +1,20 @@
+"""
+Response objects
+################
+
+To encapsulate responses, we use :class:`Response` objects, which contain the
+neccessary information to create a suitable response for the client.
+
+.. autoclass:: Response
+   :members:
+
+.. autofunction:: lookup_response_message
+
+.. automodule:: teapot.mime
+
+.. automodule:: teapot.errors
+"""
+
 import codecs
 import copy
 import logging
@@ -59,6 +76,27 @@ def lookup_response_message(response_code, default="Unknown Status"):
     }.get(response_code, default)
 
 class Response:
+    """
+    In :class:`Response` instances, response messages to the client are
+    encapsulated.
+
+    The *content_type* must be a :class:`~teapot.mime.Type` instance
+    representing the MIME type of the response, including any parameters (such
+    as ``charset``).
+
+    *body* must be either a :class:`str`, :data:`None` or an object supporting
+    the buffer protocol which forms the response body. If *body* is
+    :data:`None`, a bodyless response is created.
+
+    *response_code* and *response_message* arguments correspond to the HTTP
+    status code including its message. If *response_message* is :data:`None`,
+    the default message for the given code is used, as per
+    :func:`lookup_response_message`.
+
+    *last_modified* may be a :class:`datetime.datetime` object representing the
+    timestamp of last modification of the response.
+    """
+
     charset_preferences = [
         # prefer UTF-8, then go through the other unicode encodings in
         # ascending order of size. prefer little-endian over big-endian
@@ -94,6 +132,11 @@ class Response:
             self.body = self.body.encode(self.content_type.charset)
 
     def get_header_tuples(self):
+        """
+        Return an iterable af tuples which provide key-value pairs the HTTP
+        headers for this response.
+        """
+
         if self.content_type:
             yield ("Content-Type", str(self.content_type))
         if self.last_modified:
@@ -102,6 +145,21 @@ class Response:
 
 
     def negotiate_charset(self, preference_list, strict=False):
+        """
+        If :attr:`body` is a :class:`str`, automatic negotiation of the charset
+        for the response is performed. The *preference_list* must be a
+        :class:`~teapot.accept.CharsetPreferenceList` which constitutes the
+        value of the ``Accept-Charset`` header from the client.
+
+        If *strict* is :data:`True`, :class:`UnicodeEncodeError` is raised if
+        none of the character sets from the *preference_list* can be used to
+        encode the response. Otherwise, a fallback to ``utf-8`` is used, which,
+        if it fails, will also raise :class:`UnicodeEncodeError`.
+
+        Upon successful encoding, :attr:`body` is replaced with a :class:`bytes`
+        instance consisting of the encoded body.
+        """
+
         if not isinstance(self.body, str):
             # we do not change anything for already encoded blobs or iterables
             # or anything like that

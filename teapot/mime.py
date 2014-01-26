@@ -1,8 +1,43 @@
+"""
+MIME type representation
+########################
+
+The :mod:`~teapot.mime` module provides utilities to represent MIME types.
+
+.. autoclass:: Type
+   :members:
+"""
 import copy
 import codecs
 import itertools
 
 class Type:
+    """
+    This is a immutable class which represents a MIME type. Through
+    immutability, instances can be arbitrarily reused.
+
+    *type_* and *subtype* comprise the MIME type. *charset* is the ``charset``
+    attribute, which must be a string representing the encoding. It is
+    canonicalized through :func:`codecs.lookup`.
+
+    *custom_parameters* can be a dictionary adding more custom parameters to the
+    MIME type. Any specific keyword arguments for parameters (such as *charset*)
+    override the settings provided in this dictionary.
+
+    Comparision operators for equality exist. The following attributes provides
+    global instances of commonly used MIME types.
+
+    .. attribute:: text_plain
+
+       ``text/plain`` MIME type.
+
+    .. attribute:: text_html
+
+       ``text/html`` MIME type.
+
+    The following further members exist:
+    """
+
     def __init__(self, type_, subtype,
                  charset=None,
                  custom_parameters={}):
@@ -27,6 +62,9 @@ class Type:
                     custom_parameters=copy.copy(self.__parameters))
 
     def with_charset(self, charset):
+        """
+        Return a copy of this :class:`Type` with a different *charset*.
+        """
         return Type(self.__type, self.__subtype,
                     charset=charset,
                     custom_parameters=copy.copy(self.__parameters))
