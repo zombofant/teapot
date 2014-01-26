@@ -995,7 +995,7 @@ class rebase(Selector):
     Example::
 
         @teapot.rebase("/foo")
-        class MyRoutable(metaclass=teapot.routing.RoutableMeta):
+        class MyRoutable(metaclass=teapot.RoutableMeta):
 
             @teapot.route("/bar")
             def handle_foo_bar(self):
@@ -1474,7 +1474,7 @@ class queryarg(ArgumentSelector):
 
     Example::
 
-        @teapot.routing.queryarg("argname", "my_arg", str)
+        @teapot.queryarg("argname", "my_arg", str)
         @teapot.route("/query")
         def handle_query(self, my_arg):
             \"\"\"do something\"\"\"
@@ -1494,7 +1494,7 @@ class postarg(ArgumentSelector):
 
     Example::
 
-        @teapot.routing.postarg("argname", "my_arg")
+        @teapot.postarg("argname", "my_arg")
         @teapot.route("/post")
         def handle_post(self, my_arg):
             \"\"\"do something\"\"\"
@@ -1510,7 +1510,7 @@ class cookie(ArgumentSelector):
 
     Example::
 
-        @teapot.routing.cookie("cookiename", "cookie")
+        @teapot.cookie("cookiename", "cookie")
         @teapot.route("/")
         def handle_index(self, cookie):
             \"\"\"do something\"\"\"
