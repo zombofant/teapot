@@ -53,6 +53,13 @@ class SomeRoutable(metaclass=teapot.routing.RoutableMeta):
         self.args = args
         self.kwargs = kwargs
 
+    @teapot.cookie("foo", "cookie")
+    @teapot.cookie("foo2", None)
+    @teapot.route("cookietest")
+    def cookietest(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
     @teapot.route("finaltest", order=0)
     def finaltest_1(self):
         self.args = [1]
@@ -398,6 +405,32 @@ class TestRouting(unittest.TestCase):
             {"bar": tuple(values[:2])},
             kwargs)
 
+    def test_cookie(self):
+        header_dict = { "cookie": "foo=bar;foo2=bar2" }
+        root = SomeRoutable()
+        request = teapot.request.Request(
+                local_path="/cookietest",
+                accept_info=(
+                    teapot.accept.all_content_types(),
+                    teapot.accept.all_languages(),
+                    teapot.accept.all_charsets(),
+                ),
+                raw_http_headers=header_dict,
+                )
+
+        self.assertDictEqual(request.cookie_data, {
+            "foo": ["bar"], "foo2": ["bar2"] })
+
+        success, data = teapot.routing.find_route(root, request)
+        self.assertTrue(success)
+        self.assertIsNotNone(data)
+        data()
+
+        self.assertDictEqual(request.cookie_data, {
+            "foo": [], "foo2": [] })
+        self.assertSequenceEqual(root.args, ["bar2"])
+        self.assertDictEqual(root.kwargs, {"cookie": "bar"})
+
     def test_ambigous_nonfinal_routing(self):
         args, kwargs = self.get_routed_args(
             path="/finaltest")
@@ -505,6 +538,13 @@ class TestUnrouting(unittest.TestCase):
             ValueError,
             teapot.routing.unroute,
             self._root.fooquery_single)
+
+    def test_cookie(self):
+        request = teapot.routing.unroute(
+                self._root.cookietest,
+                "bar2", cookie="bar")
+        self.assertDictEqual(request.cookie_data, {
+            "foo": ["bar"], "foo2": ["bar2"] })
 
     def tearDown(self):
         del self._root
