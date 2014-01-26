@@ -141,6 +141,8 @@ the route can further be refined using the following decorators:
 
 .. autoclass:: one_of
 
+.. autoclass:: content_type
+
 
 Utilities to get information from routables
 ===========================================
@@ -171,8 +173,8 @@ Extension API
 If you want to extend the routing or implement custom functionallity for the
 router, the following classes are of special interest for you. The ``Selector``
 class is the base class of all the decorators from the
-:ref:`teapot.routing.routable_decorators` section. The ``Context`` class is the
-data class on which the selectors operate.
+:ref:`teapot.routing.routable_decorators` section. The :class:`Context` class is
+the data class on which the selectors operate.
 
 .. autoclass:: Selector
    :members: select, unselect, __call__
