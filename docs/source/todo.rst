@@ -27,3 +27,20 @@ point you like to modify.
 
 * Think about file splitting. I know that pythoneers tend to love large files,
   but I start to get a _bad_, uneasy feeling for the teapot/routing.py file.
+
+* Template engines could use decorators to supply their meta-information to the
+  routing engine (e.g. supported content types) and hook into the routing
+  process. Example (assuming the template engine is called xsltea)::
+
+    # further teapot decorators here
+    @teapot.route("/", "/index")
+    @xsltea.templated
+    def index(self):
+        # now the return protocol is determined by the template engine --
+        # it must convert the returned values to one of the protocols supported
+        # by teapot
+        # assuming that the engine only requires a file name for a template and
+        # a dict of arguments, it could look like this:
+
+        return ("some_template_file.xsl",
+                {"arg1": "value1", …})
