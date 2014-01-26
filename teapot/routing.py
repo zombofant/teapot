@@ -273,7 +273,6 @@ class Context:
             original_request=original_request,
             path=base.path,
             query_data=copy.copy(base.query_data),
-            cookie_data=copy.copy(base.cookie_data),
             request_method=base.method,
             scheme=base.scheme)
 
@@ -284,8 +283,6 @@ class Context:
                  original_request=None,
                  path="/",
                  query_data=None,
-                 post_data=None,
-                 cookie_data=None,
                  scheme="http"):
         super().__init__()
         self._args = []
@@ -305,8 +302,8 @@ class Context:
         self._original_request = original_request
         self.path = path
         self._query_data = {} if query_data is None else query_data
-        self._post_data = {} if post_data is None else post_data
-        self._cookie_data = {} if cookie_data is None else cookie_data
+        self._post_data = None
+        self._cookie_data = None
         self._scheme = scheme
 
     def __deepcopy__(self, copydict):
@@ -363,6 +360,12 @@ class Context:
 
     @property
     def cookie_data(self):
+        if self._cookie_data is None:
+            if self._original_request is None:
+                self._cookie_data = {}
+            else:
+                self._cookie_data = self._original_request.cookie_data
+        print(self._cookie_data)
         return self._cookie_data
 
     @property

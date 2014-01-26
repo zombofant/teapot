@@ -131,20 +131,11 @@ class Application:
                 query_data = self.decode_query_string(
                     environ.get("QUERY_STRING", ""))
 
-                cookie_data = {}
-                if "HTTP_COOKIE" in environ:
-                    for cookie in map(
-                            str.strip,
-                            environ["HTTP_COOKIE"].split(";")):
-                        key, value = cookie.split("=")
-                        cookie_data.setdefault(key, []).append(value)
-
                 request = teapot.request.Request.construct_from_http(
                     environ["REQUEST_METHOD"],
                     local_path,
                     environ["wsgi.url_scheme"],
                     query_data,
-                    cookie_data,
                     environ["wsgi.input"],
                     environ.get("CONTENT_LENGTH"),
                     environ.get("CONTENT_TYPE"),

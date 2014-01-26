@@ -3,6 +3,8 @@ import re
 import urllib
 import cgi
 
+from http.cookies import SimpleCookie, CookieError
+
 import teapot.mime
 
 class Method:
@@ -364,7 +366,6 @@ class Request:
             path_info,
             url_scheme,
             query_data,
-            cookie_data,
             input_stream,
             content_length,
             content_type,
@@ -383,7 +384,6 @@ class Request:
         :param query_data: WSGI ``QUERY_STRING`` equivalent
         :type query_data: either a ``str`` or a dict mapping the keys to lists
                             of values
-        :param cookie_data: a dict of key/value cookie data
         :param input_stream: file-like object allowing access to the body of
                              the request sent by the client
         :type input_stream: file-like object
@@ -450,7 +450,6 @@ class Request:
             path_info,
             url_scheme,
             query_data,
-            cookie_data,
             (
                 contents,
                 languages,
@@ -468,7 +467,6 @@ class Request:
                  local_path="/",
                  scheme="http",
                  query_data=None,
-                 cookie_data=None,
                  accept_info=None,
                  user_agent="",
                  body_stream=None,
@@ -480,7 +478,6 @@ class Request:
         self._path = local_path
         self._scheme = scheme
         self._query_data = {} if query_data is None else query_data
-        self._cookie_data = {} if cookie_data is None else cookie_data
         self._user_agent_string = user_agent
         self._user_agent_info = inspect_user_agent_string(user_agent)
         if accept_info is not None:
@@ -491,6 +488,7 @@ class Request:
             self._accept_language = teapot.accept.all_languages()
             self._accept_charset = teapot.accept.all_charsets()
         self._post_data = None
+        self._cookie_data = None
 
         self.body_stream = body_stream
         self.content_length = content_length
@@ -513,6 +511,19 @@ class Request:
             value = item.file if item.filename else item.value
             post_data.setdefault(item.name, []).append(value)
         self._post_data = post_data
+
+    def _parse_cookie_data(self):
+        self._cookie_data = {}
+        try:
+            cookies = SimpleCookie(self.raw_http_headers["cookie"])
+            for name in cookies:
+                self._cookie_data.setdefault(
+                        name,
+                        []
+                        ).append(cookies[name].value)
+        except (CookieError, KeyError):
+            # silently skip invalid cookies
+            pass
 
     @property
     def accept_charset(self):
@@ -550,12 +561,24 @@ class Request:
 
     @property
     def post_data(self):
+        """
+        A :class:`dict` of key/value paired POST data of the request. This
+        data is lazily loaded when requested the first time. File uploads
+        are stored as :data:`file-like` objects.
+        """
         if self._post_data is None:
             self._parse_post_data()
         return self._post_data
 
     @property
     def cookie_data(self):
+        """
+        A :class:`SimpleCookie` instance containing the cookie data sent with
+        the request. Cookies are lazily loaded upon the first request of this
+        data.
+        """
+        if self._cookie_data is None:
+            self._parse_cookie_data()
         return self._cookie_data
 
     @property
