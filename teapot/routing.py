@@ -1988,7 +1988,8 @@ class Router:
         # format
         yield response
         if response.body is None:
-            yield from result
+            if hasattr(result, "__iter__"):
+                yield from result
         else:
             if hasattr(result, "close"):
                 result.close()
