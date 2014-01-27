@@ -67,3 +67,14 @@ class xml(metaclass=NamespaceMeta):
 
     xmlns = "http://www.w3.org/XML/1998/namespace"
     cache = {"id"}
+
+class shared(metaclass=NamespaceMeta):
+    """
+    Defines the ``https://xmlns.zombofant.net/xsltea/processors`` namespace,
+    which is used by multiple processors. It is best bound to the ``tea:``
+    prefix.
+
+    Do **not** use this for your own processors. This namespace is reserved.
+    """
+
+    xmlns = "https://xmlns.zombofant.net/xsltea/processors"
