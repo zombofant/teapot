@@ -33,6 +33,11 @@ class Template:
         super().__init__(**kwargs)
         self.filename = filename
         self.tree = tree
+        self._processors = []
+
+    def add_namespace_processor(self, processor_cls, *args, **kwargs):
+        processor = processor_cls(self, *args, **kwargs)
+        self._processors.append(processor)
 
     def get_element_id(self, element):
         id = element.get(xml.id)
@@ -43,6 +48,13 @@ class Template:
         element.set(xml.id, id)
 
         return id
+
+    def process(self, arguments):
+        tree = copy.deepcopy(self.tree)
+        for processor in self._processors:
+            processor.process(tree, arguments)
+        clear_element_ids(tree)
+        return tree
 
 class Engine(teapot.templating.FileBasedEngine):
     _xmlns = "https://xmlns.zombofant.net/xsltea/eval"
