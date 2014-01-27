@@ -1,5 +1,5 @@
 PYTHON=python3
-TESTSARGS=-o tests -p"*.py"
+TESTSARGS=
 
 docs:
 	cd docs; $(MAKE) html
