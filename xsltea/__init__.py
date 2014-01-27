@@ -88,11 +88,16 @@ class Template:
         super().__init__(**kwargs)
         self.name = name
         self.tree = tree
-        self._processors = []
+        self._processors_ordered = []
+        self._processors = {}
 
     def _add_namespace_processor(self, processor_cls, *args, **kwargs):
+        if processor_cls in self._processors:
+            raise ValueError("{} already loaded in template {}".format(
+                processor_cls, self))
         processor = processor_cls(self, *args, **kwargs)
-        self._processors.append(processor)
+        self._processors_ordered.append(processor)
+        self._processors[processor_cls] = processor
 
     def get_element_id(self, element):
         """
@@ -113,6 +118,9 @@ class Template:
 
         return id
 
+    def get_processor(self, processor_cls):
+        return self._processors[processor_cls]
+
     def process(self, arguments):
         """
         Process the template using the given dictionary of *arguments*.
@@ -120,7 +128,7 @@ class Template:
         Return the result tree after all processors have been applied.
         """
         tree = copy.deepcopy(self.tree)
-        for processor in self._processors:
+        for processor in self._processors_ordered:
             processor.process(tree, arguments)
         clear_element_ids(tree)
         return tree
