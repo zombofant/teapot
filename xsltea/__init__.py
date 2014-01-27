@@ -63,11 +63,37 @@ class Engine(teapot.templating.FileBasedEngine):
     def __init__(self, *search_path, **kwargs):
         super().__init__(**kwargs)
         self._cache = {}
+        self._processors = []
         self.search_path = list(search_path)
 
+    def _add_namespace_processor(self, processor_cls, added, new_processors):
+        if processor_cls in new_processors:
+            return
+
+        if processor_cls in added:
+            raise ValueError("{} has recursive dependencies".format(
+                processor_cls))
+
+        added.add(processor_cls)
+        if hasattr(processor_cls, "REQUIRES"):
+            for requires in processor_cls.REQUIRES:
+                self._add_namespace_processor(requires, added, new_processors)
+
+        new_processors.append(processor_cls)
+
     def _load_template(self, buf, name):
-        template = etree.fromstring(buf)
+        template = Template.from_buffer(buf, name)
+        for processor in self._processors:
+            template.add_namespace_processor(processor)
         return template
+
+    def add_namespace_processor(self, processor_cls):
+        # delegate to infinite-recursion-safe function :)
+        new_processors = list(self._processors)
+        self._add_namespace_processor(processor_cls, set(), new_processors)
+        self._processors[:] = new_processors
+        # drop cache
+        self._cache.clear()
 
     def get_template(self, name):
         try:
@@ -96,6 +122,9 @@ class Engine(teapot.templating.FileBasedEngine):
                 parent.attrib[name] = str(result)
 
 
+    @property
+    def processors(self):
+        return self._processors
 
     def use_template(self, name):
         return self.create_decorator(
