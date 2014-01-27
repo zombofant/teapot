@@ -104,6 +104,11 @@ class ScopeProcessor(TemplateProcessor):
         return locals_dict
 
     def define_at_element(self, element, name, value):
+        """
+        Define a new *name* with the given *value* at a given *element*, making
+        it available in that elements locals and in all childrens scopes.
+        """
+
         elemdict = self._defines.setdefault(
             self._template.get_element_id(element), {})
         logging.debug("%s: set %s to %r",
@@ -113,6 +118,11 @@ class ScopeProcessor(TemplateProcessor):
         elemdict[name] = value
 
     def update_defines_for_element(self, element, new_defines):
+        """
+        Set all the names from the *new_defines* dictionary to their associated
+        values at the given *element*.
+        """
+
         elemdict = self._defines.setdefault(
             self._template.get_element_id(element), {})
         logging.debug("%s: update with %r",
@@ -124,6 +134,10 @@ class ScopeProcessor(TemplateProcessor):
         return self._globals
 
     def get_locals_dict_for_element(self, element):
+        """
+        Return a new dict combining the inherited locals of the *element* with
+        its own definitions, yielding a suitable local scope for evaluation.
+        """
         locals_dict = self.get_inherited_locals_for_element(element)
         locals_dict.update(self._get_defines_for_element(element))
         return locals_dict

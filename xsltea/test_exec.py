@@ -6,6 +6,36 @@ import lxml.etree as etree
 import xsltea
 import xsltea.exec
 
+class TestScopeProcessor(unittest.TestCase):
+    xmlsrc_nested = """<?xml version="1.0" ?>
+<test><a><b /></a></test>"""
+
+    def _load_xml(self, xmlstr):
+        template = xsltea.Template.from_buffer(xmlstr, "<string>")
+        template._add_namespace_processor(xsltea.exec.ScopeProcessor)
+        return template, template.get_processor(xsltea.exec.ScopeProcessor)
+
+    def test_locals(self):
+        template, scope_processor = self._load_xml(self.xmlsrc_nested)
+        tree = template.tree
+
+        test = tree.getroot()
+        a = test.find("a")
+        b = a.find("b")
+
+        scope_processor.define_at_element(test, "foo", "bar")
+        scope_processor.define_at_element(a, "fnord", "baz")
+        scope_processor.define_at_element(b, "foo", "baz")
+
+        self.assertDictEqual(scope_processor.get_locals_dict_for_element(a),
+                             {"foo": "bar", "fnord": "baz"})
+        self.assertDictEqual(scope_processor.get_locals_dict_for_element(b),
+                             {"foo": "baz", "fnord": "baz"})
+        self.assertDictEqual(scope_processor.get_locals_dict_for_element(test),
+                             {"foo": "bar"})
+
+
+
 class TestExecProcessor(unittest.TestCase):
     xmlsrc_eval_attrib = """<?xml version="1.0" ?>
 <test xmlns:exec="{}" exec:test="'foo' + 'bar'"/>""".format(
