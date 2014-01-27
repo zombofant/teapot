@@ -64,3 +64,11 @@ class TestExecNamespace(unittest.TestCase):
             exec_ns.process(template.tree, {})
 
         self.assertIsInstance(ctx.exception.__context__, NameError)
+
+    def test_exec_with_args_and_local(self):
+        template, exec_ns = self._load_xml(self.xmlsrc_eval_local_is_local)
+        exec_ns.process(template.tree, {"a": 23})
+        self.assertEqual(template.tree.find("a").text,
+                         "42")
+        self.assertEqual(template.tree.find("a").tail,
+                         "23")
