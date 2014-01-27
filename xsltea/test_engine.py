@@ -3,10 +3,10 @@ import unittest
 import teapot.templating
 import xsltea
 
-class FnordProcessor(xsltea.NamespaceProcessor):
+class FnordProcessor(xsltea.TemplateProcessor):
     pass
 
-class FakeProcessor(xsltea.NamespaceProcessor):
+class FakeProcessor(xsltea.TemplateProcessor):
     REQUIRES = [xsltea.ExecProcessor, FnordProcessor]
 
 FnordProcessor.REQUIRES = [FakeProcessor]

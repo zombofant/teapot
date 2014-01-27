@@ -15,6 +15,10 @@ Contents:
    accept
    response
    wsgi
+   templating
+
+   xsltea
+
    todo
 
 

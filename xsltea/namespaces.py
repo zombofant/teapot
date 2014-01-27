@@ -1,3 +1,19 @@
+"""
+XML namespace utilities
+#######################
+
+This module contains some utilities to work with XML namespaces and the
+ElementTree API. Besides predefined namespaces, the :class:`NamespaceMeta`
+metaclass is available to define custom namespaces.
+
+.. autoclass:: NamespaceMeta
+
+Predefined namespaces
+=====================
+
+.. autoclass:: xml
+"""
+
 import lxml.builder
 
 class NamespaceMeta(type):
@@ -44,5 +60,10 @@ class NamespaceMeta(type):
         return "<xml namespace {!r}>".format(cls.__dict__["xmlns"])
 
 class xml(metaclass=NamespaceMeta):
+    """
+    Defines the ``http://www.w3.org/XML/1998/namespace`` namespace, used for
+    example for the ``@xml:id`` attribute.
+    """
+
     xmlns = "http://www.w3.org/XML/1998/namespace"
     cache = {"id"}

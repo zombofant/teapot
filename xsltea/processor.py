@@ -1,6 +1,19 @@
+"""
+Processor plugins
+#################
+
+Templates are processed using :class:`TemplateProcessor` instances. These
+interpret the template contents and can be used to implement arbitrary
+extensions.
+
+.. autoclass:: TemplateProcessor
+   :members:
+
+"""
+
 import abc
 
-class NamespaceProcessor:
+class TemplateProcessor:
     """
     This is a base for namespace processors. Each namespace processor deals with
     XML elements and attributes from a specific namespace (or set of
