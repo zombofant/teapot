@@ -49,83 +49,125 @@ Template parameters are put in the global scope.
 
 .. highlight:: python
 
+Reusable scoping
+================
+
+As described above, the :class:`ExecProcessor` supports scopes in elements. This
+can be reused for other modules without pulling the whole :class:`ExecProcessor`
+as an (unsafe) dependency.
+
+To use the :class:`ScopeProcessor` in your own
+:class:`~xsltea.processor.Processor` subclass, put it in your
+:attr:`~xsltea.processor.Processor.REQUIRES` attribute.
+
+.. autoclass:: ScopeProcessor
+
 """
+
+import logging
 
 from .namespaces import NamespaceMeta, xml
 from .processor import TemplateProcessor
 from .utils import *
 from .errors import TemplateEvaluationError
 
+class ScopeProcessor(TemplateProcessor):
+    def __init__(self, template, **kwargs):
+        super().__init__(template, **kwargs)
+        # a dictionary { element_id => { name => value} } which maps the
+        # element_id to another dictionary containing the names defined at that
+        # element.
+        self._defines = {}
+        self._globals = {}
+
+    def _get_defines_for_element(self, element):
+        return self._defines.get(self._template.get_element_id(element), {})
+
+    def get_inherited_locals_for_element(self, element):
+        """
+        Retrieve the inherited locals for a given element by searching through
+        the parent scopes. Returns a new dict.
+        """
+
+        logging.debug("finding inherited locals for %s",
+                      self._template.get_element_id(element))
+        locals_dict = {}
+        for parent in reversed(list(element.iterancestors())):
+            parent_dict = self._get_defines_for_element(parent)
+            logging.debug("parent %s has %s",
+                          self._template.get_element_id(parent),
+                          parent_dict)
+            locals_dict.update(parent_dict)
+
+        logging.debug("all inherited locals: %s", locals_dict)
+
+        return locals_dict
+
+    def define_at_element(self, element, name, value):
+        elemdict = self._defines.setdefault(
+            self._template.get_element_id(element), {})
+        logging.debug("%s: set %s to %r",
+                      self._template.get_element_id(element),
+                      name,
+                      value)
+        elemdict[name] = value
+
+    def update_defines_for_element(self, element, new_defines):
+        elemdict = self._defines.setdefault(
+            self._template.get_element_id(element), {})
+        logging.debug("%s: update with %r",
+                      self._template.get_element_id(element),
+                      new_defines)
+        elemdict.update(new_defines)
+
+    def get_globals(self):
+        return self._globals
+
+    def get_locals_dict_for_element(self, element):
+        locals_dict = self.get_inherited_locals_for_element(element)
+        locals_dict.update(self._get_defines_for_element(element))
+        return locals_dict
+
+    def process(self, tree, arguments):
+        pass
+
+ScopeProcessor.logger = logging.getLogger(ScopeProcessor.__qualname__)
+
 class ExecProcessor(TemplateProcessor):
+    REQUIRES = [ScopeProcessor]
+
     class xmlns(metaclass=NamespaceMeta):
         xmlns = "https://xmlns.zombofant.net/xsltea/exec"
 
     namespaces = {"exec": str(xmlns),
                   "xml": str(xml)}
 
-    def _get_locals_for_element(self, element):
-        """
-        Returns the **stored** locals for the given *element*. This raises a
-        :class:`KeyError` if the element has no locals associated yet.
-        """
-        return self._locals_by_element[self._template.get_element_id(element)]
-
-    def _get_processing_locals_for_element(self, element):
-        try:
-            locals_dict = self._get_locals_for_element(element)
-        except KeyError:
-            locals_dict = self._inherit_locals_for_element(element)
-        return locals_dict
-
-    def _inherit_locals_for_element(self, element):
-        """
-        Retrieve the inherited locals for a given element by searching through
-        the parent scopes. Returns a new dict.
-        """
-
-        locals_dict = {}
-        element_id = self._template.get_element_id(element)
-        for parent in reversed(list(element.iterancestors())):
-            parent_id = self._template.get_element_id(parent)
-            try:
-                parent_dict = self._get_locals_for_element(parent)
-            except KeyError:
-                continue
-
-            locals_dict.update(parent_dict)
-
-        return locals_dict
-
-    def _set_locals_for_element(self, element, locals_dict):
-        """
-        Override (or set) the stored locals for the given *element* with the
-        given *locals_dict*.
-        """
-        element_id = self._template.get_element_id(element)
-        self._locals_by_element[element_id] = locals_dict
-
     def __init__(self, template, **kwargs):
         super().__init__(template, **kwargs)
 
         # store environments for specific execution contexts
-        self._locals_by_element = {}
         self._precompiled_attributes = []
         self._precompiled_elements = []
-        self._globals = {}
 
         tree = template.tree
+        scope = template.get_processor(ScopeProcessor)
+        globals_dict = scope.get_globals()
+
         for global_attr in tree.xpath("//@exec:global",
                                       namespaces=self.namespaces):
             parent = global_attr.getparent()
-            exec(global_attr, self._globals, self._globals)
+            exec(global_attr, globals_dict, globals_dict)
 
             del parent.attrib[global_attr.attrname]
 
         for with_attr in tree.xpath("//@exec:local", namespaces=self.namespaces):
             parent = with_attr.getparent()
-            locals_dict = self._inherit_locals_for_element(parent)
-            exec(with_attr, self._globals, locals_dict)
-            self._set_locals_for_element(parent, locals_dict)
+            locals_dict = {}
+            this_globals_dict = dict(globals_dict)
+            this_globals_dict.update(
+                scope.get_inherited_locals_for_element(parent))
+            exec(with_attr, this_globals_dict, locals_dict)
+            scope.update_defines_for_element(parent, locals_dict)
 
             del parent.attrib[with_attr.attrname]
 
@@ -157,12 +199,13 @@ class ExecProcessor(TemplateProcessor):
                  code))
 
     def process(self, tree, arguments):
-        globals_dict = dict(self._globals)
+        scope = self._template.get_processor(ScopeProcessor)
+        globals_dict = dict(scope.get_globals())
         globals_dict.update(arguments)
         for element_id, attrname, code in self._precompiled_attributes:
             element = get_element_by_id(tree, element_id)
 
-            locals_dict = self._get_processing_locals_for_element(element)
+            locals_dict = scope.get_locals_dict_for_element(element)
 
             try:
                 value = eval(code, globals_dict, locals_dict)
@@ -179,7 +222,7 @@ class ExecProcessor(TemplateProcessor):
         for element_id, code in self._precompiled_elements:
             element = get_element_by_id(tree, element_id)
 
-            locals_dict = self._get_processing_locals_for_element(element)
+            locals_dict = scope.get_locals_dict_for_element(element)
 
             try:
                 value = eval(code, globals_dict, locals_dict)

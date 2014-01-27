@@ -29,6 +29,18 @@ class TemplateProcessor:
 
     The final processing of the template using the parameters from the template
     invocation is done in the :meth:`process` method.
+
+    .. attribute:: REQUIRES
+
+       You can set this attribute to a sequence of other
+       :class:`TemplateProcessor` subclasses to indicate that your module
+       requires these.
+
+       ..note::
+
+          This attribute must be set on the class, not on the instance.
+
+
     """
 
     def __init__(self, template, **kwargs):

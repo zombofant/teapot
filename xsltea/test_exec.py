@@ -31,44 +31,47 @@ class TestExecProcessor(unittest.TestCase):
 
     def _load_xml(self, xmlstr):
         template = xsltea.Template.from_buffer(xmlstr, "<string>")
-        eval_ns = xsltea.ExecProcessor(template)
+        template._add_namespace_processor(xsltea.exec.ScopeProcessor)
+        template._add_namespace_processor(xsltea.exec.ExecProcessor)
+        eval_ns = template._processors[xsltea.exec.ExecProcessor]
         return template, eval_ns
 
     def test_eval_attribute(self):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_attrib)
-        exec_ns.process(template.tree, {})
-        self.assertEqual(template.tree.getroot().attrib["test"],
+        tree = template.process({})
+        self.assertEqual(tree.getroot().attrib["test"],
                          "foobar")
 
     def test_eval_text(self):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_text)
-        exec_ns.process(template.tree, {})
-        self.assertEqual(template.tree.getroot().text,
+        tree = template.process({})
+        self.assertEqual(tree.getroot().text,
                          "foobarbaz")
 
     def test_exec_global(self):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_global)
-        exec_ns.process(template.tree, {})
-        self.assertEqual(template.tree.getroot().text,
+        tree = template.process({})
+        self.assertEqual(tree.getroot().text,
                          "ff")
 
     def test_exec_local_ok(self):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_local_ok)
-        exec_ns.process(template.tree, {})
-        self.assertEqual(template.tree.getroot().text,
+        tree = template.process({})
+        self.assertEqual(tree.getroot().text,
                          "42")
 
     def test_exec_local_is_local(self):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_local_is_local)
         with self.assertRaises(xsltea.TemplateEvaluationError) as ctx:
+            tree = template.process({})
             exec_ns.process(template.tree, {})
 
         self.assertIsInstance(ctx.exception.__context__, NameError)
 
     def test_exec_with_args_and_local(self):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_local_is_local)
-        exec_ns.process(template.tree, {"a": 23})
-        self.assertEqual(template.tree.find("a").text,
+        tree = template.process({"a": 23})
+        self.assertEqual(tree.find("a").text,
                          "42")
-        self.assertEqual(template.tree.find("a").tail,
+        self.assertEqual(tree.find("a").tail,
                          "23")
