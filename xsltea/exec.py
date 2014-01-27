@@ -3,7 +3,7 @@ from .processor import NamespaceProcessor
 from .utils import *
 from .errors import TemplateEvaluationError
 
-class ExecNamespace(NamespaceProcessor):
+class ExecProcessor(NamespaceProcessor):
     class xmlns(metaclass=NamespaceMeta):
         xmlns = "https://xmlns.zombofant.net/xsltea/exec"
 

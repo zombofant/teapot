@@ -6,32 +6,32 @@ import lxml.etree as etree
 import xsltea
 import xsltea.exec
 
-class TestExecNamespace(unittest.TestCase):
+class TestExecProcessor(unittest.TestCase):
     xmlsrc_eval_attrib = """<?xml version="1.0" ?>
 <test xmlns:exec="{}" exec:test="'foo' + 'bar'"/>""".format(
-        xsltea.exec.ExecNamespace.xmlns)
+        xsltea.exec.ExecProcessor.xmlns)
 
     xmlsrc_eval_text = """<?xml version="1.0" ?>
 <test xmlns:exec="{}"><exec:text>'foo' + 'bar'</exec:text>baz</test>""".format(
-        xsltea.exec.ExecNamespace.xmlns)
+        xsltea.exec.ExecProcessor.xmlns)
 
     xmlsrc_eval_global = """<?xml version="1.0" ?>
 <test xmlns:exec="{}"
       exec:global="import binascii"><exec:text>binascii.b2a_hex(b"\\xff").decode()</exec:text></test>""".format(
-        xsltea.exec.ExecNamespace.xmlns)
+        xsltea.exec.ExecProcessor.xmlns)
 
     xmlsrc_eval_local_ok = """<?xml version="1.0" ?>
 <test xmlns:exec="{}"
       exec:local="a = 42"><exec:text>a</exec:text></test>""".format(
-        xsltea.exec.ExecNamespace.xmlns)
+        xsltea.exec.ExecProcessor.xmlns)
 
     xmlsrc_eval_local_is_local = """<?xml version="1.0" ?>
 <test xmlns:exec="{}"><a exec:local="a = 42"><exec:text>a</exec:text></a><exec:text>a</exec:text></test>""".format(
-        xsltea.exec.ExecNamespace.xmlns)
+        xsltea.exec.ExecProcessor.xmlns)
 
     def _load_xml(self, xmlstr):
         template = xsltea.Template.from_buffer(xmlstr, "<string>")
-        eval_ns = xsltea.ExecNamespace(template)
+        eval_ns = xsltea.ExecProcessor(template)
         return template, eval_ns
 
     def test_eval_attribute(self):

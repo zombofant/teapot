@@ -13,7 +13,8 @@ except ImportError as err:
 import teapot.templating
 
 from .namespaces import xml
-from .exec import ExecNamespace
+from .processor import NamespaceProcessor
+from .exec import ExecProcessor
 from .utils import *
 from .errors import TemplateEvaluationError
 
