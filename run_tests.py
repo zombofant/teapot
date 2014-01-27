@@ -57,12 +57,12 @@ if have_tty:
     rows, cols = os.popen('stty size', 'r').read().split()
     tty_width = int(cols)
 
-epilog = """Please note that for the reason of auto discovery, all modules which
-match the glob PATTERN will be imported first. For further information see
-<http://docs.python.org/library/unittest.html#test-discovery>.
+epilog = """Please note that for the reason of auto discovery, all modules
+which match the glob PATTERN will be imported first. For further information
+see <http://docs.python.org/library/unittest.html#test-discovery>.
 
-This script will return a status code corresponding to the status of the test
-suite.
+This script will return a status code corresponding to the status of the
+test suite.
 
 0 => All tests successful.
 1 => At least one test skipped
@@ -73,7 +73,8 @@ suite.
 6 => Should never happen. If you encounter this, report a bug.
 7 => No tests were found.
 """
-epilog = "\n".join(itertools.chain(*(textwrap.wrap(line, width=80) if len(line) > 0 else (line,) for line in epilog.split("\n"))))
+epilog = "\n".join(itertools.chain(*(textwrap.wrap(line, width=80)
+    if len(line) > 0 else (line,) for line in epilog.split("\n"))))
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -99,8 +100,8 @@ parser.add_argument(
     "--width", "-w",
     default=tty_width,
     type=int,
-    help="Terminal width. This is auto-detected on most systems and defaults to"
-    " 80 if auto-detection fails and no other value is given.",
+    help="Terminal width. This is auto-detected on most systems and defaults"
+    " to 80 if auto-detection fails and no other value is given.",
     dest="tty_width"
 )
 group = parser.add_mutually_exclusive_group()
@@ -249,18 +250,29 @@ class AwesomeTextResult(unittest.TestResult):
         return (modulePath, methodName)
 
     def _format_test_name(self, name, indent=" "*2, color=Colors.TestName):
-        testNameLen = self.tty_width - (self.max_state_name_len + (len(indent+" $")) - (len(color) + len(Colors.Reset)))
-        return ("{1}{0:.<"+str(testNameLen)+"s} ").format(Colors(name, color)+" ", indent)
+        testNameLen = self.tty_width - (
+                self.max_state_name_len +
+                (len(indent + " $")) -
+                (len(color) + len(Colors.Reset)))
+        return ("{1}{0:.<"+str(testNameLen)+"s} ").format(
+                Colors(name, color) + " ",
+                indent)
 
     def _print_test_name(self, test):
         modulePath, methodName = self._extract_module_and_method_name(test)
         if methodName is None:
-            print(self._format_test_name(".".join(modulePath), "", Colors.TestClass), end='')
-            self.testNoteIndent = " "*4
+            print(self._format_test_name(
+                ".".join(modulePath),
+                "",
+                Colors.TestClass),
+                end='')
+            self.testNoteIndent = " " * 4
         else:
             if self._previousPath != modulePath:
                 self._previousPath = modulePath
-                print("{0}:".format(Colors(".".join(modulePath), Colors.TestClass)))
+                print("{0}:".format(Colors(
+                        ".".join(modulePath),
+                        Colors.TestClass)))
             print(self._format_test_name(methodName), end='')
             self.testNoteIndent = " "*6
 
@@ -332,7 +344,9 @@ class AwesomeTextResult(unittest.TestResult):
             print(Colors("skip", Colors.Error))
             print(self.testNoteIndent+reason)
         else:
-            print("Test case {0} skipped: {1}".format(self._format_plain_full_test_name(test), reason), file=sys.stderr)
+            print("Test case {0} skipped: {1}".format(
+                self._format_plain_full_test_name(test),
+                reason), file=sys.stderr)
 
     def addExpectedFailure(self, test, err):
         super(AwesomeTextResult, self).addExpectedFailure(test, err)
@@ -366,10 +380,12 @@ class AwesomeTextResult(unittest.TestResult):
         expectedFailureCount = len(self.expectedFailures)
         unexpectedSuccessCount = len(self.unexpectedSuccesses)
         testsTotal = suite.countTestCases()
-        return passedCount, errorCount, failureCount, skippedCount, expectedFailureCount, unexpectedSuccessCount, testsTotal
+        return passedCount, errorCount, failureCount, skippedCount, \
+                expectedFailureCount, unexpectedSuccessCount, testsTotal
 
     def print_stats(self, stats, file=sys.stdout):
-        passedCount, errorCount, failureCount, skippedCount, expectedFailureCount, unexpectedSuccessCount, testsTotal = stats
+        passedCount, errorCount, failureCount, skippedCount, \
+            expectedFailureCount, unexpectedSuccessCount, testsTotal = stats
 
         passedColour = Colors.Warning
         if passedCount == self.testsRun:
@@ -378,23 +394,67 @@ class AwesomeTextResult(unittest.TestResult):
             passedColour = Colors.Failure
 
 
-        print("{0} ({1} tests in total):".format(Colors("Statistics", Colors.Header), testsTotal), file=file)
-        print("  passed                 : {0}".format(Colors(passedCount, passedColour)), file=file)
-        print("  skipped                : {0}".format(self._colouredNumber(skippedCount, Colors.Skipped, Colors.Success)), file=file)
-        print("  expected failures      : {0}".format(self._colouredNumber(expectedFailureCount, Colors.ExpectedFailure, Colors.Success)), file=file)
-        print("  unexpected successes   : {0}".format(self._colouredNumber(unexpectedSuccessCount, Colors.UnexpectedSuccess, Colors.Success)), file=file)
-        print("  errors                 : {0}".format(self._colouredNumber(errorCount, Colors.Error, Colors.Success)), file=file)
-        print("  failures               : {0}".format(self._colouredNumber(failureCount, Colors.Failure, Colors.Success)), file=file)
-        print("  ran                    : {0}".format(Colors(self.testsRun, Colors.Success if self.testsRun == testsTotal else Colors.Warning)), file=file)
+        print("{0} ({1} tests in total):".format(
+            Colors(
+                "Statistics",
+                Colors.Header
+                ),
+            testsTotal), file=file)
+        print("  passed                 : {0}".format(
+            Colors(
+                passedCount,
+                passedColour
+            )), file=file)
+        print("  skipped                : {0}".format(
+            self._colouredNumber(
+                skippedCount,
+                Colors.Skipped,
+                Colors.Success
+            )), file=file)
+        print("  expected failures      : {0}".format(
+            self._colouredNumber(
+                expectedFailureCount,
+                Colors.ExpectedFailure,
+                Colors.Success
+            )), file=file)
+        print("  unexpected successes   : {0}".format(
+            self._colouredNumber(
+                unexpectedSuccessCount,
+                Colors.UnexpectedSuccess,
+                Colors.Success
+            )), file=file)
+        print("  errors                 : {0}".format(
+            self._colouredNumber(
+                errorCount,
+                Colors.Error,
+                Colors.Success
+            )), file=file)
+        print("  failures               : {0}".format(
+            self._colouredNumber(
+                failureCount,
+                Colors.Failure,
+                Colors.Success
+            )), file=file)
+        print("  ran                    : {0}".format(
+            Colors(
+                self.testsRun,
+                Colors.Success if self.testsRun == testsTotal
+                    else Colors.Warning
+            )), file=file)
 
-results = AwesomeTextResult(args.tty_width, args.quiet, args.strip_module_prefix, args.strip_method_prefix)
+results = AwesomeTextResult(
+        args.tty_width,
+        args.quiet,
+        args.strip_module_prefix,
+        args.strip_method_prefix)
 results.tty_width = tty_width
 tests = loader.discover(args.only_sub_dir, args.pattern, args.project_dir)
 if tests.countTestCases() == 0:
     print("{}: error: no tests found".format(PROGNAME), file=sys.stderr)
     sys.exit(7)
 if not args.quiet:
-    print("Running {0} unittests (detected from auto-discovery)".format(tests.countTestCases()))
+    print("Running {0} unittests (detected from auto-discovery)".format(
+        tests.countTestCases()))
 startTime = time.time()
 tests.run(results)
 endTime = time.time()
@@ -403,7 +463,9 @@ if args.force_stats or not args.quiet:
     if args.stderr:
         Colors.disable()
     if not args.no_stats:
-        results.print_stats(stats, file=(sys.stderr if args.stderr else sys.stdout))
+        results.print_stats(
+                stats,
+                file=(sys.stderr if args.stderr else sys.stdout))
     print("Ran {2} tests on {0} in {1} seconds".format(
         Colors(platform.python_implementation(), Colors.Header),
         Colors("{0:.6f}".format(endTime-startTime), Colors.Header),
@@ -413,7 +475,8 @@ if args.force_stats or not args.quiet:
     )
 
 # determine the exit code
-passedCount, errorCount, failureCount, skippedCount, expectedFailureCount, unexpectedSuccessCount, testsTotal = stats
+passedCount, errorCount, failureCount, skippedCount, expectedFailureCount, \
+        unexpectedSuccessCount, testsTotal = stats
 tmpCount = passedCount
 if tmpCount == testsTotal:
     sys.exit(0)
