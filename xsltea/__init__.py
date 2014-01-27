@@ -119,6 +119,11 @@ class Template:
         return id
 
     def get_processor(self, processor_cls):
+        """
+        Return the processor instance of the given processor class associated
+        with this Template. If the processor has not been added to the template
+        (via the :class:`Engine`), :class:`KeyError` is raised.
+        """
         return self._processors[processor_cls]
 
     def process(self, arguments):

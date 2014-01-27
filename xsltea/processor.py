@@ -36,7 +36,7 @@ class TemplateProcessor:
        :class:`TemplateProcessor` subclasses to indicate that your module
        requires these.
 
-       ..note::
+       .. note::
 
           This attribute must be set on the class, not on the instance.
 

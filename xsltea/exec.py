@@ -57,10 +57,13 @@ can be reused for other modules without pulling the whole :class:`ExecProcessor`
 as an (unsafe) dependency.
 
 To use the :class:`ScopeProcessor` in your own
-:class:`~xsltea.processor.Processor` subclass, put it in your
-:attr:`~xsltea.processor.Processor.REQUIRES` attribute.
+:class:`~xsltea.processor.TemplateProcessor` subclass, put it in your
+:attr:`~xsltea.processor.TemplateProcessor.REQUIRES` attribute. It can then,
+just like any other processor, be accessed via the
+:meth:`~xsltea.Template.get_processor`.
 
 .. autoclass:: ScopeProcessor
+   :members:
 
 """
 
@@ -72,6 +75,23 @@ from .utils import *
 from .errors import TemplateEvaluationError
 
 class ScopeProcessor(TemplateProcessor):
+    """
+    The scope processor implements scoping of python values with xml
+    elements. It is not very useful on its own, but it is definetly helpful for
+    implementing anything using python values related to the xml tree.
+
+    Each element has a dictionary mapping names to values (just like python
+    scopes). In addition to that, there is a global scope. The
+    :meth:`get_locals_dict_for_element` method allows to retrieve a dictionary
+    which contains all parents locals and the locals of the element (handling
+    duplicates such that more nested definitions override the outer
+    definitions).
+
+    :meth:`define_at_element` and :meth:`update_defines_for_element` can be used
+    to define names at a given element (and thus, make them available at the
+    element and its descendant elements).
+    """
+
     def __init__(self, template, **kwargs):
         super().__init__(template, **kwargs)
         # a dictionary { element_id => { name => value} } which maps the
