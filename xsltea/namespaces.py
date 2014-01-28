@@ -68,7 +68,7 @@ class xml(metaclass=NamespaceMeta):
     xmlns = "http://www.w3.org/XML/1998/namespace"
     cache = {"id"}
 
-class shared(metaclass=NamespaceMeta):
+class shared_ns(metaclass=NamespaceMeta):
     """
     Defines the ``https://xmlns.zombofant.net/xsltea/processors`` namespace,
     which is used by multiple processors. It is best bound to the ``tea:``
@@ -78,3 +78,12 @@ class shared(metaclass=NamespaceMeta):
     """
 
     xmlns = "https://xmlns.zombofant.net/xsltea/processors"
+
+class internal_ns(metaclass=NamespaceMeta):
+    """
+    Defines the ``https://xmlns.zombofant.net/xsltea/internal`` namespace. It is
+    used to annotate the XML tree with processing meta-information and must not
+    be used by any custom code.
+    """
+
+    xmlns = "https://xmlns.zombofant.net/xsltea/internal"

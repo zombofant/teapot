@@ -24,7 +24,7 @@ class TestTemplate(unittest.TestCase):
     def test_element_id_takeover(self):
         idc = self._template.get_element_id(
             self._template.tree.find("c"))
-        self.assertEqual(idc, "foobar")
+        self.assertNotEqual(idc, "foobar")
 
     def test_element_id_reuse(self):
         id1 = self._template.get_element_id(
@@ -38,9 +38,8 @@ class TestTemplate(unittest.TestCase):
             xsltea.exec.ScopeProcessor)
         self._template._add_namespace_processor(
             xsltea.exec.ExecProcessor)
-        tree = self._template.process({"a": 42})
+        tree = self._template.process({"a": 42}).tree
         self.assertEqual(tree.find("c").get("attr"), "42")
-        self.assertFalse(tree.xpath("//@xml:id"))
 
     def tearDown(self):
         del self._template

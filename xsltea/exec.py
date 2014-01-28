@@ -237,7 +237,7 @@ class ExecProcessor(TemplateProcessor):
         globals_dict = dict(scope.get_globals())
         globals_dict.update(arguments)
         for element_id, attrname, code in self._precompiled_attributes:
-            element = get_element_by_id(tree, element_id)
+            element = tree.get_element_by_id(element_id)
 
             locals_dict = scope.get_locals_dict_for_element(element)
 
@@ -254,7 +254,7 @@ class ExecProcessor(TemplateProcessor):
                 element.set(attrname, str(value))
 
         for element_id, code in self._precompiled_elements:
-            element = get_element_by_id(tree, element_id)
+            element = tree.get_element_by_id(element_id)
 
             locals_dict = scope.get_locals_dict_for_element(element)
 

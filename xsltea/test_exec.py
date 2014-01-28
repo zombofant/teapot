@@ -68,39 +68,38 @@ class TestExecProcessor(unittest.TestCase):
 
     def test_eval_attribute(self):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_attrib)
-        tree = template.process({})
+        tree = template.process({}).tree
         self.assertEqual(tree.getroot().attrib["test"],
                          "foobar")
 
     def test_eval_text(self):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_text)
-        tree = template.process({})
+        tree = template.process({}).tree
         self.assertEqual(tree.getroot().text,
                          "foobarbaz")
 
     def test_exec_global(self):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_global)
-        tree = template.process({})
+        tree = template.process({}).tree
         self.assertEqual(tree.getroot().text,
                          "ff")
 
     def test_exec_local_ok(self):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_local_ok)
-        tree = template.process({})
+        tree = template.process({}).tree
         self.assertEqual(tree.getroot().text,
                          "42")
 
     def test_exec_local_is_local(self):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_local_is_local)
         with self.assertRaises(xsltea.TemplateEvaluationError) as ctx:
-            tree = template.process({})
-            exec_ns.process(template.tree, {})
+            tree = template.process({}).tree
 
         self.assertIsInstance(ctx.exception.__context__, NameError)
 
     def test_exec_with_args_and_local(self):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_local_is_local)
-        tree = template.process({"a": 23})
+        tree = template.process({"a": 23}).tree
         self.assertEqual(tree.find("a").text,
                          "42")
         self.assertEqual(tree.find("a").tail,
