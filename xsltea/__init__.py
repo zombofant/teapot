@@ -53,10 +53,12 @@ xml_parser = etree.XMLParser(ns_clean=True,
                              remove_comments=True)
 
 class TemplateTree:
-    _namespaces = {"internal": str(internal_ns)}
+    namespaces = {"internal": str(internal_ns)}
 
     _element_id_rng = random.Random()
     _element_id_rng.seed()
+
+    xpath_selector_non_barred = "not(ancestor::*[@internal:barrier])"
 
     def __init__(self, tree):
         self.tree = tree
@@ -68,7 +70,7 @@ class TemplateTree:
         return base.xpath(
             "descendant::*[@internal:{} = '{}']".format(
                 attrname, elemid),
-            namespaces=self._namespaces)
+            namespaces=self.namespaces)
 
     def _get_unique_element_attribute(self, attrname):
         while True:
@@ -87,7 +89,7 @@ class TemplateTree:
         """
         copied = copy.deepcopy(subtree)
         for id_attr in copied.xpath("descendant::@internal:id",
-                                    namespaces=self._namespaces):
+                                    namespaces=self.namespaces):
             del id_attr.getparent().attrib[id_attr.attrname]
         return copied
 
@@ -98,7 +100,7 @@ class TemplateTree:
         """
         try:
             return self.tree.xpath("//*[@internal:id = '"+id+"']",
-                                   namespaces=self._namespaces).pop()
+                                   namespaces=self.namespaces).pop()
         except IndexError:
             raise KeyError(id) from None
 
@@ -150,6 +152,15 @@ class TemplateTree:
         element.set(internal_ns.name, name)
 
         return name
+
+    def set_element_barrier(self, element, barrier=True):
+        if barrier:
+            element.set(internal_ns.barrier, "")
+        else:
+            try:
+                del element.attrib[internal_ns.barrier]
+            except KeyError:
+                pass
 
 class Template(TemplateTree):
     """
