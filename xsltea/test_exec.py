@@ -33,7 +33,7 @@ class TestScopeProcessor(unittest.TestCase):
                              {"foo": "baz", "fnord": "baz"})
         self.assertDictEqual(scope_processor.get_locals_dict_for_element(test),
                              {"foo": "bar"})
-
+del TestScopeProcessor
 
 
 class TestExecProcessor(unittest.TestCase):
@@ -63,6 +63,7 @@ class TestExecProcessor(unittest.TestCase):
         template = xsltea.Template.from_buffer(xmlstr, "<string>")
         template._add_namespace_processor(xsltea.exec.ScopeProcessor)
         template._add_namespace_processor(xsltea.exec.ExecProcessor)
+        template.preprocess()
         eval_ns = template._processors[xsltea.exec.ExecProcessor]
         return template, eval_ns
 
@@ -94,6 +95,7 @@ class TestExecProcessor(unittest.TestCase):
         template, exec_ns = self._load_xml(self.xmlsrc_eval_local_is_local)
         with self.assertRaises(xsltea.TemplateEvaluationError) as ctx:
             tree = template.process({}).tree
+            print(etree.tostring(tree))
 
         self.assertIsInstance(ctx.exception.__context__, NameError)
 

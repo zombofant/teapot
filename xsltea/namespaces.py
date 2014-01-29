@@ -79,11 +79,18 @@ class shared_ns(metaclass=NamespaceMeta):
 
     xmlns = "https://xmlns.zombofant.net/xsltea/processors"
 
-class internal_ns(metaclass=NamespaceMeta):
+class internal_copyable_ns(metaclass=NamespaceMeta):
     """
-    Defines the ``https://xmlns.zombofant.net/xsltea/internal`` namespace. It is
-    used to annotate the XML tree with processing meta-information and must not
-    be used by any custom code.
+    Defines an internal namespace for attributes which are to be preserved
+    across tree deepcopy operations.
     """
 
-    xmlns = "https://xmlns.zombofant.net/xsltea/internal"
+    xmlns = "https://xmlns.zombofant.net/xsltea/internal#copyable"
+
+class internal_noncopyable_ns(metaclass=NamespaceMeta):
+    """
+    Defines an internal namespace for attributes which are *not* preserved
+    across tree deepcopy operations (they will be missing in the new copy).
+    """
+
+    xmlns = "https://xmlns.zombofant.net/xsltea/internal#noncopyable"

@@ -42,10 +42,11 @@ except ImportError as err:
 
 import teapot.templating
 
-from .namespaces import xml, internal_ns
+from .namespaces import xml, internal_copyable_ns, internal_noncopyable_ns
 from .processor import TemplateProcessor
 from .exec import ExecProcessor
 from .utils import *
+from .utils import sortedlist
 from .errors import TemplateEvaluationError
 
 xml_parser = etree.XMLParser(ns_clean=True,
@@ -53,7 +54,8 @@ xml_parser = etree.XMLParser(ns_clean=True,
                              remove_comments=True)
 
 class TemplateTree:
-    namespaces = {"internal": str(internal_ns)}
+    namespaces = {"internalnc": str(internal_noncopyable_ns),
+                  "internalc": str(internal_copyable_ns)}
 
     _element_id_rng = random.Random()
     _element_id_rng.seed()
@@ -66,7 +68,7 @@ class TemplateTree:
 
     def _get_elements_by_attribute(self, base, attrname, elemid):
         return base.xpath(
-            "descendant::*[@internal:{} = '{}']".format(
+            "descendant::*[@{} = '{}']".format(
                 attrname, elemid),
             namespaces=self.namespaces)
 
@@ -86,9 +88,9 @@ class TemplateTree:
         into this tree.
         """
         copied = copy.deepcopy(subtree)
-        for id_attr in copied.xpath("descendant::@internal:id",
-                                    namespaces=self.namespaces):
-            del id_attr.getparent().attrib[id_attr.attrname]
+        for noncopyable_attr in subtree.xpath("//@*[namespace-uri() == '"+
+                                              str(internal_noncopyable_ns)+"']"):
+            del noncopyable_attr.getparent().attrib[noncopyable_attr.attrname]
         return copied
 
     def get_element_by_id(self, id):
@@ -97,7 +99,7 @@ class TemplateTree:
         the element does not exist.
         """
         try:
-            return self.tree.xpath("//*[@internal:id = '"+id+"']",
+            return self.tree.xpath("//*[@internalnc:id = '"+id+"']",
                                    namespaces=self.namespaces).pop()
         except IndexError:
             raise KeyError(id) from None
@@ -111,7 +113,7 @@ class TemplateTree:
         """
         return self._get_elements_by_attribute(
             (root if root is not None else self.tree),
-            "name", name)
+            "internalc:name", name)
 
     def get_element_id(self, element):
         """
@@ -119,12 +121,12 @@ class TemplateTree:
         :meth:`get_element_name` apply, except that the `id` is not copied when
         the element is within a subtree copied using :meth:`deepcopy_subtree`.
         """
-        id = element.get(internal_ns.id)
+        id = element.get(internal_noncopyable_ns.id)
         if id is not None:
             return id
 
         id = self._get_unique_element_attribute("id")
-        element.set(internal_ns.id, id)
+        element.set(internal_noncopyable_ns.id, id)
 
         return id
 
@@ -142,12 +144,12 @@ class TemplateTree:
         duplicated. Also, elements may just vanish during processing. Your code
         must be able to cope with both cases.
         """
-        name = element.get(internal_ns.name)
+        name = element.get(internal_copyable_ns.name)
         if name is not None:
             return name
 
         name = self._get_unique_element_attribute("name")
-        element.set(internal_ns.name, name)
+        element.set(internal_copyable_ns.name, name)
 
         return name
 
@@ -190,6 +192,11 @@ class Template(TemplateTree):
         self.name = name
         self._processors_ordered = []
         self._processors = {}
+        # the lists are sortedlists by default
+        # maps { element_id => [(processor_cls, hook)] }
+        self._id_hooked_elements = {}
+        # maps { element_name => [(processor_cls, hook)] }
+        self._name_hooked_elements = {}
 
     def _add_namespace_processor(self, processor_cls, *args, **kwargs):
         if processor_cls in self._processors:
@@ -199,6 +206,91 @@ class Template(TemplateTree):
         self._processors_ordered.append(processor)
         self._processors[processor_cls] = processor
 
+    def _get_hooks(self, element):
+        hooks = sortedlist()
+        try:
+            elemid = element.attrib[internal_noncopyable_ns.id]
+            logging.debug("looking up hooks for element id %s", elemid)
+            hooks.update(self._id_hooked_elements[elemid])
+        except KeyError:
+            logging.debug("no id-based hooks for %s", element)
+        try:
+            elemname = element.attrib[internal_copyable_ns.name]
+            logging.debug("looking up hooks for element name %s", elemname)
+            hooks.update(self._name_hooked_elements[elemname])
+        except KeyError:
+            logging.debug("no name-based hooks for %s", element)
+        return hooks
+
+
+    def _has_hook(self, element):
+        return (internal_copyable_ns.hooked in element.attrib or
+                internal_noncopyable_ns.hooked in element.attrib)
+
+    def _insert_hook(self, hook_dict, key, processor_cls, hook):
+        logging.debug("inserting hook %s with key %s for processor %s",
+                      hook, key, processor_cls)
+        # not using setdefault here because sortedlist construction could be
+        # expensive, at least it requires arguments and readability would suffer
+        try:
+            targetlist = hook_dict[key]
+        except KeyError:
+            targetlist = sortedlist(
+                key=lambda x: x[0])
+            hook_dict[key] = targetlist
+
+        targetlist.add((processor_cls, hook))
+
+    def _process_hook(self, template_tree, hooked_element, arguments):
+        items = []
+        logging.debug("running hooks for %s", hooked_element)
+        for _, hook in self._get_hooks(hooked_element):
+            logging.debug("running hook %r", hook)
+            result = hook(template_tree, hooked_element, arguments)
+            if result is None:
+                continue
+
+            # if the hook returns an iterable, we replace the hooked element by
+            # the elements in the iterable
+            parent = hooked_element.getparent()
+            pos = parent.index(hooked_element)
+            del parent[pos]
+            for item in result:
+                parent.insert(pos, item)
+                items.append(item)
+                pos += 1
+
+            # in addition, there is no element which is hooked anymore, so we
+            # can just return. tell the caller the element has vanished
+            return items
+        items.append(hooked_element)
+        return items
+
+    def _process_subtree(self, template_tree, subtree, arguments):
+        logging.debug("processing subtree starting at %s", subtree)
+        while subtree is not None:
+            try:
+                next_hooked = subtree.xpath(
+                    "(descendant::* | following::*)["
+                    "@internalnc:hooked or @internalc:hooked][1]",
+                    namespaces=self.namespaces).pop()
+            except IndexError:
+                # no further hooked elements
+                logging.debug("no more hooked elements, returning")
+                return
+
+            logging.debug("next hooked element is at %s", next_hooked)
+            subtrees = self._process_hook(template_tree, next_hooked, arguments)
+            new_subtree = subtree
+            for new_subtree in subtrees:
+                logging.debug("hook returned element %s", new_subtree)
+                # process any new subtrees
+                # note that _process_hook returns the original element in a list
+                # if it was not replaced
+                self._process_subtree(template_tree, new_subtree, arguments)
+
+            subtree = new_subtree
+
     def get_processor(self, processor_cls):
         """
         Return the processor instance of the given processor class associated
@@ -207,6 +299,39 @@ class Template(TemplateTree):
         """
         return self._processors[processor_cls]
 
+    def hook_element_by_id(self, element, processor_cls, hook):
+        """
+        Add a hook to an *element*, idenitfied by its id. The *processor_cls*
+        must be the class (not the object!) of the processor requesting that
+        hook. It is used for ordering the hook execution so that BEFORE/AFTER
+        relationships are fulfilled.
+        """
+        self._insert_hook(
+            self._id_hooked_elements,
+            self.get_element_id(element),
+            processor_cls,
+            hook)
+        element.set(internal_noncopyable_ns.hooked, "")
+
+    def hook_element_by_name(self, element, processor_cls, hook):
+        """
+        Add a hook to an *element*, identified by its name. For details on the
+        arguments, see :meth:`hook_element_by_id`.
+
+        The difference to hooking by id is that hooks are not preserved across
+        tree copy operations performed by :meth:`deepcopy_subtree`.
+        """
+        self._insert_hook(
+            self._name_hooked_elements,
+            self.get_element_name(element),
+            processor_cls,
+            hook)
+        element.set(internal_copyable_ns.hooked, "")
+
+    def preprocess(self):
+        for processor in self._processors_ordered:
+            processor.preprocess()
+
     def process(self, arguments):
         """
         Process the template using the given dictionary of *arguments*.
@@ -214,8 +339,13 @@ class Template(TemplateTree):
         Return the result tree after all processors have been applied.
         """
         tree = TemplateTree(copy.deepcopy(self.tree))
-        for processor in self._processors_ordered:
-            processor.process(tree, arguments)
+        root = tree.tree.getroot()
+        if self._has_hook(root):
+            logging.debug("root has hook")
+            for subtree in self._process_hook(tree, root, arguments):
+                self._process_subtree(tree, subtree, arguments)
+        else:
+            self._process_subtree(tree, root, arguments)
         # clear_element_ids(tree)
         return tree
 
@@ -249,6 +379,7 @@ class Engine(teapot.templating.Engine):
         template = Template.from_buffer(buf, name)
         for processor in self._processors:
             template._add_namespace_processor(processor)
+        template.preprocess()
         return template
 
     def add_namespace_processor(self, processor_cls):
@@ -258,6 +389,10 @@ class Engine(teapot.templating.Engine):
 
         This also recursively loads all required processor classes; if this
         leads to a circular require, a :class:`ValueError` is raised.
+
+        Inserting a processor with :attr:`xsltea.processor.ProcessorMeta.BEFORE`
+        restrictions is in the worst case (no restrictions apply) linear in
+        amount of currently added processors.
 
         Drops the template cache.
         """

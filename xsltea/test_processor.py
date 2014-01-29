@@ -70,3 +70,5 @@ class TestProcessorMeta(unittest.TestCase):
 
         self.assertSetEqual(set([Foo1, Foo2, Foo3, Foo4, Foo5, Foo6]), Foo7.AFTER)
         self.assertSetEqual(set([]), Foo7.BEFORE)
+
+        self.assertLess(Foo1, Foo2)
