@@ -107,6 +107,9 @@ class WebForm(metaclass=abc.ABCMeta):
             if the_form.has_errors():
                 errors = the_form.get_error_dict()
                 \"\"\"do something\"\"\"
+            else:
+                name = the_form.name
+                password = the_form.password
 
     """
 
