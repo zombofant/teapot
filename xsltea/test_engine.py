@@ -3,33 +3,46 @@ import unittest
 import teapot.templating
 import xsltea
 
-class FnordProcessor(xsltea.TemplateProcessor):
+class Foo1(xsltea.processor.TemplateProcessor):
     pass
 
-class FakeProcessor(xsltea.TemplateProcessor):
-    REQUIRES = [xsltea.ExecProcessor, FnordProcessor]
+class Foo3(xsltea.processor.TemplateProcessor):
+    pass
 
-FnordProcessor.REQUIRES = [FakeProcessor]
+class Foo2(xsltea.processor.TemplateProcessor):
+    AFTER = [Foo1]
+    BEFORE = [Foo3]
+
+class Bar(xsltea.processor.TemplateProcessor):
+    REQUIRES = [Foo1]
+    BEFORE = [Foo2, Foo1]
 
 class TestEngine(unittest.TestCase):
     def setUp(self):
         self._engine = xsltea.Engine()
 
-    def test_recursion_detection_for_processors(self):
-        prev_list = list(self._engine.processors)
-
-        with self.assertRaises(ValueError):
-            self._engine.add_namespace_processor(FakeProcessor)
-        self.assertSequenceEqual(
-            prev_list, self._engine.processors,
-            "Processor list was modified, despite error")
-
-        with self.assertRaises(ValueError):
-            self._engine.add_namespace_processor(FnordProcessor)
-        self.assertSequenceEqual(
-            prev_list, self._engine.processors,
-            "Processor list was modified, despite error")
-
     def test_add_processor(self):
         self._engine.add_namespace_processor(xsltea.ExecProcessor)
         self.assertIn(xsltea.ExecProcessor, self._engine.processors)
+
+    def test_processor_ordering(self):
+        self._engine.add_namespace_processor(Foo3)
+        self._engine.add_namespace_processor(Foo1)
+        self._engine.add_namespace_processor(Foo2)
+        self.assertSequenceEqual(
+            self._engine.processors,
+            [Foo1, Foo2, Foo3])
+
+    def test_processor_dependency(self):
+        self._engine.add_namespace_processor(Bar)
+        self.assertSequenceEqual(
+            [Bar, Foo1],
+            self._engine.processors)
+        self._engine.add_namespace_processor(Foo1)
+        self.assertSequenceEqual(
+            [Bar, Foo1],
+            self._engine.processors)
+        self._engine.add_namespace_processor(Foo2)
+        self.assertSequenceEqual(
+            [Bar, Foo1, Foo2],
+            self._engine.processors)

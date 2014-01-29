@@ -13,7 +13,99 @@ extensions.
 
 import abc
 
-class TemplateProcessor:
+class ProcessorMeta(type):
+    """
+    This metaclass is used to keep the ordering and dependency attributes of the
+    processor classes in sync.
+
+    Classes with this metaclass (e.g. all classes inheriting from
+    :class:`TemplateProcessor`) can use the following attributes:
+
+    .. attribute:: REQUIRES
+
+       This can be assigned an iterable of processor classes which are required
+       by the processor. These processors will also be loaded by the
+       :class:`xsltea.Engine` upon loading this processor.
+
+    .. attribute:: AFTER
+
+       This can be assigned an iterable of processor classes after which the
+       current processor wants to be loaded.
+
+    .. attribute:: BEFORE
+
+       This can be assigned an iterable of processor classes before which the
+       current processor wants to be loaded.
+
+    .. note::
+       All attributes must be created at class construction time. Later
+       alterations are not allowed and can lead to strange behaviour including
+       infinite loops.
+
+    All attributes are available after class construction, even if not specified
+    in the original class. The :attr:`AFTER` and :attr:`BEFORE` attributes are
+    kept in sync with other definitions. That is, if you have a processor class
+    `A` and another processor class `B` which specifies `A` in its `AFTER`
+    attribute, `B` will show up in the `BEFORE` attribute of `A` afterwards.
+
+    Note that mentioning a processor in :attr:`AFTER` will not make it being
+    loaded by the :class:`Engine` automatically. The Before-After relation is
+    orthogonal to the Requires-relation.
+
+    The relationship established by :attr:`BEFORE` and :attr:`AFTER` is
+    transitive.
+    """
+
+    @classmethod
+    def _loopcheck(mcls, cls, attribute, saw_classes):
+        if cls in saw_classes:
+            raise ValueError("circular dependency in {} specification".format(
+                attribute))
+
+        saw_classes.add(cls)
+        for other_cls in getattr(cls, attribute):
+            mcls._loopcheck(other_cls, attribute, set(saw_classes))
+
+    @property
+    def REQUIRES(cls):
+        return frozenset(cls.__REQUIRES)
+
+    @property
+    def AFTER(cls):
+        return frozenset(cls.__AFTER)
+
+    @property
+    def BEFORE(cls):
+        return frozenset(cls.__BEFORE)
+
+    def __new__(mcls, name, bases, namespace):
+        requires = set(namespace.get("REQUIRES", []))
+        after = set(namespace.get("AFTER", []))
+        before = set(namespace.get("BEFORE", []))
+
+        namespace["_ProcessorMeta__REQUIRES"] = requires
+        namespace["_ProcessorMeta__AFTER"] = after
+        namespace["_ProcessorMeta__BEFORE"] = before
+
+        cls = super().__new__(mcls, name, bases, namespace)
+
+        for after_cls in list(after):
+            after |= after_cls.__AFTER
+        for before_cls in list(before):
+            before |= before_cls.__BEFORE
+        for after_cls in after:
+            after_cls.__BEFORE |= cls.__BEFORE
+            after_cls.__BEFORE.add(cls)
+        for before_cls in before:
+            before_cls.__AFTER |= cls.__AFTER
+            before_cls.__AFTER.add(cls)
+
+        mcls._loopcheck(cls, "BEFORE", set())
+        mcls._loopcheck(cls, "REQUIRES", set())
+
+        return cls
+
+class TemplateProcessor(metaclass=ProcessorMeta):
     """
     This is a base for namespace processors. Each namespace processor deals with
     XML elements and attributes from a specific namespace (or set of
@@ -29,18 +121,6 @@ class TemplateProcessor:
 
     The final processing of the template using the parameters from the template
     invocation is done in the :meth:`process` method.
-
-    .. attribute:: REQUIRES
-
-       You can set this attribute to a sequence of other
-       :class:`TemplateProcessor` subclasses to indicate that your module
-       requires these.
-
-       .. note::
-
-          This attribute must be set on the class, not on the instance.
-
-
     """
 
     def __init__(self, template, **kwargs):

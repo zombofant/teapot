@@ -251,8 +251,7 @@ class Engine(teapot.templating.Engine):
                 processor_cls))
 
         added.add(processor_cls)
-        if hasattr(processor_cls, "REQUIRES"):
-            for requires in processor_cls.REQUIRES:
+        for requires in processor_cls.REQUIRES:
                 self._add_namespace_processor(requires, added, new_processors)
 
         new_processors.append(processor_cls)
@@ -273,10 +272,29 @@ class Engine(teapot.templating.Engine):
 
         Drops the template cache.
         """
+        if processor_cls in self._processors:
+            return
+
         # delegate to infinite-recursion-safe function :)
-        new_processors = list(self._processors)
-        self._add_namespace_processor(processor_cls, set(), new_processors)
-        self._processors[:] = new_processors
+        for required in processor_cls.REQUIRES:
+            self.add_namespace_processor(required)
+
+        new_index = None
+        if processor_cls.BEFORE:
+            # we can ignore AFTER here, because we, by default, insert at the
+            # end.
+            new_index = len(self._processors)
+            for i, other_cls in enumerate(self._processors):
+                if other_cls in processor_cls.BEFORE:
+                    new_index = min(i, new_index)
+                    break
+
+        if new_index is not None:
+            self._processors.insert(new_index, processor_cls)
+        else:
+            # no ordering restrictions found
+            self._processors.append(processor_cls)
+
         # drop cache
         self._cache.clear()
 
