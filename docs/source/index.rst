@@ -14,6 +14,7 @@ Contents:
    routing
    accept
    response
+   forms
    wsgi
    templating
 

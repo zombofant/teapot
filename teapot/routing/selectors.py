@@ -8,6 +8,7 @@ import re
 import logging
 
 import teapot.request
+import teapot.forms
 from teapot.routing.info import *
 
 __all__ = [
@@ -17,7 +18,8 @@ __all__ = [
     "cookie",
     "content_type",
     "method",
-    "formatted_path"
+    "formatted_path",
+    "webform"
     ]
 
 logger = logging.getLogger(__name__)
@@ -921,3 +923,28 @@ class method(Selector):
 
     def unselect(self, request):
         request.method = self._request_method_default
+
+class webform(Selector):
+    """
+    """
+
+    def __init__(self, webform_class, destarg=None, **kwargs):
+        super().__init__(**kwargs)
+        self._webform_class = webform_class
+        self._destarg = destarg
+
+    def select(self, request):
+        try:
+            form = self._webform_class(request.post_data)
+        except KeyError:
+            # missing form fields in post_data
+            logging.debug("missing data to create web form")
+            return False
+        if self._destarg is None:
+            request.args.append(form)
+        else:
+            request.kwargs[self._destarg] = form
+        return True
+
+    def unselect(self, request):
+        return True
