@@ -147,6 +147,8 @@ the route can further be refined using the following decorators:
 
 .. autoclass:: teapot.routing.selectors.method
 
+.. autoclass:: teapot.routing.selectors.webform
+
 Utilities to get information from routables
 ===========================================
 

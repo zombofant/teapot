@@ -926,6 +926,24 @@ class method(Selector):
 
 class webform(Selector):
     """
+    A selector that selects a set of request arguments defined as form fields
+    within *webform_class*, a :class:`WebForm` subclass, and passes an instance
+    of it to the final routable either as keyword argument *destarg* or as
+    positional argument, if *destarg* is :data:`None`.
+
+    The selector does only match, if all defined webform fields in
+    *webform_class* can be filled from available request arguments.
+
+    Example::
+
+        class MyForm(teapot.WebForm):
+            @teapot.webformfield
+            def a_form_field(value): pass
+
+        @teapot.webform(MyForm, "the_form"):
+        @teapot.route("/path")
+        def handle_form_post(the_form):
+            \"\"\"do something\"\"\"
     """
 
     def __init__(self, webform_class, destarg=None, **kwargs):
