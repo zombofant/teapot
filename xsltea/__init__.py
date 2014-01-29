@@ -58,8 +58,6 @@ class TemplateTree:
     _element_id_rng = random.Random()
     _element_id_rng.seed()
 
-    xpath_selector_non_barred = "not(ancestor::*[@internal:barrier])"
-
     def __init__(self, tree):
         self.tree = tree
 
@@ -152,15 +150,6 @@ class TemplateTree:
         element.set(internal_ns.name, name)
 
         return name
-
-    def set_element_barrier(self, element, barrier=True):
-        if barrier:
-            element.set(internal_ns.barrier, "")
-        else:
-            try:
-                del element.attrib[internal_ns.barrier]
-            except KeyError:
-                pass
 
 class Template(TemplateTree):
     """
