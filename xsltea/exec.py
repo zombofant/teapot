@@ -67,6 +67,7 @@ just like any other processor, be accessed via the
 
 """
 
+import functools
 import logging
 
 from .namespaces import NamespaceMeta, xml
@@ -173,18 +174,64 @@ class ExecProcessor(TemplateProcessor):
     class xmlns(metaclass=NamespaceMeta):
         xmlns = "https://xmlns.zombofant.net/xsltea/exec"
 
-    namespaces = {"exec": str(xmlns),
-                  "xml": str(xml)}
+    namespaces = {"exec": str(xmlns)}
 
-    def __init__(self, template, **kwargs):
-        super().__init__(template, **kwargs)
+    def _eval_attribute(self, code, attrname, template_tree, element, arguments):
+        globals_dict = dict(self._scope.get_globals())
+        globals_dict.update(arguments)
+        locals_dict = self._scope.get_locals_dict_for_element(element)
 
-        # store environments for specific execution contexts
-        self._precompiled_attributes = []
-        self._precompiled_elements = []
+        try:
+            value = eval(code, globals_dict, locals_dict)
+        except Exception as err:
+            raise TemplateEvaluationError("failed to evaluate template") \
+                from err
 
-        tree = template.tree
-        scope = template.get_processor(ScopeProcessor)
+        if value is not None:
+            if not isinstance(value, str) and hasattr(value, "__iter__"):
+                value, ns = value
+                attrname = "{" + ns + "}" + attrname
+            element.set(attrname, str(value))
+
+    def _eval_text(self, code, template_tree, element, arguments):
+        globals_dict = dict(self._scope.get_globals())
+        globals_dict.update(arguments)
+        locals_dict = self._scope.get_locals_dict_for_element(element)
+
+        try:
+            value = eval(code, globals_dict, locals_dict)
+        except Exception as err:
+            raise TemplateEvaluationError("failed to evaluate template") \
+                from err
+
+        if value is None:
+            return []
+
+        value = str(value)
+        if element.tail is not None:
+            value += element.tail
+
+        parent = element.getparent()
+
+        prev = element.getprevious()
+        if prev is None:
+            if parent.text is None:
+                parent.text = value
+            else:
+                parent.text += value
+        else:
+            if prev.tail is None:
+                prev.tail = value
+            else:
+                prev.tail += value
+
+        return []
+
+    def preprocess(self):
+        template = self._template
+        self._scope = template.get_processor(ScopeProcessor)
+        tree = self._template.tree
+        scope = self._scope
         globals_dict = scope.get_globals()
 
         for global_attr in tree.xpath("//@exec:global",
@@ -213,10 +260,12 @@ class ExecProcessor(TemplateProcessor):
 
             attrname = eval_attr.attrname.split("}", 1).pop()
 
-            self._precompiled_attributes.append(
-                (self._template.get_element_id(parent),
-                 attrname,
-                 code))
+            self._template.hook_element_by_name(
+                parent, ExecProcessor,
+                functools.partial(
+                    self._eval_attribute,
+                    code,
+                    attrname))
 
             del parent.attrib[eval_attr.attrname]
 
@@ -228,61 +277,9 @@ class ExecProcessor(TemplateProcessor):
                     self.xmlns.text))
 
             code = compile(text_elem.text, template.name, 'eval')
-            self._precompiled_elements.append(
-                (self._template.get_element_id(text_elem),
-                 code))
 
-    def process(self, tree, arguments):
-        scope = self._template.get_processor(ScopeProcessor)
-        globals_dict = dict(scope.get_globals())
-        globals_dict.update(arguments)
-        for element_id, attrname, code in self._precompiled_attributes:
-            element = tree.get_element_by_id(element_id)
-
-            locals_dict = scope.get_locals_dict_for_element(element)
-
-            try:
-                value = eval(code, globals_dict, locals_dict)
-            except Exception as err:
-                raise TemplateEvaluationError("failed to evaluate template") \
-                    from err
-
-            if value is not None:
-                if not isinstance(value, str) and hasattr(value, "__iter__"):
-                    value, ns = value
-                    attrname = "{" + ns + "}" + attrname
-                element.set(attrname, str(value))
-
-        for element_id, code in self._precompiled_elements:
-            element = tree.get_element_by_id(element_id)
-
-            locals_dict = scope.get_locals_dict_for_element(element)
-
-            try:
-                value = eval(code, globals_dict, locals_dict)
-            except Exception as err:
-                raise TemplateEvaluationError("failed to evaluate template") \
-                    from err
-
-            if value is None:
-                element.getparent().remove(element)
-                continue
-            value = str(value)
-            if element.tail is not None:
-                value += element.tail
-
-            parent = element.getparent()
-
-            prev = element.getprevious()
-            if prev is None:
-                if parent.text is None:
-                    parent.text = value
-                else:
-                    parent.text += value
-            else:
-                if prev.tail is None:
-                    prev.tail = value
-                else:
-                    prev.tail += value
-
-            parent.remove(element)
+            self._template.hook_element_by_name(
+                text_elem, ExecProcessor,
+                functools.partial(
+                    self._eval_text,
+                    code))

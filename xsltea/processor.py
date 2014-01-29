@@ -12,7 +12,9 @@ extensions.
 """
 
 import abc
+import functools
 
+@functools.total_ordering
 class ProcessorMeta(type):
     """
     This metaclass is used to keep the ordering and dependency attributes of the
@@ -105,6 +107,30 @@ class ProcessorMeta(type):
 
         return cls
 
+    def __hash__(cls):
+        return type.__hash__(cls)
+
+    def __lt__(cls, other):
+        """
+        This *cls* is _less than_ the *other*, if it has to be evaluated
+        *before* the other class.
+        """
+        return other in cls.__BEFORE
+
+    def __gt__(cls, other):
+        """
+        This *cls* is _greater than_ the *other*, if it has to be evaluated
+        *after* the other class.
+        """
+        return other in cls.__AFTER
+
+    def __eq__(cls, other):
+        """
+        This *cls* is equal to the *other*, if *other* is scheduled neither
+        before nor after the current *cls*.
+        """
+        return other not in cls.__BEFORE and other not in cls.__AFTER
+
 class TemplateProcessor(metaclass=ProcessorMeta):
     """
     This is a base for namespace processors. Each namespace processor deals with
@@ -115,21 +141,38 @@ class TemplateProcessor(metaclass=ProcessorMeta):
     template based on the arguments passed from the function invoking the
     template.
 
-    Upon construction, the *template* is passed to the namespace processor. It
-    is expected that any processing which can be done once per template is done
-    during construction of the processor.
+    The three stages of processor appliance are
 
-    The final processing of the template using the parameters from the template
-    invocation is done in the :meth:`process` method.
+    1. *Annotation*: During annotation, no explicit changes to the tree should
+       be applied. However, getting (and thus, setting) element IDs and
+       names and placing barriers is what should happen in this phase.
+    2. *Preprocessing*: Everything what can be done without the arguments from
+       the template evaluation and without passing barriers can be done in this
+       stage.
+    3. *Processing*: At this stage, the template *arguments* are known. A copy
+       of the original tree is available and anything which does not pass
+       barriers is allowed. To allow for complete evaluation of the template,
+       you have to call :meth:`~xsltea.TemplateTree.process_subtree_late` on any
+       trees un-barred during processing.
     """
 
     def __init__(self, template, **kwargs):
         super().__init__(**kwargs)
         self._template = template
 
-    @abc.abstractmethod
-    def process(self, arguments):
+    def annotate(self, template_tree, subtree):
         """
-        Execute the final template processing using the *arguments* dictionary
-        returned by the function invoking the template.
+        Annotate the templates tree with any required information. Any barriers
+        required by your code must be set in this method. Later setting of
+        barriers is not allowed, as other code must be able to rely on the
+        barrier information it has in :meth:`preprocess`.
+
+        Subclasses may override this method to do something sensible, currently
+        it does nothing.
+        """
+
+    @abc.abstractmethod
+    def preprocess(self):
+        """
+        Preprocess the given *subtree*, if possible.
         """
