@@ -88,8 +88,8 @@ class TemplateTree:
         into this tree.
         """
         copied = copy.deepcopy(subtree)
-        for noncopyable_attr in subtree.xpath("//@*[namespace-uri() = '"+
-                                              str(internal_noncopyable_ns)+"']"):
+        for noncopyable_attr in copied.xpath("//@*[namespace-uri() = '"+
+                                             str(internal_noncopyable_ns)+"']"):
             del noncopyable_attr.getparent().attrib[noncopyable_attr.attrname]
         return copied
 
