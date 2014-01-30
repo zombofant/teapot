@@ -207,7 +207,7 @@ class Template(TemplateTree):
         self._processors[processor_cls] = processor
 
     def _get_hooks(self, element):
-        hooks = sortedlist()
+        hooks = sortedlist(key=lambda x: x[0])
         try:
             elemid = element.attrib[internal_noncopyable_ns.id]
             logging.debug("looking up hooks for element id %s", elemid)
