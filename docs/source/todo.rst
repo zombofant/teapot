@@ -13,13 +13,7 @@ point you like to modify.
   This style should make the router replace the *request* argument with the
   original request sent by the client.
 
-* POST data processing (including file upload, limiting)
-
-  * Normal fields should be accessible like query data (but with their own
-    decorator, do not reuse :class:`teapot.routing.info.queryargs` for that),
-    ideally already decoded into unicode objects
-  * Uploaded files should be accessible as ``bytes`` objects, also through the
-    decorator.
+* Refactor form handling to metaclasses
 
 * Regex path formatter
 
@@ -44,3 +38,5 @@ point you like to modify.
 
         return ("some_template_file.xsl",
                 {"arg1": "value1", …})
+
+* We need a convenient way to set HTTP-headers (and cookies) within routables
