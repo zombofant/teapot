@@ -49,6 +49,16 @@ class TestForeachProcessor(unittest.TestCase):
     </tea:for-each>
 </tea:for-each></test>"""
 
+    xmlsrc_with_exec_local = """<?xml version="1.0" ?>
+<test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
+      xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
+      exec:global="foo = list(range(3))">
+<tea:for-each tea:bind="i" tea:from="foo">
+    <tea:for-each tea:bind="j" tea:from="foo">
+        <foo exec:local="k = i+j"><exec:text>k</exec:text></foo>
+    </tea:for-each>
+</tea:for-each></test>"""
+
     def _load_xml(self, xmlstr):
         template = xsltea.Template.from_buffer(xmlstr, "<string>")
         template._add_namespace_processor(xsltea.exec.ScopeProcessor)
@@ -96,3 +106,11 @@ class TestForeachProcessor(unittest.TestCase):
         tree = template.process({})
         self.assertEqual("000102101112202122",
                          tree.tree.getroot().text)
+
+    def test_with_exec_local(self):
+        template, foreach_ns = self._load_xml(self.xmlsrc_with_exec_local)
+        tree = template.process({})
+        foo_texts = [element.text for element in tree.tree.findall("foo")]
+        self.assertSequenceEqual(
+            foo_texts,
+            [str(i+j) for i in range(3) for j in range(3)])

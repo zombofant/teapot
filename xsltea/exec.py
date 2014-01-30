@@ -217,6 +217,28 @@ class ExecProcessor(TemplateProcessor):
                 attrname = "{" + ns + "}" + attrname
             element.set(attrname, str(value))
 
+    def _exec_global(self, code, template_tree, element, arguments):
+        scope = template_tree.get_processor(ScopeProcessor)
+        globals_dict = scope.get_globals()
+        try:
+            exec(code, globals_dict, globals_dict)
+        except Exception as err:
+            raise TemplateEvaluationError("failed to execute exec:global") from err
+
+    def _exec_local(self, code, template_tree, element, arguments):
+        scope = template_tree.get_processor(ScopeProcessor)
+        locals_dict = {}
+        globals_dict = dict(scope.get_globals())
+        globals_dict.update(
+            scope.get_locals_dict_for_element(element))
+
+        try:
+            exec(code, globals_dict, locals_dict)
+        except Exception as err:
+            raise TemplateEvaluationError("failed to execute exec:local") from err
+
+        scope.update_defines_for_element(element, locals_dict)
+
     def _eval_text(self, code, template_tree, element, arguments):
         scope = template_tree.get_processor(ScopeProcessor)
         globals_dict = scope.get_globals()
@@ -257,23 +279,32 @@ class ExecProcessor(TemplateProcessor):
         tree = self._template.tree
         globals_dict = scope.get_globals()
 
+        # precompile global
         for global_attr in tree.xpath("//@exec:global",
                                       namespaces=self.namespaces):
             parent = global_attr.getparent()
-            exec(global_attr, globals_dict, globals_dict)
-
+            code = compile(global_attr, template.name, "exec")
             del parent.attrib[global_attr.attrname]
 
+            template.hook_element_by_name(
+                parent,
+                ExecProcessor,
+                functools.partial(
+                    self._exec_global,
+                    code))
+
+        # precompile local
         for with_attr in tree.xpath("//@exec:local", namespaces=self.namespaces):
             parent = with_attr.getparent()
-            locals_dict = {}
-            this_globals_dict = dict(globals_dict)
-            this_globals_dict.update(
-                scope.get_inherited_locals_for_element(parent))
-            exec(with_attr, this_globals_dict, locals_dict)
-            scope.update_defines_for_element(parent, locals_dict)
-
+            code = compile(with_attr, template.name, "exec")
             del parent.attrib[with_attr.attrname]
+
+            template.hook_element_by_name(
+                parent,
+                ExecProcessor,
+                functools.partial(
+                    self._exec_local,
+                    code))
 
         # precompile the remaining attributes
         for eval_attr in tree.xpath("//@*[namespace-uri() = '{}']".format(
