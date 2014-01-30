@@ -75,6 +75,8 @@ from .processor import TemplateProcessor
 from .utils import *
 from .errors import TemplateEvaluationError
 
+logger = logging.getLogger(__name__)
+
 class ScopeProcessor(TemplateProcessor):
     """
     The scope processor implements scoping of python values with xml
@@ -117,17 +119,17 @@ class ScopeProcessor(TemplateProcessor):
         the parent scopes. Returns a new dict.
         """
 
-        logging.debug("finding inherited locals for %s",
+        logger.debug("finding inherited locals for %s",
                       self._template.get_element_id(element))
         locals_dict = {}
         for parent in reversed(list(element.iterancestors())):
             parent_dict = self._get_defines_for_element(parent)
-            logging.debug("parent %s has %s",
+            logger.debug("parent %s has %s",
                           self._template.get_element_id(parent),
                           parent_dict)
             locals_dict.update(parent_dict)
 
-        logging.debug("all inherited locals: %s", locals_dict)
+        logger.debug("all inherited locals: %s", locals_dict)
 
         return locals_dict
 
@@ -139,7 +141,7 @@ class ScopeProcessor(TemplateProcessor):
 
         elemdict = self._defines.setdefault(
             self._template.get_element_id(element), {})
-        logging.debug("%s: set %s to %r",
+        logger.debug("%s: set %s to %r",
                       self._template.get_element_id(element),
                       name,
                       value)
@@ -158,7 +160,7 @@ class ScopeProcessor(TemplateProcessor):
 
         elemdict = self._defines.setdefault(
             self._template.get_element_id(element), {})
-        logging.debug("%s: update with %r",
+        logger.debug("%s: update with %r",
                       self._template.get_element_id(element),
                       new_defines)
         elemdict.update(new_defines)
@@ -189,9 +191,6 @@ class ScopeProcessor(TemplateProcessor):
 
     def process(self, tree, arguments):
         pass
-
-
-ScopeProcessor.logger = logging.getLogger(ScopeProcessor.__qualname__)
 
 class ExecProcessor(TemplateProcessor):
     REQUIRES = [ScopeProcessor]

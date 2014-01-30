@@ -53,6 +53,13 @@ xml_parser = etree.XMLParser(ns_clean=True,
                              remove_blank_text=True,
                              remove_comments=True)
 
+class _TreeFormatter:
+    def __init__(self, tree):
+        self._tree = tree
+
+    def __str__(self):
+        return str(etree.tostring(self._tree))
+
 class TemplateTree:
     namespaces = {"internalnc": str(internal_noncopyable_ns),
                   "internalc": str(internal_copyable_ns)}
@@ -221,16 +228,16 @@ class Template(TemplateTree):
         hooks = sortedlist(key=lambda x: x[0])
         try:
             elemid = element.attrib[internal_noncopyable_ns.id]
-            logging.debug("looking up hooks for element id %s", elemid)
+            logger.debug("looking up hooks for element id %s", elemid)
             hooks.update(self._id_hooked_elements[elemid])
         except KeyError:
-            logging.debug("no id-based hooks for %s", element)
+            logger.debug("no id-based hooks for %s", element)
         try:
             elemname = element.attrib[internal_copyable_ns.name]
-            logging.debug("looking up hooks for element name %s", elemname)
+            logger.debug("looking up hooks for element name %s", elemname)
             hooks.update(self._name_hooked_elements[elemname])
         except KeyError:
-            logging.debug("no name-based hooks for %s", element)
+            logger.debug("no name-based hooks for %s", element)
         return hooks
 
 
@@ -239,7 +246,7 @@ class Template(TemplateTree):
                 internal_noncopyable_ns.hooked in element.attrib)
 
     def _insert_hook(self, hook_dict, key, processor_cls, hook):
-        logging.debug("inserting hook %s with key %s for processor %s",
+        logger.debug("inserting hook %s with key %s for processor %s",
                       hook, key, processor_cls)
         # not using setdefault here because sortedlist construction could be
         # expensive, at least it requires arguments and readability would suffer
@@ -254,7 +261,7 @@ class Template(TemplateTree):
 
     def _process_hook(self, template_tree, hooked_element, arguments):
         items = []
-        logging.debug("running hooks for %s", hooked_element)
+        logger.debug("running hooks for %s", hooked_element)
         # remove hooked flags
         try:
             del hooked_element.attrib[internal_noncopyable_ns.hooked]
@@ -265,7 +272,7 @@ class Template(TemplateTree):
         except KeyError:
             pass
         for _, hook in self._get_hooks(hooked_element):
-            logging.debug("running hook %r", hook)
+            logger.debug("running hook %r", hook)
             result = hook(template_tree, hooked_element, arguments)
             if result is None:
                 continue
@@ -337,13 +344,14 @@ class Template(TemplateTree):
         root = tree.tree.getroot()
 
         if self._has_hook(root):
-            logging.debug("root has hook")
+            logger.debug("root has hook")
             # process hook at root, afterwards search through the remaining hooks
             self._process_hook(tree, root, arguments)
 
         curr = root
         # search for hooked elements until done
         while True:
+            logger.debug("current tree: %s", _TreeFormatter(tree.tree))
             try:
                 next_hooked = root.xpath(
                     "descendant::*["
@@ -351,10 +359,10 @@ class Template(TemplateTree):
                     namespaces=self.namespaces).pop()
             except IndexError:
                 # no further hooked elements
-                logging.debug("no more hooked elements, returning")
+                logger.debug("no more hooked elements, returning")
                 break
 
-            logging.debug("next hooked element is at %s", next_hooked)
+            logger.debug("next hooked element is at %s", next_hooked)
             self._process_hook(tree, next_hooked, arguments)
 
         # clear_element_ids(tree)
