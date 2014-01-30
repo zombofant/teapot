@@ -255,6 +255,15 @@ class Template(TemplateTree):
     def _process_hook(self, template_tree, hooked_element, arguments):
         items = []
         logging.debug("running hooks for %s", hooked_element)
+        # remove hooked flags
+        try:
+            del hooked_element.attrib[internal_noncopyable_ns.hooked]
+        except KeyError:
+            pass
+        try:
+            del hooked_element.attrib[internal_copyable_ns.hooked]
+        except KeyError:
+            pass
         for _, hook in self._get_hooks(hooked_element):
             logging.debug("running hook %r", hook)
             result = hook(template_tree, hooked_element, arguments)
@@ -276,31 +285,6 @@ class Template(TemplateTree):
             return items
         items.append(hooked_element)
         return items
-
-    def _process_subtree(self, template_tree, subtree, arguments):
-        logging.debug("processing subtree starting at %s", subtree)
-        while subtree is not None:
-            try:
-                next_hooked = subtree.xpath(
-                    "(descendant::* | following::*)["
-                    "@internalnc:hooked or @internalc:hooked][1]",
-                    namespaces=self.namespaces).pop()
-            except IndexError:
-                # no further hooked elements
-                logging.debug("no more hooked elements, returning")
-                return
-
-            logging.debug("next hooked element is at %s", next_hooked)
-            subtrees = self._process_hook(template_tree, next_hooked, arguments)
-            new_subtree = subtree
-            for new_subtree in subtrees:
-                logging.debug("hook returned element %s", new_subtree)
-                # process any new subtrees
-                # note that _process_hook returns the original element in a list
-                # if it was not replaced
-                self._process_subtree(template_tree, new_subtree, arguments)
-
-            subtree = new_subtree
 
     def get_processor(self, processor_cls):
         """
@@ -351,12 +335,28 @@ class Template(TemplateTree):
         """
         tree = EvaluationTree(self)
         root = tree.tree.getroot()
+
         if self._has_hook(root):
             logging.debug("root has hook")
-            for subtree in self._process_hook(tree, root, arguments):
-                self._process_subtree(tree, subtree, arguments)
-        else:
-            self._process_subtree(tree, root, arguments)
+            # process hook at root, afterwards search through the remaining hooks
+            self._process_hook(tree, root, arguments)
+
+        curr = root
+        # search for hooked elements until done
+        while True:
+            try:
+                next_hooked = root.xpath(
+                    "descendant::*["
+                    "@internalnc:hooked or @internalc:hooked][1]",
+                    namespaces=self.namespaces).pop()
+            except IndexError:
+                # no further hooked elements
+                logging.debug("no more hooked elements, returning")
+                break
+
+            logging.debug("next hooked element is at %s", next_hooked)
+            self._process_hook(tree, next_hooked, arguments)
+
         # clear_element_ids(tree)
         return tree
 
