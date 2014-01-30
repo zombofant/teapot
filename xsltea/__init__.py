@@ -276,13 +276,28 @@ class Template(TemplateTree):
             result = hook(template_tree, hooked_element, arguments)
             if result is None:
                 continue
+            result = list(result)
 
             # if the hook returns an iterable, we replace the hooked element by
             # the elements in the iterable
             parent = hooked_element.getparent()
+            last_element = hooked_element.getprevious()
             pos = parent.index(hooked_element)
             del parent[pos]
             for item in result:
+                if isinstance(item, str):
+                    if last_element is None:
+                        if parent.text is None:
+                            parent.text = item
+                        else:
+                            parent.text += item
+                    else:
+                        if last_element.tail is None:
+                            last_element.tail = item
+                        else:
+                            last_element.tail += item
+                    continue
+                last_element = item
                 parent.insert(pos, item)
                 items.append(item)
                 pos += 1
