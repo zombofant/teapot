@@ -174,7 +174,6 @@ class TemplateProcessor(metaclass=ProcessorMeta):
     def get_context(self, evaluation_template):
         return self
 
-    @abc.abstractmethod
     def preprocess(self):
         """
         Preprocess the given *subtree*, if possible.
