@@ -171,6 +171,9 @@ class TemplateProcessor(metaclass=ProcessorMeta):
         it does nothing.
         """
 
+    def get_context(self, evaluation_template):
+        return self
+
     @abc.abstractmethod
     def preprocess(self):
         """

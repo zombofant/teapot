@@ -153,6 +153,17 @@ class TemplateTree:
 
         return name
 
+class EvaluationTree(TemplateTree):
+    def __init__(self, template):
+        super().__init__(copy.deepcopy(template.tree))
+        self._processors = {
+            processor_cls: processor_instance.get_context(self)
+            for processor_cls, processor_instance
+            in template._processors.items()}
+
+    def get_processor(self, processor_cls):
+        return self._processors[processor_cls]
+
 class Template(TemplateTree):
     """
     Wrap an lxml ``ElementTree`` *tree* as a template. The *tree* may be heavily
@@ -338,7 +349,7 @@ class Template(TemplateTree):
 
         Return the result tree after all processors have been applied.
         """
-        tree = TemplateTree(copy.deepcopy(self.tree))
+        tree = EvaluationTree(self)
         root = tree.tree.getroot()
         if self._has_hook(root):
             logging.debug("root has hook")

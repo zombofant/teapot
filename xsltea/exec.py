@@ -151,6 +151,12 @@ class ScopeProcessor(TemplateProcessor):
                       new_defines)
         elemdict.update(new_defines)
 
+    def get_context(self, evaluation_template):
+        new_scope = ScopeProcessor(evaluation_template)
+        new_scope._defines.update(self._defines)
+        new_scope._globals.update(self._globals)
+        return new_scope
+
     def get_globals(self):
         return self._globals
 
@@ -177,9 +183,10 @@ class ExecProcessor(TemplateProcessor):
     namespaces = {"exec": str(xmlns)}
 
     def _eval_attribute(self, code, attrname, template_tree, element, arguments):
-        globals_dict = dict(self._scope.get_globals())
+        scope = template_tree.get_processor(ScopeProcessor)
+        globals_dict = dict(scope.get_globals())
         globals_dict.update(arguments)
-        locals_dict = self._scope.get_locals_dict_for_element(element)
+        locals_dict = scope.get_locals_dict_for_element(element)
 
         try:
             value = eval(code, globals_dict, locals_dict)
@@ -194,9 +201,10 @@ class ExecProcessor(TemplateProcessor):
             element.set(attrname, str(value))
 
     def _eval_text(self, code, template_tree, element, arguments):
-        globals_dict = dict(self._scope.get_globals())
+        scope = template_tree.get_processor(ScopeProcessor)
+        globals_dict = dict(scope.get_globals())
         globals_dict.update(arguments)
-        locals_dict = self._scope.get_locals_dict_for_element(element)
+        locals_dict = scope.get_locals_dict_for_element(element)
 
         try:
             value = eval(code, globals_dict, locals_dict)
@@ -229,9 +237,8 @@ class ExecProcessor(TemplateProcessor):
 
     def preprocess(self):
         template = self._template
-        self._scope = template.get_processor(ScopeProcessor)
+        scope = template.get_processor(ScopeProcessor)
         tree = self._template.tree
-        scope = self._scope
         globals_dict = scope.get_globals()
 
         for global_attr in tree.xpath("//@exec:global",
