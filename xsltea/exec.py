@@ -104,6 +104,13 @@ class ScopeProcessor(TemplateProcessor):
     def _get_defines_for_element(self, element):
         return self._defines.get(self._template.get_element_id(element), {})
 
+    def _update_global_scope_with_arguments(
+            self,
+            template_tree, hooked_element, arguments):
+        # grants us access to our context instance
+        scope = template_tree.get_processor(ScopeProcessor)
+        scope.get_globals().update(arguments)
+
     def get_inherited_locals_for_element(self, element):
         """
         Retrieve the inherited locals for a given element by searching through
@@ -138,6 +145,11 @@ class ScopeProcessor(TemplateProcessor):
                       value)
         elemdict[name] = value
 
+    def share_scope_with(self, source_element, dest_element):
+        source_dict = self._defines.setdefault(
+            self._template.get_element_id(source_element), {})
+        self._defines[self._template.get_element_id(dest_element)] = source_dict
+
     def update_defines_for_element(self, element, new_defines):
         """
         Set all the names from the *new_defines* dictionary to their associated
@@ -169,8 +181,15 @@ class ScopeProcessor(TemplateProcessor):
         locals_dict.update(self._get_defines_for_element(element))
         return locals_dict
 
+    def preprocess(self):
+        self._template.hook_element_by_id(
+            self._template.tree.getroot(),
+            ScopeProcessor,
+            self._update_global_scope_with_arguments)
+
     def process(self, tree, arguments):
         pass
+
 
 ScopeProcessor.logger = logging.getLogger(ScopeProcessor.__qualname__)
 
@@ -184,8 +203,7 @@ class ExecProcessor(TemplateProcessor):
 
     def _eval_attribute(self, code, attrname, template_tree, element, arguments):
         scope = template_tree.get_processor(ScopeProcessor)
-        globals_dict = dict(scope.get_globals())
-        globals_dict.update(arguments)
+        globals_dict = scope.get_globals()
         locals_dict = scope.get_locals_dict_for_element(element)
 
         try:
@@ -202,8 +220,7 @@ class ExecProcessor(TemplateProcessor):
 
     def _eval_text(self, code, template_tree, element, arguments):
         scope = template_tree.get_processor(ScopeProcessor)
-        globals_dict = dict(scope.get_globals())
-        globals_dict.update(arguments)
+        globals_dict = scope.get_globals()
         locals_dict = scope.get_locals_dict_for_element(element)
 
         try:
