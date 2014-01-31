@@ -8,17 +8,31 @@ based on templating arguments.
 
 *xsltea* uses and requires lxml.
 
+The engine is used as an anchor for ``xsltea`` in your application. Each engine
+has its own set of options, no global variables are used. The engine also
+provides the decorator to use to decorate your controller methods for using the
+templating engine.
+
 .. autoclass:: Engine
    :members:
 
+The following classes deal with templates and the lxml ElementTrees used in
+these:
+
 .. autoclass:: Template
+
+The following modules and classes provide extension points to xsltea.
+
+.. autoclass:: TemplateTree
+
+.. autoclass:: EvaluationTree
    :members:
 
 .. automodule:: xsltea.processor
 
-.. automodule:: xsltea.exec
+.. automodule:: xsltea.safe
 
-.. automodule:: xsltea.utils
+.. automodule:: xsltea.exec
 
 .. automodule:: xsltea.namespaces
 
@@ -53,7 +67,59 @@ xml_parser = etree.XMLParser(ns_clean=True,
                              remove_blank_text=True,
                              remove_comments=True)
 
+class _TreeFormatter:
+    """
+    Private helper class to lazily format a *tree* for passing to logging
+    functions.
+    """
+
+    def __init__(self, tree):
+        self._tree = tree
+
+    def __str__(self):
+        return str(etree.tostring(self._tree))
+
 class TemplateTree:
+    """
+    lxml trees are wrapped in :class:`TemplateTree` instances to provide some
+    extra functionallity.
+
+    Most notabily, an identification scheme for elements is implemented, both
+    with forced unique (``id``) and with shared identifiers (``name``), which
+    can be used for different purposes.
+
+    .. note::
+       The choice of nomenclature, that is, ``id`` for the enforced-unique and
+       ``name`` for the shared identifier, is reasoned in the same choice for of
+       nomenclature in the HTML standard, which is what ``xsltea`` will mostly
+       deal with.
+
+    .. warning::
+       To make sure that no naming conflicts occur, always use
+       :meth:`deepcopy_subtree` to create a deep copy of a subtree of an
+       :class:`TemplateTree`. That method will remove any non-copyable
+       attributes, such as the ``id`` attribute in the new copy, making it safe
+       for reuse in this or any other template tree.
+
+    To associate a name or id with an element, use the following methods:
+
+    .. method:: get_element_id
+
+    .. method:: get_element_name
+
+    To retrieve elements by their name or id, you can use
+
+    .. method:: get_element_by_id
+
+    .. method:: get_elements_by_name
+
+    Copying a subtree must be done using this method, to ensure that noncopyable
+    attributes are not accidentially preserved across copy operations:
+
+    .. method:: deepcopy_subtree
+
+    """
+
     namespaces = {"internalnc": str(internal_noncopyable_ns),
                   "internalc": str(internal_copyable_ns)}
 
@@ -83,13 +149,14 @@ class TemplateTree:
     def deepcopy_subtree(self, subtree):
         """
         Copy the given element *subtree* and all of its children using
-        :func:`copy.deepcopy`. In addition to mere copying, ``internal:id``
-        attributes are removed so that it is safe to re-insert these elements
-        into this tree.
+        :func:`copy.deepcopy`. In addition to mere copying, all attributes from
+        the noncopyable namespace (see
+        :class:`~xsltea.namespaces.internal_noncopyable_ns`) are removed from
+        the new copy.
         """
         copied = copy.deepcopy(subtree)
-        for noncopyable_attr in subtree.xpath("//@*[namespace-uri() == '"+
-                                              str(internal_noncopyable_ns)+"']"):
+        for noncopyable_attr in copied.xpath("//@*[namespace-uri() = '"+
+                                             str(internal_noncopyable_ns)+"']"):
             del noncopyable_attr.getparent().attrib[noncopyable_attr.attrname]
         return copied
 
@@ -106,10 +173,10 @@ class TemplateTree:
 
     def get_elements_by_name(self, name, root=None):
         """
-        Get all elements which have an ``@internal:name`` attribute matching
-        *name*. Return a possibly empty list of matching elements.
+        Return all elemements inside *root* which carry the given *name*. If no
+        elements match, an empty list is returned.
 
-        If *root* is given, only search in the children of that element.
+        If *root* is omitted or :data:`None`, the whole tree is searched.
         """
         return self._get_elements_by_attribute(
             (root if root is not None else self.tree),
@@ -117,7 +184,7 @@ class TemplateTree:
 
     def get_element_id(self, element):
         """
-        Get the ``internal:id`` of the *element*. The same rules as for
+        Get the ``id`` of the *element*. The same rules as for
         :meth:`get_element_name` apply, except that the `id` is not copied when
         the element is within a subtree copied using :meth:`deepcopy_subtree`.
         """
@@ -153,6 +220,17 @@ class TemplateTree:
 
         return name
 
+class EvaluationTree(TemplateTree):
+    def __init__(self, template):
+        super().__init__(copy.deepcopy(template.tree))
+        self._processors = {
+            processor_cls: processor_instance.get_context(self)
+            for processor_cls, processor_instance
+            in template._processors.items()}
+
+    def get_processor(self, processor_cls):
+        return self._processors[processor_cls]
+
 class Template(TemplateTree):
     """
     Wrap an lxml ``ElementTree`` *tree* as a template. The *tree* may be heavily
@@ -172,6 +250,31 @@ class Template(TemplateTree):
        Name of the source from which the template was created. This can be any
        opaque identifier. It should not be relied on any semantics of this.
 
+    Processors might need access to other processors, which is provided via
+
+    .. automethod:: get_processor
+
+    In addition, the template provides means for processors to hook into the
+    evaluation of the template, which is in fact the main mean to take part in
+    evaluation. Two hooking methods are supplied, one hooking based on the
+    elements name (thus, the hook is executed for all copies of the element if
+    it is duplicated during evalation, e.g. by the
+    :class:`~xsltea.safe.ForeachProcessor`) and one based on the elements id
+    (which is not executed for copies and might not even be executed for the
+    original element if duplicating takes place).
+
+    .. automethod:: hook_element_by_id
+
+    .. automethod:: hook_element_by_name
+
+    The remaining methods are called by the engine. :meth:`preprocess` is called
+    right after the template initialization and independent from a special
+    evaluation of the template and :meth:`process` is called whenever the
+    template is evaluated with specific arguments.
+
+    An alternative way to instanciate a template is:
+
+    .. automethod:: from_buffer
     """
 
     @classmethod
@@ -207,19 +310,19 @@ class Template(TemplateTree):
         self._processors[processor_cls] = processor
 
     def _get_hooks(self, element):
-        hooks = sortedlist()
+        hooks = sortedlist(key=lambda x: x[0])
         try:
             elemid = element.attrib[internal_noncopyable_ns.id]
-            logging.debug("looking up hooks for element id %s", elemid)
+            logger.debug("looking up hooks for element id %s", elemid)
             hooks.update(self._id_hooked_elements[elemid])
         except KeyError:
-            logging.debug("no id-based hooks for %s", element)
+            logger.debug("no id-based hooks for %s", element)
         try:
             elemname = element.attrib[internal_copyable_ns.name]
-            logging.debug("looking up hooks for element name %s", elemname)
+            logger.debug("looking up hooks for element name %s", elemname)
             hooks.update(self._name_hooked_elements[elemname])
         except KeyError:
-            logging.debug("no name-based hooks for %s", element)
+            logger.debug("no name-based hooks for %s", element)
         return hooks
 
 
@@ -228,7 +331,7 @@ class Template(TemplateTree):
                 internal_noncopyable_ns.hooked in element.attrib)
 
     def _insert_hook(self, hook_dict, key, processor_cls, hook):
-        logging.debug("inserting hook %s with key %s for processor %s",
+        logger.debug("inserting hook %s with key %s for processor %s",
                       hook, key, processor_cls)
         # not using setdefault here because sortedlist construction could be
         # expensive, at least it requires arguments and readability would suffer
@@ -243,19 +346,43 @@ class Template(TemplateTree):
 
     def _process_hook(self, template_tree, hooked_element, arguments):
         items = []
-        logging.debug("running hooks for %s", hooked_element)
+        logger.debug("running hooks for %s", hooked_element)
+        # remove hooked flags
+        try:
+            del hooked_element.attrib[internal_noncopyable_ns.hooked]
+        except KeyError:
+            pass
+        try:
+            del hooked_element.attrib[internal_copyable_ns.hooked]
+        except KeyError:
+            pass
         for _, hook in self._get_hooks(hooked_element):
-            logging.debug("running hook %r", hook)
+            logger.debug("running hook %r", hook)
             result = hook(template_tree, hooked_element, arguments)
             if result is None:
                 continue
+            result = list(result)
 
             # if the hook returns an iterable, we replace the hooked element by
             # the elements in the iterable
             parent = hooked_element.getparent()
+            last_element = hooked_element.getprevious()
             pos = parent.index(hooked_element)
             del parent[pos]
             for item in result:
+                if isinstance(item, str):
+                    if last_element is None:
+                        if parent.text is None:
+                            parent.text = item
+                        else:
+                            parent.text += item
+                    else:
+                        if last_element.tail is None:
+                            last_element.tail = item
+                        else:
+                            last_element.tail += item
+                    continue
+                last_element = item
                 parent.insert(pos, item)
                 items.append(item)
                 pos += 1
@@ -265,31 +392,6 @@ class Template(TemplateTree):
             return items
         items.append(hooked_element)
         return items
-
-    def _process_subtree(self, template_tree, subtree, arguments):
-        logging.debug("processing subtree starting at %s", subtree)
-        while subtree is not None:
-            try:
-                next_hooked = subtree.xpath(
-                    "(descendant::* | following::*)["
-                    "@internalnc:hooked or @internalc:hooked][1]",
-                    namespaces=self.namespaces).pop()
-            except IndexError:
-                # no further hooked elements
-                logging.debug("no more hooked elements, returning")
-                return
-
-            logging.debug("next hooked element is at %s", next_hooked)
-            subtrees = self._process_hook(template_tree, next_hooked, arguments)
-            new_subtree = subtree
-            for new_subtree in subtrees:
-                logging.debug("hook returned element %s", new_subtree)
-                # process any new subtrees
-                # note that _process_hook returns the original element in a list
-                # if it was not replaced
-                self._process_subtree(template_tree, new_subtree, arguments)
-
-            subtree = new_subtree
 
     def get_processor(self, processor_cls):
         """
@@ -338,14 +440,31 @@ class Template(TemplateTree):
 
         Return the result tree after all processors have been applied.
         """
-        tree = TemplateTree(copy.deepcopy(self.tree))
+        tree = EvaluationTree(self)
         root = tree.tree.getroot()
+
         if self._has_hook(root):
-            logging.debug("root has hook")
-            for subtree in self._process_hook(tree, root, arguments):
-                self._process_subtree(tree, subtree, arguments)
-        else:
-            self._process_subtree(tree, root, arguments)
+            logger.debug("root has hook")
+            # process hook at root, afterwards search through the remaining hooks
+            self._process_hook(tree, root, arguments)
+
+        curr = root
+        # search for hooked elements until done
+        while True:
+            logger.debug("current tree: %s", _TreeFormatter(tree.tree))
+            try:
+                next_hooked = root.xpath(
+                    "descendant::*["
+                    "@internalnc:hooked or @internalc:hooked][1]",
+                    namespaces=self.namespaces).pop()
+            except IndexError:
+                # no further hooked elements
+                logger.debug("no more hooked elements, returning")
+                break
+
+            logger.debug("next hooked element is at %s", next_hooked)
+            self._process_hook(tree, next_hooked, arguments)
+
         # clear_element_ids(tree)
         return tree
 

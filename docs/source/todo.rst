@@ -13,14 +13,15 @@ point you like to modify.
   This style should make the router replace the *request* argument with the
   original request sent by the client.
 
+  We have parts of this (see
+  :class:`teapot.routing.selectors.AnnotationProcessor`), but there is room for
+  much more and extensibility.
+
 * Refactor form handling to metaclasses
 
 * Regex path formatter
 
   This has some special difficulty, because unselecting is everything but trivial.
-
-* Think about file splitting. I know that pythoneers tend to love large files,
-  but I start to get a _bad_, uneasy feeling for the teapot/routing.py file.
 
 * Template engines could use decorators to supply their meta-information to the
   routing engine (e.g. supported content types) and hook into the routing
@@ -40,3 +41,42 @@ point you like to modify.
                 {"arg1": "value1", …})
 
 * We need a convenient way to set HTTP-headers (and cookies) within routables
+
+``xsltea`` todo
+===============
+
+Dedicated TODO file for the ``xsltea`` subproject:
+
+* Implement ``NonEvilEvalProcessor``, which works much like the
+  ``ExecProcessor``, but aims to be safe.
+
+  This is most likely difficult and the only way I can think of to make this
+  happen is to hook the parser and involve the user.
+
+  We will have to obtain a parsed tree using the :mod:`ast` module. Afterwards,
+  we can inspect and possibly modify the tree to our needs (inject hooks which
+  perform safety checks or which proxy objects to block requests to unsafe
+  attributes). When done, we can pass the tree to :func:`compile` to obtain a
+  sanitized code object, which can be executed using :func:`eval` or
+  :func:`exec`, respectively.
+
+  Example::
+
+    >>> import ast
+    >>> tree = ast.parse("foo = bar")
+    >>> tree.body[0].targets[0].id = "baz"
+    >>> code = compile(tree, "", "exec")
+    >>> globals_dict = {}
+    >>> locals_dict = {"bar": 1}
+    >>> exec(code, globals_dict, locals_dict)
+    >>> print(locals_dict)
+    {'bar': 1, 'baz': 1}
+
+  That’s awesome, isn’t it? No, it’s just python \o/
+
+  We can thus proxy return values from any expression and any names obtained
+  from any scope so that we can apply restrictions on the access to these
+  objects.
+
+  Combined with decorators to denote safe attributes and methods on objects,
+  this should yield a fairly safe language.
