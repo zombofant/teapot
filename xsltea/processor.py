@@ -1,6 +1,6 @@
 """
-Processor plugins
-#################
+``xsltea.processor`` – Template processor plugins base
+######################################################
 
 Templates are processed using :class:`TemplateProcessor` instances. These
 interpret the template contents and can be used to implement arbitrary
@@ -141,35 +141,17 @@ class TemplateProcessor(metaclass=ProcessorMeta):
     template based on the arguments passed from the function invoking the
     template.
 
-    The three stages of processor appliance are
-
-    1. *Annotation*: During annotation, no explicit changes to the tree should
-       be applied. However, getting (and thus, setting) element IDs and
-       names and placing barriers is what should happen in this phase.
-    2. *Preprocessing*: Everything what can be done without the arguments from
-       the template evaluation and without passing barriers can be done in this
-       stage.
-    3. *Processing*: At this stage, the template *arguments* are known. A copy
-       of the original tree is available and anything which does not pass
-       barriers is allowed. To allow for complete evaluation of the template,
-       you have to call :meth:`~xsltea.TemplateTree.process_subtree_late` on any
-       trees un-barred during processing.
+    Template processors should apply any hooks (see
+    :meth:`~xsltea.Template.hook_element_by_id` and
+    :meth:`~xsltea.Template.hook_element_by_name`) they need in the
+    :meth:`preprocess` method, which is called upon creation of the template
+    (i.e. once per template, not once per template evaluation). Hooks are called
+    for each evaluation of the template.
     """
 
     def __init__(self, template, **kwargs):
         super().__init__(**kwargs)
         self._template = template
-
-    def annotate(self, template_tree, subtree):
-        """
-        Annotate the templates tree with any required information. Any barriers
-        required by your code must be set in this method. Later setting of
-        barriers is not allowed, as other code must be able to rely on the
-        barrier information it has in :meth:`preprocess`.
-
-        Subclasses may override this method to do something sensible, currently
-        it does nothing.
-        """
 
     def get_context(self, evaluation_template):
         return self

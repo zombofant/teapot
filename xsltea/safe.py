@@ -1,6 +1,12 @@
 """
-Safe processors
-###############
+``xsltea.safe`` – Safe processors
+#################################
+
+This module provides some processors which deal with python names and template
+arguments, but are nevertheless safe, in the sense that no malicious code can be
+called.
+
+.. autoclass:: ForeachProcessor
 
 """
 try:
@@ -23,6 +29,30 @@ from .namespaces import shared_ns
 logger = logging.getLogger(__name__)
 
 class ForeachProcessor(TemplateProcessor):
+    """
+    The processor for the ``tea:for-each`` xml element provides a safe for-each
+    loop for templates.
+
+    It treats the name given in ``@tea:from`` as an iterable, from which each
+    item will be bound to the expression given in ``@tea:bind``. The expression
+    must only consist of valid python names and possibly tuples. The name from
+    ``@tea:from`` will be evaluated in the scope of the ``tea:for-each``
+    element.
+
+    For each item of the iterable, the expression from ``@tea:bind`` will be
+    evaluated as if it was on the right side of an assignment, assigning the
+    item from the iterable. A deep copy of all elements in the ``tea:for-each``
+    element is created and the names obtained from the above evaluation are put
+    in their local scopes, so that their values can be used further.
+
+    The elements are returned and inserted at the place where the
+    ``tea:for-each`` element was.
+
+    The :class:`ForeachProcessor` requires the
+    :class:`~xsltea.exec.ScopeProcessor` and is executed after the
+    :class:`~xsltea.exec.ExecProcessor` (if it is loaded).
+    """
+
     REQUIRES = [xsltea.exec.ScopeProcessor]
     AFTER = [xsltea.exec.ExecProcessor]
 

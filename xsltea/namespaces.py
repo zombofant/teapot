@@ -1,6 +1,6 @@
 """
-XML namespace utilities
-#######################
+``xsltea.namespaces`` – XML namespace utilities
+###############################################
 
 This module contains some utilities to work with XML namespaces and the
 ElementTree API. Besides predefined namespaces, the :class:`NamespaceMeta`
@@ -12,6 +12,15 @@ Predefined namespaces
 =====================
 
 .. autoclass:: xml
+
+For internal use only
+---------------------
+
+.. autoclass:: shared_ns
+
+.. autoclass:: internal_copyable_ns
+
+.. autoclass:: internal_noncopyable_ns
 """
 
 import lxml.builder

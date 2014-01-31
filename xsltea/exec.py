@@ -1,6 +1,6 @@
 """
-Python code execution from XML
-##############################
+``xsltea.exec`` – Python code execution from XML
+################################################
 
 The :class:`ExecProcessor` is used to execute arbitrary python code from within
 templates.
@@ -10,6 +10,9 @@ templates.
    By arbitrary code, I mean arbitrary code. Anything from ``print("You’re dumb")``
    to ``shutil.rmtree(os.path.expanduser("~"))``. Do **never ever** run
    templates from untrusted sources with :class:`ExecProcessor`.
+
+   An alternative, which will allow restricted execution of python code, is on
+   our todo.
 
 .. highlight:: xml
 

@@ -7,10 +7,6 @@ Some utilities for working with the lxml ElementTree API.
 Uniquely identifying elements
 =============================
 
-.. autofunction:: clear_element_ids
-
-.. autofunction:: generate_element_id
-
 .. autofunction:: get_element_by_id
 
 """

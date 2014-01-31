@@ -8,17 +8,31 @@ based on templating arguments.
 
 *xsltea* uses and requires lxml.
 
+The engine is used as an anchor for ``xsltea`` in your application. Each engine
+has its own set of options, no global variables are used. The engine also
+provides the decorator to use to decorate your controller methods for using the
+templating engine.
+
 .. autoclass:: Engine
    :members:
 
+The following classes deal with templates and the lxml ElementTrees used in
+these:
+
 .. autoclass:: Template
+
+The following modules and classes provide extension points to xsltea.
+
+.. autoclass:: TemplateTree
+
+.. autoclass:: EvaluationTree
    :members:
 
 .. automodule:: xsltea.processor
 
-.. automodule:: xsltea.exec
+.. automodule:: xsltea.safe
 
-.. automodule:: xsltea.utils
+.. automodule:: xsltea.exec
 
 .. automodule:: xsltea.namespaces
 
@@ -54,6 +68,11 @@ xml_parser = etree.XMLParser(ns_clean=True,
                              remove_comments=True)
 
 class _TreeFormatter:
+    """
+    Private helper class to lazily format a *tree* for passing to logging
+    functions.
+    """
+
     def __init__(self, tree):
         self._tree = tree
 
@@ -61,6 +80,46 @@ class _TreeFormatter:
         return str(etree.tostring(self._tree))
 
 class TemplateTree:
+    """
+    lxml trees are wrapped in :class:`TemplateTree` instances to provide some
+    extra functionallity.
+
+    Most notabily, an identification scheme for elements is implemented, both
+    with forced unique (``id``) and with shared identifiers (``name``), which
+    can be used for different purposes.
+
+    .. note::
+       The choice of nomenclature, that is, ``id`` for the enforced-unique and
+       ``name`` for the shared identifier, is reasoned in the same choice for of
+       nomenclature in the HTML standard, which is what ``xsltea`` will mostly
+       deal with.
+
+    .. warning::
+       To make sure that no naming conflicts occur, always use
+       :meth:`deepcopy_subtree` to create a deep copy of a subtree of an
+       :class:`TemplateTree`. That method will remove any non-copyable
+       attributes, such as the ``id`` attribute in the new copy, making it safe
+       for reuse in this or any other template tree.
+
+    To associate a name or id with an element, use the following methods:
+
+    .. method:: get_element_id
+
+    .. method:: get_element_name
+
+    To retrieve elements by their name or id, you can use
+
+    .. method:: get_element_by_id
+
+    .. method:: get_elements_by_name
+
+    Copying a subtree must be done using this method, to ensure that noncopyable
+    attributes are not accidentially preserved across copy operations:
+
+    .. method:: deepcopy_subtree
+
+    """
+
     namespaces = {"internalnc": str(internal_noncopyable_ns),
                   "internalc": str(internal_copyable_ns)}
 
@@ -90,9 +149,10 @@ class TemplateTree:
     def deepcopy_subtree(self, subtree):
         """
         Copy the given element *subtree* and all of its children using
-        :func:`copy.deepcopy`. In addition to mere copying, ``internal:id``
-        attributes are removed so that it is safe to re-insert these elements
-        into this tree.
+        :func:`copy.deepcopy`. In addition to mere copying, all attributes from
+        the noncopyable namespace (see
+        :class:`~xsltea.namespaces.internal_noncopyable_ns`) are removed from
+        the new copy.
         """
         copied = copy.deepcopy(subtree)
         for noncopyable_attr in copied.xpath("//@*[namespace-uri() = '"+
@@ -113,10 +173,10 @@ class TemplateTree:
 
     def get_elements_by_name(self, name, root=None):
         """
-        Get all elements which have an ``@internal:name`` attribute matching
-        *name*. Return a possibly empty list of matching elements.
+        Return all elemements inside *root* which carry the given *name*. If no
+        elements match, an empty list is returned.
 
-        If *root* is given, only search in the children of that element.
+        If *root* is omitted or :data:`None`, the whole tree is searched.
         """
         return self._get_elements_by_attribute(
             (root if root is not None else self.tree),
@@ -124,7 +184,7 @@ class TemplateTree:
 
     def get_element_id(self, element):
         """
-        Get the ``internal:id`` of the *element*. The same rules as for
+        Get the ``id`` of the *element*. The same rules as for
         :meth:`get_element_name` apply, except that the `id` is not copied when
         the element is within a subtree copied using :meth:`deepcopy_subtree`.
         """
@@ -190,6 +250,31 @@ class Template(TemplateTree):
        Name of the source from which the template was created. This can be any
        opaque identifier. It should not be relied on any semantics of this.
 
+    Processors might need access to other processors, which is provided via
+
+    .. automethod:: get_processor
+
+    In addition, the template provides means for processors to hook into the
+    evaluation of the template, which is in fact the main mean to take part in
+    evaluation. Two hooking methods are supplied, one hooking based on the
+    elements name (thus, the hook is executed for all copies of the element if
+    it is duplicated during evalation, e.g. by the
+    :class:`~xsltea.safe.ForeachProcessor`) and one based on the elements id
+    (which is not executed for copies and might not even be executed for the
+    original element if duplicating takes place).
+
+    .. automethod:: hook_element_by_id
+
+    .. automethod:: hook_element_by_name
+
+    The remaining methods are called by the engine. :meth:`preprocess` is called
+    right after the template initialization and independent from a special
+    evaluation of the template and :meth:`process` is called whenever the
+    template is evaluated with specific arguments.
+
+    An alternative way to instanciate a template is:
+
+    .. automethod:: from_buffer
     """
 
     @classmethod

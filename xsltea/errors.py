@@ -1,6 +1,6 @@
 """
-``xsltea`` errors
-#################
+``xsltea.errors`` – Errors thrown by ``xsltea``
+###############################################
 
 .. autoclass:: TemplateEvaluationError
 
