@@ -1,3 +1,4 @@
+import collections
 import copy
 import re
 import urllib
@@ -253,20 +254,24 @@ useragent_classes = {
 }
 
 useragent_html5_support = {
-    "ie": 9.0,
-    "firefox": 4.0,
-    "chrome": 6.0,
-    "safari": 5.0,
-    "opera": 11.1
+    UserAgentFamily.internet_explorer: (9, 0),
+    UserAgentFamily.firefox: (4, 0),
+    UserAgentFamily.chrome: (6, 0),
+    UserAgentFamily.safari: (5, 0),
+    UserAgentFamily.opera: (11, 1)
 }
 
 useragent_prefixed_xhtml_support = {
-    "firefox": None,
-    "opera": 12.0,
-    "chrome": 20.0,
-    "safari": None,
-    "ie": None
+    UserAgentFamily.firefox: None,
+    UserAgentFamily.opera: (12, 0),
+    UserAgentFamily.chrome: (20, 0),
+    UserAgentFamily.safari: None,
+    UserAgentFamily.internet_explorer: None
 }
+
+UserAgentInfo = collections.namedtuple(
+    "UserAgentInfo",
+    ["useragent", "version", "features"])
 
 def inspect_user_agent_string(user_agent_string):
     """
@@ -298,7 +303,7 @@ def inspect_user_agent_string(user_agent_string):
 
         groups = match.groupdict()
         try:
-            version = float(groups["version"])
+            version = tuple(map(int, map(str.strip, groups["version"].split("."))))
         except (ValueError, KeyError):
             version = None
         useragent = agentname
@@ -308,26 +313,26 @@ def inspect_user_agent_string(user_agent_string):
         version = None
 
     if useragent is None:
-        return useragent, version, features
+        return UserAgentInfo(useragent, version, features)
 
     try:
         features.add(useragent_classes[useragent])
     except KeyError:
         pass
 
-    if useragent == UserAgentFamily.ie and version < 9:
+    if useragent == UserAgentFamily.ie and version < (9, 0):
         # thank you, microsoft, for your really verbose accept headers -
         # which do _not_ include an explicit mention of text/html, instead,
         # you just assume you can q=1.0 everything.
         features.add(UserAgentFeatures.no_xhtml)
-    elif useragent == UserAgentFamily.chrome and version < 7:
+    elif useragent == UserAgentFamily.chrome and version < (7, 0):
         # but open browsers are not neccessarily better -- chromium with
         # version <= 6.0 sends:
         # application/xml;q=1.00, application/xhtml+xml;q=1.00, \
         # text/html;q=0.90, text/plain;q=0.80, image/png;q=1.00, */*;q=0.50
         # but is in fact unable to parse valid XHTML.
         features.add(UserAgentFeatures.no_xhtml)
-    elif useragent == UserAgentFamily.firefox and version == 6:
+    elif useragent == UserAgentFamily.firefox and version == (6, 0):
         # this is google+ user agent. g+ seems to be unable to correctly
         # parse XHTML schema.org information (or metadata in general), which
         # screws up snippets.
@@ -355,7 +360,7 @@ def inspect_user_agent_string(user_agent_string):
                 version >= min_version):
             features.add(UserAgentFeatures.prefixed_xhtml)
 
-    return useragent, version, features
+    return UserAgentInfo(useragent, version, features)
 
 
 class Request:
