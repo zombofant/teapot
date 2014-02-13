@@ -113,6 +113,8 @@ class Type:
 
 Type.text_plain = Type("text", "plain")
 Type.text_html = Type("text", "html")
+Type.application_xhtml = Type("application", "xhtml+xml")
+Type.application_xml = Type("application", "xml")
 
 class CaseFoldedDict(dict):
     class __undefined:
