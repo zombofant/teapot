@@ -592,6 +592,9 @@ def find_route(root, request):
 
     This first takes all candidates and then performs content negotiation,
     whereas result content type takes precedence over language selectors.
+
+    This sets the :attr:`teapot.request.Request.accepted_content_type` attribute
+    on the request.
     """
 
     if not isroutable(root):
@@ -648,6 +651,8 @@ def find_route(root, request):
         for candidate in candidates:
             if best_match in candidate.content_types:
                 break
+
+    request.accepted_content_type = best_match
 
     return True, candidate
 

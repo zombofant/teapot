@@ -364,6 +364,18 @@ def inspect_user_agent_string(user_agent_string):
 
 
 class Request:
+    """
+    These objects store information on the original client request, but also
+    information generated while processing the request.
+
+    .. attribute:: accepted_content_type
+
+       The value of this attribute is initially :data:`None`. If Content
+       Negotiation takes place, it should be set to the content type which was
+       ultimately selected.
+
+    """
+
     @classmethod
     def construct_from_http(
             cls,
@@ -500,6 +512,7 @@ class Request:
         self.content_type = content_type
         self.raw_http_headers = raw_http_headers
         self.if_modified_since = if_modified_since
+        self.accepted_content_type = None
 
     def _parse_post_data(self):
         field_storage = cgi.FieldStorage(
