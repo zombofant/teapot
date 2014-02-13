@@ -107,6 +107,10 @@ class Type:
     def __neq__(self, other):
         return not (self == other)
 
+    def __hash__(self):
+        return hash((self.__type, self.__subtype,
+                     frozenset(self.__parameters.items())))
+
 Type.text_plain = Type("text", "plain")
 Type.text_html = Type("text", "html")
 
