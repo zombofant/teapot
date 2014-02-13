@@ -70,6 +70,14 @@ class Type:
                     custom_parameters=copy.copy(self.__parameters))
 
     @property
+    def type(self):
+        return self.__type
+
+    @property
+    def subtype(self):
+        return self.__subtype
+
+    @property
     def charset(self):
         return self.__parameters.get("charset", None)
 
