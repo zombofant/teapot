@@ -22,6 +22,7 @@ Template sources
 
 import abc
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 

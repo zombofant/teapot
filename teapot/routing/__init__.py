@@ -693,8 +693,11 @@ def find_route(root, request):
                 break
 
     # FIXME: deal with parameters and such
-    request.accepted_content_type = \
-        teapot.mime.Type(*best_match.split("/"))
+    if best_match is not None:
+        request.accepted_content_type = \
+            teapot.mime.Type(*best_match.split("/"))
+    else:
+        request.accepted_content_type = None
 
     return True, candidate
 

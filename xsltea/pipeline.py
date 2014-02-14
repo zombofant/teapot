@@ -23,6 +23,8 @@ import lxml.etree as etree
 import teapot.accept
 import teapot.errors
 import teapot.request
+import teapot.routing
+import teapot.routing.selectors
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +100,7 @@ class Pipeline:
         if self._chain_from is not None:
             raise ValueError("cannot set loader: "
                              "loader is chained from another pipeline")
+        self._loader = value
 
     @property
     def output_types(self):
@@ -120,7 +123,7 @@ class Pipeline:
     def _default_handler(self, request, tree):
         raise teapot.errors.make_response_error(
             406, "{} content type not supported".format(
-                accepted_content_type))
+                request.accepted_content_type))
 
     def _find_handler_for_content_type(self, accepted_content_type):
         try:
@@ -137,11 +140,11 @@ class Pipeline:
         *tree*, using the information from the original *request*.
         """
 
-        for transform in self.iter_transforms():
-            tree = transform.transform(tree, arguments)
-
         handler = self._find_handler_for_content_type(
             request.accepted_content_type)
+
+        for transform in self.iter_transforms():
+            tree = transform.transform(tree, arguments)
 
         return handler(request, tree)
 
@@ -191,14 +194,16 @@ class XMLPipeline(Pipeline):
         if not strict:
             self._output_types[None] = self._negotiate
 
-    def _tostring(self, tree, charset, **kwargs):
+    def _tostring(self, tree, charset, content_type, **kwargs):
         etree.cleanup_namespaces(tree)
-        return [etree.tostring(
-            tree,
-            encoding=charset,
-            xml_declaration=True,
-            pretty_print=self.pretty_print,
-            **kwargs)]
+        return teapot.response.Response(
+            content_type,
+            etree.tostring(
+                tree,
+                encoding=charset,
+                xml_declaration=True,
+                pretty_print=self.pretty_print,
+                **kwargs))
 
     def _negotiate_charset(self, request):
         charsets = request.accept_charset.get_sorted_by_preference()
@@ -215,7 +220,10 @@ class XMLPipeline(Pipeline):
         return charset
 
     def _negotiate(self, request, tree):
-        return self._tostring(tree, self._negotiate_charset(request))
+        return self._tostring(
+            tree,
+            self._negotiate_charset(request),
+            request.accepted_content_type or teapot.mime.Type.application_xml)
 
 class XHTMLPipeline(XMLPipeline):
     """
@@ -249,10 +257,16 @@ class XHTMLPipeline(XMLPipeline):
     <xsl:output method="xml" indent="no"/>
 
     <!-- identity transform for everything else -->
-    <xsl:template match="/|comment()|processing-instruction()|*|@*">
+    <xsl:template match="/|comment()|processing-instruction()|*">
         <xsl:copy>
-          <xsl:apply-templates />
+          <xsl:apply-templates select="@*|node()" />
         </xsl:copy>
+    </xsl:template>
+
+    <xsl:template match="@*" />
+
+    <xsl:template match="@*[namespace-uri() = '']">
+        <xsl:copy />
     </xsl:template>
 
     <!-- remove NS from XHTML elements -->
@@ -308,7 +322,11 @@ class XHTMLPipeline(XMLPipeline):
 
     def _as_full_xhtml(self, tree, charset, **kwargs):
         kwargs.update(self._xhtml_version_args)
-        return self._tostring(tree, charset, **kwargs)
+        return self._tostring(
+            tree,
+            charset,
+            teapot.mime.Type.application_xhtml,
+            **kwargs)
 
     def _as_prefixless_xhtml(self, tree, charset, **kwargs):
         return self._as_full_xhtml(
@@ -323,6 +341,7 @@ class XHTMLPipeline(XMLPipeline):
         return self._tostring(
             self._remove_prefixes_transform.apply(tree),
             charset,
+            teapot.mime.Type.text_html,
             **kwargs)
 
     def _negotiate(self, request, tree):

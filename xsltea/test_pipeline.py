@@ -56,7 +56,7 @@ class TestXMLPipeline(unittest.TestCase):
     def test_default(self):
         pipeline = xsltea.pipeline.XMLPipeline()
         request = teapot.request.Request()
-        result = pipeline.apply_transforms(request, self.tree, {})[0]
+        result = pipeline.apply_transforms(request, self.tree, {}).body
         self.assertEqual(
             """<?xml version='1.0' encoding='utf-8'?>
 <foo><bar/></foo>""".encode("utf-8"),
@@ -65,7 +65,7 @@ class TestXMLPipeline(unittest.TestCase):
     def test_pretty_print(self):
         pipeline = xsltea.pipeline.XMLPipeline(pretty_print=True)
         request = teapot.request.Request()
-        result = pipeline.apply_transforms(request, self.tree, {})[0]
+        result = pipeline.apply_transforms(request, self.tree, {}).body
         self.assertEqual(
             """<?xml version='1.0' encoding='utf-8'?>
 <foo>
@@ -102,7 +102,7 @@ class TestXHTMLPipeline(unittest.TestCase):
             teapot.request.UserAgentFeatures.no_xhtml,
             request.user_agent_info.features)
 
-        result = pipeline.apply_transforms(request, self.tree, {})[0]
+        result = pipeline.apply_transforms(request, self.tree, {}).body
         # the namespace should indeed not be there, no idea why it is there and
         # how to get rid of it
         self.assertEqual(
@@ -123,7 +123,7 @@ class TestXHTMLPipeline(unittest.TestCase):
             teapot.request.UserAgentFeatures.prefixed_xhtml,
             request.user_agent_info.features)
 
-        result = pipeline.apply_transforms(request, self.tree, {})[0]
+        result = pipeline.apply_transforms(request, self.tree, {}).body
         self.assertEqual(
             """<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE html>
@@ -143,7 +143,7 @@ class TestXHTMLPipeline(unittest.TestCase):
             teapot.request.UserAgentFeatures.prefixed_xhtml,
             request.user_agent_info.features)
 
-        result = pipeline.apply_transforms(request, self.tree, {})[0]
+        result = pipeline.apply_transforms(request, self.tree, {}).body
         self.assertEqual(
             """<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE html>

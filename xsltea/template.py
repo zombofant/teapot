@@ -543,7 +543,7 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         template processors.
         """
         try:
-            return self.cache[name]
+            return self._cache[name]
         except KeyError:
             pass
 
@@ -561,11 +561,11 @@ class TemplateLoader(metaclass=abc.ABCMeta):
             raise FileNotFoundError(name)
 
         try:
-            template = self._load_template(f.read())
+            template = self._load_template(f.read(), name)
         finally:
             f.close()
 
-        self.cache[name] = template
+        self._cache[name] = template
         return template
 
 class XMLTemplateLoader(TemplateLoader):
