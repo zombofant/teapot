@@ -94,7 +94,7 @@ class Type:
 
     def __repr__(self):
         return "{}({}, {}, parameters={})".format(
-            self.__qualname__,
+            type(self).__qualname__,
             self.__type,
             self.__subtype,
             repr(self.__parameters))
