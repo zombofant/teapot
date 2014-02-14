@@ -9,6 +9,7 @@ import lxml.etree as etree
 from .namespaces import \
     internal_noncopyable_ns, \
     internal_copyable_ns
+from .transforms import PathResolver
 from .utils import sortedlist
 
 xml_parser = etree.XMLParser(ns_clean=True,
@@ -555,7 +556,7 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         self.cache[name] = template
         return template
 
-class XMLTemplateLoader:
+class XMLTemplateLoader(TemplateLoader):
     """
     This is the default template loader for xsltea. It implements
     loading templates from XML and can be subclassed to process any other format

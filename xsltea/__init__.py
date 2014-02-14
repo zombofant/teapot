@@ -48,3 +48,4 @@ except ImportError as err:
 
 from .template import Template, XMLTemplateLoader
 from .errors import TemplateEvaluationError
+from .exec import ExecProcessor
