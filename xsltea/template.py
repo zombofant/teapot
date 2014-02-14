@@ -1,3 +1,16 @@
+"""
+``xsltea.template`` – XML based templates
+#########################################
+
+.. autoclass:: Template
+
+.. autoclass:: TemplateTree
+
+.. autoclass:: EvaluationTree
+   :members:
+
+"""
+
 import abc
 import binascii
 import copy

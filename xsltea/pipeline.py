@@ -1,3 +1,20 @@
+"""
+``xsltea.pipeline`` – A pipeline to process templates to a final format
+#######################################################################
+
+To use xsltea, you will need a pipeline. Don’t worry, it is easy to create
+one. A quickstart method is implemented in :func:`xsltea.make_pipeline`.
+
+.. autoclass:: Pipeline
+
+More specialized pipelines for XML and HTML output formats are also available:
+
+.. autoclass:: XMLPipeline
+
+.. autoclass:: XHTMLPipeline
+
+"""
+
 import abc
 import logging
 

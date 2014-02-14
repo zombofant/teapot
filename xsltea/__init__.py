@@ -8,25 +8,15 @@ based on templating arguments.
 
 *xsltea* uses and requires lxml.
 
-The engine is used as an anchor for ``xsltea`` in your application. Each engine
-has its own set of options, no global variables are used. The engine also
-provides the decorator to use to decorate your controller methods for using the
-templating engine.
+.. automodule:: xsltea.pipeline
 
-.. autoclass:: Engine
-   :members:
+.. py:currentmodule:: xsltea
 
-The following classes deal with templates and the lxml ElementTrees used in
-these:
-
-.. autoclass:: Template
+.. autofunction:: make_pipeline
 
 The following modules and classes provide extension points to xsltea.
 
-.. autoclass:: TemplateTree
-
-.. autoclass:: EvaluationTree
-   :members:
+.. automodule:: xsltea.template
 
 .. automodule:: xsltea.processor
 
