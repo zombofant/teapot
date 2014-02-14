@@ -49,3 +49,22 @@ except ImportError as err:
 from .template import Template, XMLTemplateLoader
 from .errors import TemplateEvaluationError
 from .exec import ExecProcessor
+from .transform import Pipeline, XHTMLPipeline, XMLPipeline, TransformLoader
+
+def make_pipeline(
+        *sources,
+        loader=XMLTemplateLoader,
+        output_format=XHTMLPipeline,
+        **kwargs):
+    """
+    Create a new pipeline based on the given *output_format* pipeline. It will
+    use the given *loader* class for loading templates from any of the given
+    *sources* (see :class:`teapot.templating.Source`).
+
+    Returns a new pipeline object with an associated loader.
+    """
+
+    pipeline = output_format(**kwargs)
+    pipeline.loader = loader(*sources)
+
+    return pipeline

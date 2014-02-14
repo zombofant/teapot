@@ -333,24 +333,27 @@ class PathResolver(etree.Resolver):
         super().__init__()
         self._sources = sources
         self._prefix = prefix
+        self._parser = etree.XMLParser()
+        self._parser.resolvers.add(self)
+
+    def get_filelike(self, filename, binary=True):
+        for source in self._sources:
+            try:
+                return source.open(filename, binary=binary)
+            except FileNotFoundError as err:
+                continue
+            except OSError as err:
+                logger.warn("while searching for xslt dependency %s: %s",
+                            filename, err)
+                continue
+        else:
+            raise FileNotFoundError(filename)
 
     def resolve(self, url, pubid, context):
         if url.startswith(self._prefix):
             logger.debug("resolving %s", url)
             filename = url[len(self._prefix):]
-            for source in self._sources:
-                try:
-                    return self.resolve_file(
-                        source.open(filename, binary=True))
-                except FileNotFoundError as err:
-                    continue
-                except OSError as err:
-                    logger.warn("while searching for xslt dependency %s: %s",
-                                filename, err)
-                    continue
-            else:
-                raise FileNotFoundError(filename)
-
+            return self.resolve_file(self.get_filelike(filename, binary=True))
 
 class Transform(metaclass=abc.ABCMeta):
     @abc.abstractmethod
@@ -363,3 +366,12 @@ class XSLTransform(Transform):
 
     def transform(self, tree, arguments):
         return self._xslt.apply(tree, **arguments)
+
+class TransformLoader:
+    def __init__(self, *sources, **kwargs):
+        super().__init__(**kwargs)
+        self._resolver = PathResolver(*sources)
+
+    def load_transform(self, name, cls=XSLTransform):
+        return cls(self._resolver._parser,
+                   self._resolver.get_filelike(name))
