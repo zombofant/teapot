@@ -3,6 +3,7 @@ import copy
 import io
 
 import teapot
+import teapot.mime
 import teapot.request
 import teapot.routing
 import teapot.routing.info
@@ -88,7 +89,7 @@ class SomeRoutable(metaclass=teapot.RoutableMeta):
         # correct method was picked
         return "text/plain"
 
-    @teapot.content_type("image/png")
+    @teapot.content_type(teapot.mime.Type("image", "png"))
     @teapot.route("content-negotiation", order=2)
     def content_png(self):
         # not an actual controller, but useful in testing to detect that the

@@ -227,6 +227,7 @@ import itertools
 import logging
 
 import teapot.errors
+import teapot.mime
 import teapot.request
 import teapot.routing.info
 import teapot.routing.selectors
@@ -478,6 +479,67 @@ class RoutableMeta(type):
 
         return type.__new__(mcls, clsname, bases, namespace)
 
+def make_routable(initial_selectors, order=0, make_constructor_routable=False):
+    """
+    Make a method or function routable. Except if developing extensions with
+    custom decorators, you’ll usually not need this function. Use :func:`route`
+    instead.
+
+    Usually, *make_routable* will refuse to make a constructor routable, because
+    it does not make lots of sense. If you know what you are doing and if you
+    want to make a constructor routable, you can pass :data:`True` to
+    *make_constructor_routable* and decorate the class.
+
+    The given sequence of *initial_selectors* is added as selectors to the
+    decorator destination.
+    """
+
+    def decorator(obj):
+        if isroutable(obj):
+            raise ValueError("{!r} already has a route".format(obj))
+
+        kwargs = {"order": order}
+        obj_selectors = initial_selectors[:]
+
+        if isinstance(obj, type) and not make_constructor_routable:
+            # this is a class
+            raise TypeError("I don’t want to make a constructor routable. See"
+                            "the docs for details and a workaround.")
+
+        if isinstance(obj, staticmethod):
+            obj_selectors.append(
+                teapot.routing.selectors.AnnotationProcessor(obj.__func__))
+            info = teapot.routing.info.Leaf(
+                obj_selectors, obj.__func__, **kwargs)
+            setrouteinfo(obj.__func__, info)
+        elif isinstance(obj, classmethod):
+            obj_selectors.append(
+                teapot.routing.selectors.AnnotationProcessor(obj.__func__))
+            info = teapot.routing.info.LeafPrototype(
+                obj_selectors,
+                obj.__func__,
+                False,
+                **kwargs)
+            setrouteinfo(obj.__func__, info)
+        else:
+            if not hasattr(obj, "__call__"):
+                raise TypeError("{!r} cannot be made routable (must be callable"
+                                "or classmethod or staticmethod)".format(obj))
+
+            if not isinstance(obj, type):
+                obj_selectors.append(
+                    teapot.routing.selectors.AnnotationProcessor(obj))
+            info = teapot.routing.info.LeafPrototype(
+                obj_selectors,
+                obj,
+                True,
+                **kwargs)
+
+        setrouteinfo(obj, info)
+        return obj
+
+    return decorator
+
 def route(path, *paths, order=0, methods=None, make_constructor_routable=False):
     """
     Decorate a (static-, class- or instance-) method or function with routing
@@ -508,6 +570,15 @@ def route(path, *paths, order=0, methods=None, make_constructor_routable=False):
 
     To make all routable methods of a class routable, see the
     :class:`RoutableMeta` metaclass.
+
+    .. warning::
+       Although it is currently possible, it is explicitly not supported to
+       decorate an object more than once with :func:`route`. In the future, we
+       will disable this for the sake of disambiguation.
+
+       Applying multiple :func:`route` decorators is non-intuitive. Use
+       :class:`~teapot.routing.selectors.rebase` or similar decorators instead.
+
     """
 
     paths = [path] + list(paths)
@@ -520,49 +591,19 @@ def route(path, *paths, order=0, methods=None, make_constructor_routable=False):
         selectors.append(teapot.routing.selectors.method(*methods))
     del paths
 
+    inherited_decorator = make_routable(
+        selectors,
+        order=order,
+        make_constructor_routable=make_constructor_routable)
+
     def decorator(obj):
-        if isroutable(obj):
-            raise ValueError("{!r} already has a route".format(obj))
+        if not isroutable(obj):
+            return inherited_decorator(obj)
 
-        kwargs = {"order": order}
-        obj_selectors = selectors[:]
+        info = getrouteinfo(obj)
+        info.order = order
+        info.selectors[:0] = selectors
 
-        if isinstance(obj, type) and not make_constructor_routable:
-            # this is a class
-            raise TypeError("I don’t want to make a constructor routable. See"
-                            "the docs for details and a workaround.")
-
-        if isinstance(obj, staticmethod):
-            obj_selectors.append(
-                teapot.routing.selectors.AnnotationProcessor(obj.__func__))
-            info = teapot.routing.info.Leaf(
-                obj_selectors, obj.__func__, **kwargs)
-            setrouteinfo(obj.__func__, info)
-        elif isinstance(obj, classmethod):
-            obj_selectors.append(
-                teapot.routing.selectors.AnnotationProcessor(obj.__func__))
-            info = teapot.routing.info.LeafPrototype(
-                obj_selectors,
-                obj.__func__,
-                False,
-                **kwargs)
-            setrouteinfo(obj.__func__, info)
-        else:
-            if not hasattr(obj, "__call__"):
-                raise TypeError("{!r} is not routable (must be "
-                                "callable or classmethod or "
-                                "staticmethod)".format(obj))
-
-            if not isinstance(obj, type):
-                obj_selectors.append(
-                    teapot.routing.selectors.AnnotationProcessor(obj))
-            info = teapot.routing.info.LeafPrototype(
-                obj_selectors,
-                obj,
-                True,
-                **kwargs)
-
-        setrouteinfo(obj, info)
         return obj
 
     return decorator
@@ -632,9 +673,8 @@ def find_route(root, request):
     candidate = None
 
     if not content_type_candidates:
-        if None in unique_content_types:
-            best_match = None
-        else:
+        best_match = None
+        if None not in unique_content_types:
             # no matches at all, we use our preferences.
             # FIXME: check for HTTP/1.1, otherwise we might have to reply with
             # 406.
@@ -652,7 +692,12 @@ def find_route(root, request):
             if best_match in candidate.content_types:
                 break
 
-    request.accepted_content_type = best_match
+    # FIXME: deal with parameters and such
+    if best_match is not None:
+        request.accepted_content_type = \
+            teapot.mime.Type(*best_match.split("/"))
+    else:
+        request.accepted_content_type = None
 
     return True, candidate
 

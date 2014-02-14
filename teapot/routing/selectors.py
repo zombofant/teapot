@@ -891,7 +891,9 @@ class content_type(Selector):
 
     def __init__(self, *content_types, **kwargs):
         super().__init__(**kwargs)
-        self._content_types = frozenset(content_types)
+        self._content_types = frozenset(
+            str(content_type) if content_type is not None else None
+            for content_type in content_types)
 
     def select(self, request):
         if request.content_types is not None:
@@ -902,6 +904,11 @@ class content_type(Selector):
 
     def unselect(self, request):
         pass
+
+    def __repr__(self):
+        return "<{} with {}>".format(
+            type(self).__qualname__,
+            self._content_types)
 
 class method(Selector):
     """
