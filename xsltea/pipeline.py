@@ -148,6 +148,29 @@ class Pipeline:
 
         return handler(request, tree)
 
+    def with_template(self, template_name, arguments=None):
+        if arguments is None:
+            arguments = {}
+        def decorator(callable):
+            def decorated(*args,
+                          _Pipeline__xsltea_request_object: teapot.request.Request,
+                          **kwargs):
+                template = self.loader.get_template(template_name)
+                template_args = dict(arguments)
+                template_args.update(callable(*args, **kwargs))
+                tree = template.process(template_args).tree
+                return self.apply_transforms(
+                    __xsltea_request_object,
+                    tree,
+                    template_args)
+            decorated = teapot.routing.make_routable([])(decorated)
+            info = teapot.getrouteinfo(decorated)
+            info.selectors.append(
+                teapot.routing.selectors.content_type(
+                    *self.output_types.keys()))
+            return decorated
+        return decorator
+
 class XMLPipeline(Pipeline):
     """
     A :class:`Pipeline` subclass which offers a raw xml output format. The input
