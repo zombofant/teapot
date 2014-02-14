@@ -1,0 +1,365 @@
+import abc
+import logging
+
+import lxml.etree as etree
+
+import teapot.accept
+import teapot.errors
+import teapot.request
+
+logger = logging.getLogger(__name__)
+
+class Pipeline:
+    """
+    A pipeline is a composite of a list of transforms. In addition, it can chain
+    to other Pipeline pieces on both ends of the pipeline.
+
+    If it does not chain on the start end, a loader can be specified to load
+    templates as lxml.etree.ElementTree objects.
+
+    If it does not chain on the end end, a dictionary mapping output types
+    (e.g. :class:`teapot.mime.Type` instances) to callables taking a
+    :class:`teapot.request.Request` instance and the lxml.etree.ElementTree and
+    returning one of the formats defined in
+    :ref:`teapot.routing.return_protocols`.
+
+    If no loader is provided in the chain, the default loader applies.
+    """
+
+    def __init__(self, *, chain_from=None, chain_to=None, **kwargs):
+        super().__init__(**kwargs)
+        self.local_transforms = []
+        self._chain_from = None
+        self._chain_to = None
+        self._loader = None
+        self._output_types = {}
+
+        self.chain_from = chain_from
+        self.chain_to = chain_to
+
+    @staticmethod
+    def _check_for_loop(pipeline, seen):
+        if pipeline.chain_from is not None:
+            if pipeline.chain_from in seen:
+                raise ValueError("loop in pipeline definition")
+            seen.add(pipeline.chain_from)
+            pipeline._check_for_loop(pipeline.chain_from, seen)
+        if pipeline.chain_to is not None:
+            if pipeline.chain_to in seen:
+                raise ValueError("loop in pipeline definition")
+            seen.add(pipeline.chain_to)
+            pipeline._check_for_loop(pipeline.chain_to, seen)
+
+    @property
+    def chain_from(self):
+        return self._chain_from
+
+    @chain_from.setter
+    def chain_from(self, value):
+        if value is not None:
+            self._check_for_loop(value, set((self,)))
+        self._chain_from = value
+
+    @property
+    def chain_to(self):
+        return self._chain_to
+
+    @chain_to.setter
+    def chain_to(self, value):
+        if value is not None:
+            self._check_for_loop(value, set((self,)))
+        self._chain_to = value
+
+    @property
+    def loader(self):
+        if self._chain_from is not None:
+            return self._chain_from.loader
+        return self._loader
+
+    @loader.setter
+    def loader(self, value):
+        if self._chain_from is not None:
+            raise ValueError("cannot set loader: "
+                             "loader is chained from another pipeline")
+
+    @property
+    def output_types(self):
+        if self._chain_to is not None:
+            return self._chain_to._output_types
+        return self._output_types
+
+    def iter_transforms(self):
+        if self._chain_from is not None:
+            yield from self._chain_from.iter_transforms()
+        yield from self.local_transforms
+        if self._chain_to is not None:
+            yield from self._chain_to.iter_transforms()
+
+    def iter_output_types(self):
+        if self._chain_to is not None:
+            yield from self._chain_to.iter_output_types()
+        yield from self._output_types.keys()
+
+    def _default_handler(self, request, tree):
+        raise teapot.errors.make_response_error(
+            406, "{} content type not supported".format(
+                accepted_content_type))
+
+    def _find_handler_for_content_type(self, accepted_content_type):
+        try:
+            return self.output_types[accepted_content_type]
+        except KeyError:
+            try:
+                return self.output_types[None]
+            except KeyError:
+                return self._default_handler
+
+    def apply_transforms(self, request, tree, arguments):
+        """
+        Apply the whole pipeline, including output formatting, to the given
+        *tree*, using the information from the original *request*.
+        """
+
+        for transform in self.iter_transforms():
+            tree = transform.transform(tree, arguments)
+
+        handler = self._find_handler_for_content_type(
+            request.accepted_content_type)
+
+        return handler(request, tree)
+
+class XMLPipeline(Pipeline):
+    """
+    A :class:`Pipeline` subclass which offers a raw xml output format. The input
+    document can be any valid XML document.
+
+    If *strict* is :data:`True`, a ``406 Not Acceptable`` error is raised if
+    the client does not accept xml documents. This is not recommended in
+    general, as XML documents can have very diverse meanings (e.g. SVG is also
+    XML, but has a different MIME type).
+
+    If *strict* is :data:`False`, pipelines using this pipeline as end pipeline
+    will act as a catchall with regards to content negotiation!
+
+    .. attribute:: pretty_print
+
+       If set to true, the output will be pretty-printed.
+
+       .. warning::
+          In some document types, this may alter the semantics of the output
+          compared to the input! Use with care.
+
+       .. note::
+          Pretty printed output might be considerably larger than
+          non-pretty-printed. To avoid unneccessary overhead, use pretty
+          printing only for debug purposes.
+
+    """
+
+    _preferences = [
+        teapot.accept.AcceptPreference("application/xml", 1.0),
+        teapot.accept.AcceptPreference("text/xml", 0.9),
+    ]
+
+    def __init__(self, *, strict=False, pretty_print=False, **kwargs):
+        super().__init__(**kwargs)
+        self._strict = strict
+        self.pretty_print = pretty_print
+
+        self._output_types = {
+            teapot.mime.Type.application_xml: self._negotiate,
+            teapot.mime.Type("text", "xml"): self._negotiate
+        }
+
+        if not strict:
+            self._output_types[None] = self._negotiate
+
+    def _tostring(self, tree, charset, **kwargs):
+        etree.cleanup_namespaces(tree)
+        return [etree.tostring(
+            tree,
+            encoding=charset,
+            xml_declaration=True,
+            pretty_print=self.pretty_print,
+            **kwargs)]
+
+    def _negotiate_charset(self, request):
+        charsets = request.accept_charset.get_sorted_by_preference()
+        for charset in charsets:
+            charset = charset.value
+            if charset == "*":
+                charset = "utf-8"
+                break
+            if "*" in charset:
+                continue
+        else:
+            charset = "latin1"
+
+        return charset
+
+    def _negotiate(self, request, tree):
+        return self._tostring(tree, self._negotiate_charset(request))
+
+class XHTMLPipeline(XMLPipeline):
+    """
+    A :class:`Pipeline` subclass which offers all html-ish output formats and
+    expects the input to be a valid XHTML document.
+
+    The *strict* argument works the same as for the
+    :class:`XMLPipeline`. However, the default document type generated will be
+    HTML.
+
+    Depending on the clients support, different documents will be generated. A
+    full-featured, XHTML compatible client will get a normal XHTML
+    document. Most XHTML clients however cannot deal with namespace prefixes,
+    which is why they get a prefixless version of the XHTML document.
+
+    All other clients get a plain HTML Strict document generated from the XHTML
+    document.
+    """
+
+    _preferences = [
+        teapot.accept.AcceptPreference("application/xhtml+xml", 1.0),
+        teapot.accept.AcceptPreference("text/html", 0.9),
+        teapot.accept.AcceptPreference("application/xhtml", 0.85),
+        teapot.accept.AcceptPreference("text/xhtml", 0.85),
+    ]
+
+    _remove_prefixes_transform = etree.XSLT(etree.fromstring(
+"""<xsl:stylesheet version="1.0"
+        xmlns="http://www.w3.org/1999/xhtml"
+        xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+    <xsl:output method="xml" indent="no"/>
+
+    <!-- identity transform for everything else -->
+    <xsl:template match="/|comment()|processing-instruction()|*|@*">
+        <xsl:copy>
+          <xsl:apply-templates />
+        </xsl:copy>
+    </xsl:template>
+
+    <!-- remove NS from XHTML elements -->
+    <xsl:template match="*[namespace-uri() = 'http://www.w3.org/1999/xhtml']">
+        <xsl:element name="{local-name()}">
+          <xsl:apply-templates select="@*|node()" />
+        </xsl:element>
+    </xsl:template>
+
+    <!-- remove NS from XHTML attributes -->
+    <xsl:template match="@*[namespace-uri() = 'http://www.w3.org/1999/xhtml']">
+        <xsl:attribute name="{local-name()}">
+          <xsl:value-of select="." />
+        </xsl:attribute>
+    </xsl:template>
+</xsl:stylesheet>"""))
+
+    def __init__(self, *, strict=True, html_version=5, **kwargs):
+        super().__init__(strict=strict, **kwargs)
+
+        self._output_types = {
+            teapot.mime.Type.text_html: self._negotiate,
+            teapot.mime.Type.application_xhtml: self._negotiate,
+            # incorrect / deprecated MIME types for xhtml
+            teapot.mime.Type("application", "xhtml"): self._negotiate,
+            teapot.mime.Type("text", "xhtml"): self._negotiate,
+        }
+
+        if not strict:
+            self._output_types[None] = self._negotiate
+
+        if html_version == 4:
+            self._xhtml_version_args = {
+                "doctype": """<!DOCTYPE html
+    PUBLIC "-//W3C//DTD XHTML 1.1//EN"
+    "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">"""
+            }
+            self._html_version_args = {
+                "doctype": """<!DOCTYPE HTML
+    PUBLIC "-//W3C//DTD HTML 4.01//EN"
+    "http://www.w3.org/TR/html4/strict.dtd">""",
+                "method": "html"
+            }
+
+        elif html_version == 5:
+            self._xhtml_version_args = {
+                "doctype": "<!DOCTYPE html>",
+            }
+            self._html_version_args = dict(self._xhtml_version_args)
+            self._html_version_args["method"] = "html"
+        else:
+            raise ValueError("Unsupported HTML version: {}".format(html_version))
+
+    def _as_full_xhtml(self, tree, charset, **kwargs):
+        kwargs.update(self._xhtml_version_args)
+        return self._tostring(tree, charset, **kwargs)
+
+    def _as_prefixless_xhtml(self, tree, charset, **kwargs):
+        return self._as_full_xhtml(
+            self._remove_prefixes_transform.apply(tree),
+            charset,
+            **kwargs)
+
+    def _as_html(self, tree, charset, **kwargs):
+        kwargs.update(self._html_version_args)
+        # TODO: do we want to raise if non-xhtml elements are encountered, as a
+        # safeguard?
+        return self._tostring(
+            self._remove_prefixes_transform.apply(tree),
+            charset,
+            **kwargs)
+
+    def _negotiate(self, request, tree):
+        features = request.user_agent_info.features
+        if teapot.request.UserAgentFeatures.no_xhtml in features:
+            # no XHTML support, no matter what
+            transform = self._as_html
+        else:
+            if (    request.accepted_content_type is None or
+                    "xhtml" not in request.accepted_content_type.subtype):
+                transform = self._as_html
+            else:
+                transform = self._as_full_xhtml
+
+        if transform == self._as_full_xhtml:
+            if teapot.request.UserAgentFeatures.prefixed_xhtml not in features:
+                transform = self._as_prefixless_xhtml
+
+        charset = self._negotiate_charset(request)
+
+        return transform(tree, charset)
+
+class PathResolver(etree.Resolver):
+    def __init__(self, *sources, prefix="xsltea:"):
+        super().__init__()
+        self._sources = sources
+        self._prefix = prefix
+
+    def resolve(self, url, pubid, context):
+        if url.startswith(self._prefix):
+            logger.debug("resolving %s", url)
+            filename = url[len(self._prefix):]
+            for source in self._sources:
+                try:
+                    return self.resolve_file(
+                        source.open(filename, binary=True))
+                except FileNotFoundError as err:
+                    continue
+                except OSError as err:
+                    logger.warn("while searching for xslt dependency %s: %s",
+                                filename, err)
+                    continue
+            else:
+                raise FileNotFoundError(filename)
+
+
+class Transform(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def transform(self, tree, arguments):
+        return tree
+
+class XSLTransform(Transform):
+    def __init__(self, parser, filelike):
+        self._xslt = etree.XSLT(etree.parse(filelike, parser=parser))
+
+    def transform(self, tree, arguments):
+        return self._xslt.apply(tree, **arguments)

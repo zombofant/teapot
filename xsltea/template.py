@@ -9,7 +9,7 @@ import lxml.etree as etree
 from .namespaces import \
     internal_noncopyable_ns, \
     internal_copyable_ns
-from .transforms import PathResolver
+from .transform import PathResolver
 from .utils import sortedlist
 
 xml_parser = etree.XMLParser(ns_clean=True,
