@@ -124,12 +124,12 @@ class ProcessorMeta(type):
         """
         return other in cls.__AFTER
 
-    def __eq__(cls, other):
-        """
-        This *cls* is equal to the *other*, if *other* is scheduled neither
-        before nor after the current *cls*.
-        """
-        return other not in cls.__BEFORE and other not in cls.__AFTER
+    # def __eq__(cls, other):
+    #     """
+    #     This *cls* is equal to the *other*, if *other* is scheduled neither
+    #     before nor after the current *cls*.
+    #     """
+    #     return other not in cls.__BEFORE and other not in cls.__AFTER
 
 class TemplateProcessor(metaclass=ProcessorMeta):
     """
