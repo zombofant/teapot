@@ -59,6 +59,14 @@ class TestForeachProcessor(unittest.TestCase):
     </tea:for-each>
 </tea:for-each></test>"""
 
+    xmlsrc_with_unpack = """<?xml version="1.0" ?>
+<test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
+      xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
+      exec:global="foo = list(zip(range(3), range(4, 8)))">
+<tea:for-each tea:bind="i, j" tea:from="foo">
+    <foo exec:attr="i+j"><exec:text>i+j</exec:text></foo>
+</tea:for-each></test>"""
+
     def _load_xml(self, xmlstr):
         template = xsltea.Template.from_buffer(xmlstr, "<string>")
         template._add_processor(xsltea.exec.ScopeProcessor)
@@ -114,3 +122,15 @@ class TestForeachProcessor(unittest.TestCase):
         self.assertSequenceEqual(
             foo_texts,
             [str(i+j) for i in range(3) for j in range(3)])
+
+    def test_with_unpack(self):
+        template, foreach_ns = self._load_xml(self.xmlsrc_with_unpack)
+        tree = template.process({})
+        foo_texts = [element.text for element in tree.tree.findall("foo")]
+        foo_attrs = [element.get("attr") for element in tree.tree.findall("foo")]
+        self.assertSequenceEqual(
+            foo_texts,
+            [str(i+j) for i, j in zip(range(3), range(4, 8))])
+        self.assertSequenceEqual(
+            foo_attrs,
+            [str(i+j) for i, j in zip(range(3), range(4, 8))])
