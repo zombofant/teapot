@@ -1,7 +1,9 @@
 import unittest
 
 import teapot.templating
+
 import xsltea
+import xsltea.processor
 
 class Foo1(xsltea.processor.TemplateProcessor):
     pass
