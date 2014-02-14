@@ -9,7 +9,7 @@ import lxml.etree as etree
 from .namespaces import \
     internal_noncopyable_ns, \
     internal_copyable_ns
-from .transform import PathResolver
+from .pipeline import PathResolver
 from .utils import sortedlist
 
 xml_parser = etree.XMLParser(ns_clean=True,
@@ -437,8 +437,7 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         self._cache = {}
         self._processors = []
         self._resolver = PathResolver(*sources)
-        self._parser = etree.XMLParser()
-        self._parser.resolvers.add(self._resolver)
+        self._parser = self._resolver._parser
 
     def _add_processor(self, processor_cls, added, new_processors):
         if processor_cls in new_processors:

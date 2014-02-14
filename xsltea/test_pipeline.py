@@ -6,16 +6,16 @@ import lxml.etree as etree
 import teapot.mime
 import teapot.request
 
-import xsltea.transform
+import xsltea.pipeline
 
 class TestPipeline(unittest.TestCase):
     def test_chaining(self):
-        pipe1 = xsltea.transform.Pipeline()
-        pipe2 = xsltea.transform.Pipeline(chain_from=pipe1)
+        pipe1 = xsltea.pipeline.Pipeline()
+        pipe2 = xsltea.pipeline.Pipeline(chain_from=pipe1)
         with self.assertRaises(ValueError):
             pipe2.loader = ""
 
-        pipe3 = xsltea.transform.Pipeline(
+        pipe3 = xsltea.pipeline.Pipeline(
             chain_from=pipe2,
             chain_to=pipe1)
 
@@ -54,7 +54,7 @@ class TestXMLPipeline(unittest.TestCase):
 <foo><bar /></foo>""")
 
     def test_default(self):
-        pipeline = xsltea.transform.XMLPipeline()
+        pipeline = xsltea.pipeline.XMLPipeline()
         request = teapot.request.Request()
         result = pipeline.apply_transforms(request, self.tree, {})[0]
         self.assertEqual(
@@ -63,7 +63,7 @@ class TestXMLPipeline(unittest.TestCase):
             result)
 
     def test_pretty_print(self):
-        pipeline = xsltea.transform.XMLPipeline(pretty_print=True)
+        pipeline = xsltea.pipeline.XMLPipeline(pretty_print=True)
         request = teapot.request.Request()
         result = pipeline.apply_transforms(request, self.tree, {})[0]
         self.assertEqual(
@@ -75,11 +75,11 @@ class TestXMLPipeline(unittest.TestCase):
             result)
 
     def test_strictness(self):
-        pipeline = xsltea.transform.XMLPipeline()
+        pipeline = xsltea.pipeline.XMLPipeline()
         self.assertIn(
             None,
             pipeline.output_types)
-        pipeline = xsltea.transform.XMLPipeline(strict=True)
+        pipeline = xsltea.pipeline.XMLPipeline(strict=True)
         self.assertNotIn(
             None,
             pipeline.output_types)
@@ -95,7 +95,7 @@ class TestXHTMLPipeline(unittest.TestCase):
 </h:html>""")
 
     def test_auto_to_html(self):
-        pipeline = xsltea.transform.XHTMLPipeline()
+        pipeline = xsltea.pipeline.XHTMLPipeline()
         request = teapot.request.Request(user_agent="Firefox/6.0")
         request.accepted_content_type = teapot.mime.Type.application_xhtml
         self.assertIn(
@@ -116,7 +116,7 @@ class TestXHTMLPipeline(unittest.TestCase):
             result)
 
     def test_full_xhtml(self):
-        pipeline = xsltea.transform.XHTMLPipeline()
+        pipeline = xsltea.pipeline.XHTMLPipeline()
         request = teapot.request.Request(user_agent="Opera/0.0 Version/13.0")
         request.accepted_content_type = teapot.mime.Type.application_xhtml
         self.assertIn(
@@ -136,7 +136,7 @@ class TestXHTMLPipeline(unittest.TestCase):
             result)
 
     def test_prefixless_xhtml(self):
-        pipeline = xsltea.transform.XHTMLPipeline()
+        pipeline = xsltea.pipeline.XHTMLPipeline()
         request = teapot.request.Request(user_agent="Firefox/8.0")
         request.accepted_content_type = teapot.mime.Type.application_xhtml
         self.assertNotIn(
@@ -174,7 +174,7 @@ class TestTransform(unittest.TestCase):
         xml = """<foo />"""
 
         xslfile = io.StringIO(xsl)
-        template = xsltea.transform.XSLTransform(
+        template = xsltea.pipeline.XSLTransform(
             etree.XMLParser(),
             xslfile)
 
