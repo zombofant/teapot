@@ -55,7 +55,7 @@ class Engine(metaclass=abc.ABCMeta):
         """
         for source in self._sources:
             try:
-                return source.open_template(name, **kwargs)
+                return source.open(name, **kwargs)
             except FileNotFoundError as err:
                 continue
             except OSError as err:
@@ -75,7 +75,7 @@ class Engine(metaclass=abc.ABCMeta):
 
 class Source:
     @abc.abstractmethod
-    def open_template(self, name, binary=True, encoding=None):
+    def open(self, name, binary=True, encoding=None):
         """
         Open the template with the given *name* and return a file-like object
         providing read access to the template.
@@ -101,7 +101,7 @@ class FileSystemSource(Source):
         super().__init__(**kwargs)
         self._search_path = search_path
 
-    def open_template(self, name, binary=True, encoding=None):
+    def open(self, name, binary=True, encoding=None):
         """
         Look for a file with the given *name* in the search path supplied upon
         constructing.
