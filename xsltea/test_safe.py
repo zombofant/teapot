@@ -61,9 +61,9 @@ class TestForeachProcessor(unittest.TestCase):
 
     def _load_xml(self, xmlstr):
         template = xsltea.Template.from_buffer(xmlstr, "<string>")
-        template._add_namespace_processor(xsltea.exec.ScopeProcessor)
-        template._add_namespace_processor(xsltea.exec.ExecProcessor)
-        template._add_namespace_processor(xsltea.safe.ForeachProcessor)
+        template._add_processor(xsltea.exec.ScopeProcessor)
+        template._add_processor(xsltea.exec.ExecProcessor)
+        template._add_processor(xsltea.safe.ForeachProcessor)
         template.preprocess()
         return template, template.get_processor(xsltea.safe.ForeachProcessor)
 

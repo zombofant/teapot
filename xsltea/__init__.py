@@ -301,7 +301,7 @@ class Template(TemplateTree):
         # maps { element_name => [(processor_cls, hook)] }
         self._name_hooked_elements = {}
 
-    def _add_namespace_processor(self, processor_cls, *args, **kwargs):
+    def _add_processor(self, processor_cls, *args, **kwargs):
         if processor_cls in self._processors:
             raise ValueError("{} already loaded in template {}".format(
                 processor_cls, self))
@@ -480,7 +480,7 @@ class Engine(teapot.templating.Engine):
         self._cache = {}
         self._processors = []
 
-    def _add_namespace_processor(self, processor_cls, added, new_processors):
+    def _add_processor(self, processor_cls, added, new_processors):
         if processor_cls in new_processors:
             return
 
@@ -490,18 +490,18 @@ class Engine(teapot.templating.Engine):
 
         added.add(processor_cls)
         for requires in processor_cls.REQUIRES:
-                self._add_namespace_processor(requires, added, new_processors)
+                self._add_processor(requires, added, new_processors)
 
         new_processors.append(processor_cls)
 
     def _load_template(self, buf, name):
         template = Template.from_buffer(buf, name)
         for processor in self._processors:
-            template._add_namespace_processor(processor)
+            template._add_processor(processor)
         template.preprocess()
         return template
 
-    def add_namespace_processor(self, processor_cls):
+    def add_processor(self, processor_cls):
         """
         Add a template processor class to the list of template processors which
         shall be applied to all templates loaded using this engine.
@@ -520,7 +520,7 @@ class Engine(teapot.templating.Engine):
 
         # delegate to infinite-recursion-safe function :)
         for required in processor_cls.REQUIRES:
-            self.add_namespace_processor(required)
+            self.add_processor(required)
 
         new_index = None
         if processor_cls.BEFORE:

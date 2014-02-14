@@ -61,8 +61,8 @@ class TestExecProcessor(unittest.TestCase):
 
     def _load_xml(self, xmlstr):
         template = xsltea.Template.from_buffer(xmlstr, "<string>")
-        template._add_namespace_processor(xsltea.exec.ScopeProcessor)
-        template._add_namespace_processor(xsltea.exec.ExecProcessor)
+        template._add_processor(xsltea.exec.ScopeProcessor)
+        template._add_processor(xsltea.exec.ExecProcessor)
         template.preprocess()
         eval_ns = template._processors[xsltea.exec.ExecProcessor]
         return template, eval_ns
