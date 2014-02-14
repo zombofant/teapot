@@ -227,6 +227,7 @@ import itertools
 import logging
 
 import teapot.errors
+import teapot.mime
 import teapot.request
 import teapot.routing.info
 import teapot.routing.selectors
@@ -601,7 +602,7 @@ def route(path, *paths, order=0, methods=None, make_constructor_routable=False):
 
         info = getrouteinfo(obj)
         info.order = order
-        info.selectors[:] = selectors
+        info.selectors[:0] = selectors
 
         return obj
 
@@ -672,9 +673,8 @@ def find_route(root, request):
     candidate = None
 
     if not content_type_candidates:
-        if None in unique_content_types:
-            best_match = None
-        else:
+        best_match = None
+        if None not in unique_content_types:
             # no matches at all, we use our preferences.
             # FIXME: check for HTTP/1.1, otherwise we might have to reply with
             # 406.
@@ -692,7 +692,9 @@ def find_route(root, request):
             if best_match in candidate.content_types:
                 break
 
-    request.accepted_content_type = best_match
+    # FIXME: deal with parameters and such
+    request.accepted_content_type = \
+        teapot.mime.Type(*best_match.split("/"))
 
     return True, candidate
 

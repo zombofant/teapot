@@ -905,6 +905,11 @@ class content_type(Selector):
     def unselect(self, request):
         pass
 
+    def __repr__(self):
+        return "<{} with {}>".format(
+            type(self).__qualname__,
+            self._content_types)
+
 class method(Selector):
     """
     Select against the given HTTP *request methods*. If the request uses any of
