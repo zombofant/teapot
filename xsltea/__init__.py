@@ -39,6 +39,7 @@ except ImportError as err:
 from .template import Template, XMLTemplateLoader
 from .errors import TemplateEvaluationError
 from .exec import ExecProcessor
+from .safe import ForeachProcessor
 from .pipeline import Pipeline, XHTMLPipeline, XMLPipeline, TransformLoader
 
 def make_pipeline(
