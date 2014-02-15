@@ -13,8 +13,21 @@ class TestTemplate(unittest.TestCase):
     <c xml:id="foobar" exec:attr="a" />
 </test>"""
 
+    xmlsrc_identity = """<test><test2 a="b" /><test3 c="d">spam<test4>foo</test4>bar<test5 e="f">baz</test5>fnord</test3></test>"""
+
     def setUp(self):
-        self._template = xsltea.template.Template.from_string(self.xmlsrc, "<string>")
+        self._template = xsltea.template.Template.from_string(self.xmlsrc, "<string>", [])
+
+    def test_identity(self):
+        tree = etree.fromstring(self.xmlsrc_identity,
+                                parser=xsltea.template.xml_parser)
+        template = xsltea.template.Template(
+            tree.getroottree(),
+            "<string>",
+            [])
+        self.assertEqual(
+            etree.tostring(tree),
+            etree.tostring(template.rootfunc({})))
 
     def test_processor(self):
         self._template._add_processor(xsltea.exec.ScopeProcessor)
