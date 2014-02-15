@@ -136,7 +136,7 @@ yield elem""",
                 attr_precode, attr_elemcode, \
                 attr_keycode, attr_valuecode, \
                 attr_postcode = \
-                    handler(elem, key)
+                    handler(elem, key, filename)
 
             precode.extend(attr_precode)
             elemcode.extend(attr_elemcode)
@@ -182,6 +182,13 @@ yield elem""",
         postcode)`` comprising the code neccessary. to generate that element and
         its children.
         """
+
+        try:
+            handler = self._elemhooks[elem.tag]
+        except KeyError:
+            pass
+        else:
+            return handler(elem, filename, offset)
 
         childfun_name = "children{}".format(offset)
         precode = self.compose_childrenfun(elem, filename)
