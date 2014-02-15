@@ -96,35 +96,65 @@ yield elem""",
             text_append = later_text_append
 
     @classmethod
-    def from_string(cls, buf, filename, processors):
+    def from_string(cls, buf, filename, attrhooks={}, elemhooks={}):
         return cls(
             etree.fromstring(buf,
                              parser=xml_parser).getroottree(),
             filename,
-            processors)
+            attrhooks,
+            elemhooks)
 
-    def __init__(self, tree, filename, processors):
+    def __init__(self, tree, filename, attrhooks, elemhooks):
         super().__init__()
-        self._processors = processors
+        self._attrhooks = attrhooks
+        self._elemhooks = elemhooks
         self.rootfunc = self.parse_tree(tree, filename)
+        del self._attrhooks
+        del self._elemhooks
 
-    def _compose_attrdict(self, elem, filename):
+    def compose_attrdict(self, elem, filename):
+        precode = []
+        elemcode = []
+        postcode = []
         d = ast.Dict(lineno=elem.sourceline, col_offset=0)
         d.keys = []
         d.values = []
         for key, value in elem.attrib.items():
-            d.keys.append(ast.Str(key, lineno=elem.sourceline, col_offset=0))
-            d.values.append(ast.Str(value, lineno=elem.sourceline, col_offset=0))
-        return d
+            try:
+                handler = self._attrhooks[key]
+            except KeyError:
+                attr_precode = []
+                attr_elemcode = []
+                attr_keycode = ast.Str(key,
+                                       lineno=elem.sourceline,
+                                       col_offset=0)
+                attr_valuecode = ast.Str(value,
+                                         lineno=elem.sourceline,
+                                         col_offset=0)
+                attr_postcode = []
+            else:
+                attr_precode, attr_elemcode, \
+                attr_keycode, attr_valuecode, \
+                attr_postcode = \
+                    handler(elem, key)
 
-    def _compose_childrenfun(self, elem, filename):
+            precode.extend(attr_precode)
+            elemcode.extend(attr_elemcode)
+            if attr_keycode and attr_valuecode:
+                d.keys.append(attr_keycode)
+                d.values.append(attr_valuecode)
+            postcode.extend(attr_postcode)
+
+        return precode, elemcode, d, postcode
+
+    def compose_childrenfun(self, elem, filename):
         children_fun = copy.deepcopy(self._children_fun_template)
         precode = []
         midcode = []
         postcode = []
         for i, child in enumerate(elem):
             child_precode, child_elemcode, child_postcode = \
-                self._parse_subtree(child, filename, i)
+                self.parse_subtree(child, filename, i)
             precode.extend(child_precode)
             midcode.extend(child_elemcode)
             postcode.extend(child_postcode)
@@ -146,7 +176,7 @@ yield elem""",
         subcall = call.args[1]
         subcall.func.id = childfun_name
 
-    def _parse_subtree(self, elem, filename, offset=0):
+    def parse_subtree(self, elem, filename, offset=0):
         """
         Parse the given subtree. Return a tuple ``(precode, elemcode,
         postcode)`` comprising the code neccessary. to generate that element and
@@ -154,7 +184,7 @@ yield elem""",
         """
 
         childfun_name = "children{}".format(offset)
-        precode = self._compose_childrenfun(elem, filename)
+        precode = self.compose_childrenfun(elem, filename)
         if precode:
             precode[0].name = childfun_name
         elemcode = copy.deepcopy(self._elemcode_template)
@@ -176,22 +206,30 @@ yield elem""",
         else:
             del elemcode[1]
 
-        attrdict = self._compose_attrdict(elem, filename)
+        attr_precode, attr_elemcode, attrdict, attr_postcode = \
+            self.compose_attrdict(elem, filename)
         self._patch_element_constructor(elemcode[0].value, elem, attrdict)
 
+        if precode:
+            elemcode[-2:-2] = attr_elemcode
+        else:
+            elemcode[-1:-1] = attr_elemcode
+        precode.extend(attr_precode)
+        postcode.extend(attr_postcode)
         return precode, elemcode, postcode
 
     def parse_tree(self, tree, filename):
         root = tree.getroot()
 
         childfun_name = "children"
-        precode = self._compose_childrenfun(root, filename)
+        precode = self.compose_childrenfun(root, filename)
         if precode:
             precode[0].name = childfun_name
 
         rootmod = copy.deepcopy(self._root_template)
         rootfun = rootmod.body[0]
-        attrdict = self._compose_attrdict(root, filename)
+        attr_precode, attr_elemcode, attrdict, attr_postcode = \
+            self.compose_attrdict(root, filename)
         self._patch_element_constructor(rootfun.body[1].value, root, attrdict)
         if precode:
             self._patch_append_func(rootfun.body[3].value, childfun_name)
@@ -203,7 +241,12 @@ yield elem""",
         else:
             del rootfun.body[2]
 
-        rootfun.body[0:0] = precode
+        if precode:
+            rootfun.body[-2:-2] = attr_elemcode
+        else:
+            rootfun.body[-1:-1] = attr_elemcode
+        rootfun.body[0:0] = precode + attr_precode
+        rootfun.body.extend(attr_postcode)
 
         code = compile(rootmod, filename, "exec")
         globals_dict = dict(globals())
