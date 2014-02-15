@@ -53,7 +53,7 @@ class ForeachProcessor(TemplateProcessor):
     :class:`~xsltea.exec.ExecProcessor` (if it is loaded).
     """
 
-    REQUIRES = [xsltea.exec.ScopeProcessor]
+    REQUIRES = []
     AFTER = [xsltea.exec.ExecProcessor]
 
     xmlns = shared_ns

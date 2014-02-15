@@ -21,6 +21,7 @@ import random
 
 import lxml.etree as etree
 
+from .errors import TemplateEvaluationError
 from .namespaces import \
     internal_noncopyable_ns, \
     internal_copyable_ns
@@ -53,16 +54,16 @@ class Template:
         ast.PyCF_ONLY_AST).body[0]
     _root_template = compile(
         """def root(append_children, arguments):
-    vars().update(arguments)
     elem = etree.Element("", attrib={})
+    makeelement = elem.makeelement
     elem.text = ""
     append_children(elem, childfun())
-    return elem""",
+    return elem.getroottree()""",
         "<nowhere beach>",
         "exec",
         ast.PyCF_ONLY_AST)
     _elemcode_template = compile(
-        """elem = etree.Element("", attrib={})
+        """elem = makeelement("", attrib={})
 elem.text = ""
 elem.tail = ""
 append_children(elem, childfun())
@@ -95,6 +96,20 @@ yield elem""",
             prev = child
             text_append = later_text_append
 
+    @staticmethod
+    def lookup_hook(hookmap, tag):
+        try:
+            ns, name = tag.split("}", 1)
+            ns = ns[1:]
+        except ValueError:
+            name = tag
+            ns = None
+
+        try:
+            return hookmap[(ns, name)]
+        except KeyError:
+            return hookmap[(ns, None)]
+
     @classmethod
     def from_string(cls, buf, filename, attrhooks={}, elemhooks={}):
         return cls(
@@ -104,11 +119,13 @@ yield elem""",
             attrhooks,
             elemhooks)
 
+    from_buffer = from_string
+
     def __init__(self, tree, filename, attrhooks, elemhooks):
         super().__init__()
         self._attrhooks = attrhooks
         self._elemhooks = elemhooks
-        self.rootfunc = self.parse_tree(tree, filename)
+        self._process = self.parse_tree(tree, filename)
         del self._attrhooks
         del self._elemhooks
 
@@ -121,7 +138,7 @@ yield elem""",
         d.values = []
         for key, value in elem.attrib.items():
             try:
-                handler = self._attrhooks[key]
+                handler = self.lookup_hook(self._attrhooks, key)
             except KeyError:
                 attr_precode = []
                 attr_elemcode = []
@@ -136,7 +153,7 @@ yield elem""",
                 attr_precode, attr_elemcode, \
                 attr_keycode, attr_valuecode, \
                 attr_postcode = \
-                    handler(elem, key, filename)
+                    handler(self, elem, key, filename)
 
             precode.extend(attr_precode)
             elemcode.extend(attr_elemcode)
@@ -176,20 +193,7 @@ yield elem""",
         subcall = call.args[1]
         subcall.func.id = childfun_name
 
-    def parse_subtree(self, elem, filename, offset=0):
-        """
-        Parse the given subtree. Return a tuple ``(precode, elemcode,
-        postcode)`` comprising the code neccessary. to generate that element and
-        its children.
-        """
-
-        try:
-            handler = self._elemhooks[elem.tag]
-        except KeyError:
-            pass
-        else:
-            return handler(elem, filename, offset)
-
+    def default_subtree(self, elem, filename, offset=0):
         childfun_name = "children{}".format(offset)
         precode = self.compose_childrenfun(elem, filename)
         if precode:
@@ -225,6 +229,20 @@ yield elem""",
         postcode.extend(attr_postcode)
         return precode, elemcode, postcode
 
+    def parse_subtree(self, elem, filename, offset=0):
+        """
+        Parse the given subtree. Return a tuple ``(precode, elemcode,
+        postcode)`` comprising the code neccessary. to generate that element and
+        its children.
+        """
+
+        try:
+            handler = self.lookup_hook(self._elemhooks, elem.tag)
+        except KeyError:
+            return self.default_subtree(elem, filename, offset)
+        else:
+            return handler(self, elem, filename, offset)
+
     def parse_tree(self, tree, filename):
         root = tree.getroot()
 
@@ -237,7 +255,7 @@ yield elem""",
         rootfun = rootmod.body[0]
         attr_precode, attr_elemcode, attrdict, attr_postcode = \
             self.compose_attrdict(root, filename)
-        self._patch_element_constructor(rootfun.body[1].value, root, attrdict)
+        self._patch_element_constructor(rootfun.body[0].value, root, attrdict)
         if precode:
             self._patch_append_func(rootfun.body[3].value, childfun_name)
         else:
@@ -261,7 +279,25 @@ yield elem""",
         exec(code, globals_dict, locals_dict)
         return functools.partial(locals_dict["root"], self.append_children)
 
+    def preserve_tail_code(self, elem, filename):
+        if not elem.tail:
+            return []
 
+        body = compile("""yield ''""",
+                filename,
+                "exec",
+                flags=ast.PyCF_ONLY_AST).body
+        body[0].value.value = ast.Str(elem.tail,
+                                      lineno=elem.sourceline,
+                                      col_offset=0)
+        return body
+
+    def process(self, arguments):
+        try:
+            return self._process(arguments)
+        except Exception as err:
+            raise TemplateEvaluationError(
+                "template evaluation failed") from err
 
 
 class TemplateLoader(metaclass=abc.ABCMeta):
@@ -283,6 +319,8 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         self._processors = []
         self._resolver = PathResolver(*sources)
         self._parser = self._resolver._parser
+        self._attrhooks = None
+        self._elemhooks = None
 
     def _add_processor(self, processor_cls, added, new_processors):
         if processor_cls in new_processors:
@@ -306,18 +344,25 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         obtained from a file (or other source) called *name*.
         """
 
-    def _load_template(self, buf, name):
+    def _update_hooks(self):
+        if self._attrhooks is not None and self._elemhooks is not None:
+            return
+        self._attrhooks = {}
+        self._elemhooks = {}
+        for processor in self._processors:
+            self._attrhooks.update(processor().attrhooks)
+            self._elemhooks.update(processor().elemhooks)
+
+    def load_template(self, buf, name):
         """
         If more customization is required, this method can be overwritten to
         provdie a fully qualified template object (including all processors
         attached to this loader) from the buffer-compatible object in *buf*
         obtained from a source object called *name*.
         """
+        self._update_hooks()
         tree = self._load_template_etree(buf, name)
-        template = Template(tree, name)
-        for processor in self._processors:
-            template._add_processor(processor)
-        template.preprocess()
+        template = Template(tree, name, self._attrhooks, self._elemhooks)
         return template
 
     def add_processor(self, processor_cls):
@@ -359,6 +404,8 @@ class TemplateLoader(metaclass=abc.ABCMeta):
 
         # drop cache
         self._cache.clear()
+        self._attrhooks = None
+        self._elemhooks = None
 
     @property
     def processors(self):
@@ -393,7 +440,7 @@ class TemplateLoader(metaclass=abc.ABCMeta):
             raise FileNotFoundError(name)
 
         try:
-            template = self._load_template(f.read(), name)
+            template = self.load_template(f.read(), name)
         finally:
             f.close()
 

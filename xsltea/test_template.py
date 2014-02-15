@@ -24,15 +24,7 @@ class TestTemplate(unittest.TestCase):
             {}, {})
         self.assertEqual(
             etree.tostring(tree),
-            etree.tostring(template.rootfunc({})))
-
-    def test_processor(self):
-        template = xsltea.template.Template.from_string(self.xmlsrc, "<string>")
-        template._add_processor(xsltea.exec.ScopeProcessor)
-        template._add_processor(xsltea.exec.ExecProcessor)
-        template.preprocess()
-        tree = template.process({"a": 42}).tree
-        self.assertEqual(tree.find("c").get("attr"), "42")
+            etree.tostring(template.process({})))
 
 
 class Foo1(xsltea.processor.TemplateProcessor):
