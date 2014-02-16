@@ -4,10 +4,9 @@
 
 .. autoclass:: Template
 
-.. autoclass:: TemplateTree
+.. autoclass:: TemplateLoader
 
-.. autoclass:: EvaluationTree
-   :members:
+.. autoclass:: XMLTemplateLoader
 
 """
 
@@ -47,31 +46,33 @@ class _TreeFormatter:
         return str(etree.tostring(self._tree))
 
 class Template:
-    _children_fun_template = compile(
-        "def childrenX(): pass",
-        "<nowhere beach>",
-        "exec",
-        ast.PyCF_ONLY_AST).body[0]
-    _root_template = compile(
-        """def root(append_children, arguments):
-    elem = etree.Element("", attrib={})
-    makeelement = elem.makeelement
-    elem.text = ""
-    append_children(elem, childfun())
-    return elem.getroottree()""",
-        "<nowhere beach>",
-        "exec",
-        ast.PyCF_ONLY_AST)
-    _elemcode_template = compile(
-        """elem = makeelement("", attrib={})
-elem.text = ""
-elem.tail = ""
-append_children(elem, childfun())
-yield elem""",
-        "<nowhere beach>",
-        "exec",
-        ast.PyCF_ONLY_AST).body
-    _elem_varname = "elem"
+    """
+    This class implements a template, based on an lxml etree. For every element
+    which is not hooked using *attrhooks* or *elemhooks*, python code is
+    generated which re-creates that element and its tail text.
+
+    For all other, hook functions are called which provide the python code to
+    perform the desired action. For a description of the hook dictionaries and
+    their structure, please see :class:`~xsltea.processor.TemplateProcessor`.
+
+    The user interface basically only consists of the process method:
+
+    .. automethod:: process
+
+    In addition to the public user interface, the template provides several
+    utility functions for template processors. Throughout the documentation of
+    these the terms *precode*, *elemcode* and *postcode* are used. For more
+    information on these, please see the documentation of the
+    :class:`~xsltea.processor.TemplateProcessor` attributes.
+
+    .. automethod:: compose_attrdict
+
+    .. automethod:: compose_childrenfun
+
+    .. automethod:: default_subtree
+
+    .. automethod:: preserve_tail_code
+    """
 
     @staticmethod
     def append_children(to_element, children_iterator):
@@ -130,6 +131,13 @@ yield elem""",
         del self._elemhooks
 
     def compose_attrdict(self, elem, filename):
+        """
+        Create code which constructs the attributes for the given *elem*.
+
+        Returns ``(precode, elemcode, dictcode, postcode)``. The *dictcode* is a
+        :class:`ast.Dict` instance which describes the dictionary which can be
+        passed to the ``attrib``-kwarg of ``makeelement``.
+        """
         precode = []
         elemcode = []
         postcode = []
@@ -164,8 +172,25 @@ yield elem""",
 
         return precode, elemcode, d, postcode
 
-    def compose_childrenfun(self, elem, filename):
-        children_fun = copy.deepcopy(self._children_fun_template)
+    def compose_childrenfun(self, elem, filename, name):
+        """
+        Create *precode* declaring a function yielding all children of the given
+        *elem* with the name *name*.
+
+        Returns an array of *precode* which declares the function or which is
+        empty, if the element has no children.
+
+        Please note that this does *not* take care of the ``text`` of the
+        element -- this must be handled by the element itself. ``tail`` text of
+        the children is handled by the children as usual.
+        """
+
+        children_fun = compile("""\
+def {}():
+    pass""".format(name),
+                               filename,
+                               "exec",
+                               ast.PyCF_ONLY_AST).body[0]
         precode = []
         midcode = []
         postcode = []
@@ -189,23 +214,31 @@ yield elem""",
         call.args[0].s = elem.tag
         call.keywords[0].value = attrdict
 
-    def _patch_append_func(self, call, childfun_name):
-        subcall = call.args[1]
-        subcall.func.id = childfun_name
-
     def default_subtree(self, elem, filename, offset=0):
+        """
+        Create code for the element and its children. This is the identity
+        transform which creates code reflecting the element unchanged (but
+        applying all transforms to its attributes and children).
+
+        Returns a tuple containing *precode*, *elemcode* and *postcode*.
+        """
+
         childfun_name = "children{}".format(offset)
-        precode = self.compose_childrenfun(elem, filename)
-        if precode:
-            precode[0].name = childfun_name
-        elemcode = copy.deepcopy(self._elemcode_template)
+        precode = self.compose_childrenfun(elem, filename, childfun_name)
+        elemcode = compile("""\
+elem = makeelement("", attrib={{}})
+elem.text = ""
+elem.tail = ""
+append_children(elem, {}())
+yield elem""".format(childfun_name),
+                           filename,
+                           "exec",
+                           ast.PyCF_ONLY_AST).body
         postcode = []
 
         if not precode:
             # remove children statement
             del elemcode[3]
-        else:
-            self._patch_append_func(elemcode[3].value, childfun_name)
 
         if elem.tail:
             elemcode[2].value.s = elem.tail
@@ -247,18 +280,26 @@ yield elem""",
         root = tree.getroot()
 
         childfun_name = "children"
-        precode = self.compose_childrenfun(root, filename)
+        precode = self.compose_childrenfun(root, filename, childfun_name)
         if precode:
             precode[0].name = childfun_name
 
-        rootmod = copy.deepcopy(self._root_template)
+        rootmod = compile("""\
+def root(append_children, arguments):
+    elem = etree.Element("", attrib={{}})
+    makeelement = elem.makeelement
+    elem.text = ""
+    append_children(elem, {}())
+    return elem.getroottree()""".format(childfun_name),
+                          filename,
+                          "exec",
+                          ast.PyCF_ONLY_AST)
         rootfun = rootmod.body[0]
         attr_precode, attr_elemcode, attrdict, attr_postcode = \
             self.compose_attrdict(root, filename)
         self._patch_element_constructor(rootfun.body[0].value, root, attrdict)
-        if precode:
-            self._patch_append_func(rootfun.body[3].value, childfun_name)
-        else:
+
+        if not precode:
             del rootfun.body[3]
 
         if root.text:
@@ -280,6 +321,13 @@ yield elem""",
         return functools.partial(locals_dict["root"], self.append_children)
 
     def preserve_tail_code(self, elem, filename):
+        """
+        Create *elemcode* for *elem* which yields the elements ``tail`` text, if
+        any is present.
+
+        Return an *elemcode* list, which might be empty if no ``tail`` text is
+        present.
+        """
         if not elem.tail:
             return []
 
@@ -293,6 +341,15 @@ yield elem""",
         return body
 
     def process(self, arguments):
+        """
+        Evaluate the template using the given *arguments*. The contents of
+        *arguments* is made available under the name *arguments* inside the
+        template.
+
+        Any exceptions thrown during template evaluation are caught and
+        converted into :class:`~xsltea.errors.TemplateEvaluationError`, with the
+        original exception being attached as context.
+        """
         try:
             return self._process(arguments)
         except Exception as err:
@@ -309,7 +366,7 @@ class TemplateLoader(metaclass=abc.ABCMeta):
 
     .. automethod:: _load_template_etree
 
-    .. automethod:: _load_template
+    .. automethod:: load_template
     """
 
     def __init__(self, *sources, **kwargs):
@@ -359,6 +416,9 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         provdie a fully qualified template object (including all processors
         attached to this loader) from the buffer-compatible object in *buf*
         obtained from a source object called *name*.
+
+        This method can also be used by user code to explicitly load a template,
+        leaving aside any caching.
         """
         self._update_hooks()
         tree = self._load_template_etree(buf, name)

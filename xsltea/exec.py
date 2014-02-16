@@ -11,19 +11,16 @@ templates.
    to ``shutil.rmtree(os.path.expanduser("~"))``. Do **never ever** run
    templates from untrusted sources with :class:`ExecProcessor`.
 
-   An alternative, which will allow restricted execution of python code, is on
-   our todo.
-
 .. highlight:: xml
 
 The :class:`ExecProcessor` supports the following XML syntax::
 
     <?xml version="1.0" ?>
     <root xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
-          exec:global="import os; foo='bar'">
+     ><exec:code>import os; foo='bar'</exec:code>
       <a exec:foo="'a' + 'b' * (2+3)" />
       <exec:text>23*2-4</exec:text>
-      <b exec:local="fnord='baz'">
+      <b><exec:code>fnord='baz'</exec:code>
         <exec:text>fnord + foo + str(os)</exec:text>
       </b>
     </root>
@@ -39,34 +36,18 @@ The above XML will transform to the below XML when processed::
       </b>
     </root>
 
-Except for ``exec:local`` and ``exec:global`` attributes, the supplied python
-code will be compiled in ``'eval'`` mode, that is, only expressions are allowed
-(no statements). ``exec:local`` and ``exec:global`` are compiled in ``'exec'``
-mode, allowing you to import modules and execute other statements.
+The code for attributes and for ``exec:text`` is compiled in ``'eval'`` mode,
+that is, only expressions are allowed (no statements). ``exec:code`` is compiled
+in ``'exec'`` mode, allowing you to import modules and execute other statements.
 
-Names defined in ``exec:local`` are available in attributes on the element
-itself and all of its children. Names defined in ``exec:global`` are available
-everywhere, but just like in python, ``exec:local`` takes precedence.
+Technically, the children of each element are grouped together into a function
+scope, nested into the outer function scope. ``nonlocal`` and ``global`` will
+work as expected under these circumstances and local scoping takes place.
 
-Template parameters are put in the global scope.
+Template arguments are available in a dictionary called ``arguments`` (see
+:meth:`~xsltea.template.Template.process`).
 
 .. highlight:: python
-
-Reusable scoping
-================
-
-As described above, the :class:`ExecProcessor` supports scopes in elements. This
-can be reused for other modules without pulling the whole :class:`ExecProcessor`
-as an (unsafe) dependency.
-
-To use the :class:`ScopeProcessor` in your own
-:class:`~xsltea.processor.TemplateProcessor` subclass, put it in your
-:attr:`~xsltea.processor.TemplateProcessor.REQUIRES` attribute. It can then,
-just like any other processor, be accessed via the
-:meth:`~xsltea.Template.get_processor`.
-
-.. autoclass:: ScopeProcessor
-   :members:
 
 """
 
@@ -98,11 +79,6 @@ class ExecProcessor(TemplateProcessor):
             (str(self.xmlns), "text"): self.handle_exec_text}
 
     def handle_exec_any_attribute(self, template, elem, attrib, value, filename):
-        castcode = compile("str('')",
-                       filename,
-                       "eval",
-                       flags=ast.PyCF_ONLY_AST).body
-
         valuecode = compile(value,
                             filename,
                             "eval",
@@ -122,10 +98,18 @@ class ExecProcessor(TemplateProcessor):
                               lineno=elem.sourceline,
                               col_offset=0)
 
-        castcode.args[0] = valuecode
-        valuecode = castcode
+        elemcode = compile("""\
+attrval = ''
+if attrval is not None:
+    elem.set('', str(attrval))""",
+                           filename,
+                           "exec",
+                           ast.PyCF_ONLY_AST).body
 
-        return [], [], keycode, valuecode, []
+        elemcode[0].value = valuecode
+        elemcode[1].body[0].value.args[0] = keycode
+
+        return [], elemcode, None, None, []
 
     def handle_exec_code(self, template, elem, filename, offset):
         precode = compile(elem.text,
