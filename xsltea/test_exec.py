@@ -12,6 +12,14 @@ class TestExecProcessor(unittest.TestCase):
 <test xmlns:exec="{}" exec:test="'foo' + 'bar'"/>""".format(
         xsltea.exec.ExecProcessor.xmlns)
 
+    xmlsrc_eval_attrib_nonstr = """<?xml version="1.0" ?>
+<test xmlns:exec="{}" exec:test="42"/>""".format(
+        xsltea.exec.ExecProcessor.xmlns)
+
+    xmlsrc_eval_attrib_with_ns = """<?xml version="1.0" ?>
+<test xmlns:exec="{}" exec:test="'foo' + 'bar', '{{urn:test}}test'"/>""".format(
+        xsltea.exec.ExecProcessor.xmlns)
+
     xmlsrc_eval_text = """<?xml version="1.0" ?>
 <test xmlns:exec="{}"><exec:text>'foo' + 'bar'</exec:text>baz</test>""".format(
         xsltea.exec.ExecProcessor.xmlns)
@@ -44,6 +52,18 @@ class TestExecProcessor(unittest.TestCase):
         template = self._load_xml(self.xmlsrc_eval_attrib)
         tree = template.process({})
         self.assertEqual(tree.getroot().attrib["test"],
+                         "foobar")
+
+    def test_eval_attribute_nonstr(self):
+        template = self._load_xml(self.xmlsrc_eval_attrib_nonstr)
+        tree = template.process({})
+        self.assertEqual(tree.getroot().attrib["test"],
+                         "42")
+
+    def test_eval_attribute_with_ns(self):
+        template = self._load_xml(self.xmlsrc_eval_attrib_with_ns)
+        tree = template.process({})
+        self.assertEqual(tree.getroot().attrib["{urn:test}test"],
                          "foobar")
 
     def test_eval_text(self):

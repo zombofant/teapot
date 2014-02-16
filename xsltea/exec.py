@@ -98,6 +98,11 @@ class ExecProcessor(TemplateProcessor):
             (str(self.xmlns), "text"): self.handle_exec_text}
 
     def handle_exec_any_attribute(self, template, elem, attrib, value, filename):
+        castcode = compile("str('')",
+                       filename,
+                       "eval",
+                       flags=ast.PyCF_ONLY_AST).body
+
         valuecode = compile(value,
                             filename,
                             "eval",
@@ -116,6 +121,9 @@ class ExecProcessor(TemplateProcessor):
             keycode = ast.Str(attrib.split("}", 1)[1],
                               lineno=elem.sourceline,
                               col_offset=0)
+
+        castcode.args[0] = valuecode
+        valuecode = castcode
 
         return [], [], keycode, valuecode, []
 
