@@ -91,10 +91,33 @@ class ExecProcessor(TemplateProcessor):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.attrhooks = {}
+        self.attrhooks = {
+            (str(self.xmlns), None): self.handle_exec_any_attribute}
         self.elemhooks = {
             (str(self.xmlns), "code"): self.handle_exec_code,
             (str(self.xmlns), "text"): self.handle_exec_text}
+
+    def handle_exec_any_attribute(self, template, elem, attrib, value, filename):
+        valuecode = compile(value,
+                            filename,
+                            "eval",
+                            flags=ast.PyCF_ONLY_AST).body
+
+        if isinstance(valuecode, ast.Tuple):
+            # namespace is given
+            if len(valuecode.elts) != 2:
+                raise ValueError("unsupported amount of elements in attribute"
+                                 " value tuple: {}".format(len(valuecode.elts)))
+
+            keycode = valuecode.elts[1]
+            valuecode = valuecode.elts[0]
+        else:
+            # strip namespace
+            keycode = ast.Str(attrib.split("}", 1)[1],
+                              lineno=elem.sourceline,
+                              col_offset=0)
+
+        return [], [], keycode, valuecode, []
 
     def handle_exec_code(self, template, elem, filename, offset):
         precode = compile(elem.text,

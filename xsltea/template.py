@@ -153,7 +153,7 @@ yield elem""",
                 attr_precode, attr_elemcode, \
                 attr_keycode, attr_valuecode, \
                 attr_postcode = \
-                    handler(self, elem, key, filename)
+                    handler(self, elem, key, value, filename)
 
             precode.extend(attr_precode)
             elemcode.extend(attr_elemcode)

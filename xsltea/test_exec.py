@@ -40,11 +40,11 @@ class TestExecProcessor(unittest.TestCase):
         template = self._loader.load_template(xmlstr, "<string>")
         return template
 
-    # def test_eval_attribute(self):
-    #     template = self._load_xml(self.xmlsrc_eval_attrib)
-    #     tree = template.process({})
-    #     self.assertEqual(tree.getroot().attrib["test"],
-    #                      "foobar")
+    def test_eval_attribute(self):
+        template = self._load_xml(self.xmlsrc_eval_attrib)
+        tree = template.process({})
+        self.assertEqual(tree.getroot().attrib["test"],
+                         "foobar")
 
     def test_eval_text(self):
         template = self._load_xml(self.xmlsrc_eval_text)
