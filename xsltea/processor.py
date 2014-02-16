@@ -149,14 +149,5 @@ class TemplateProcessor(metaclass=ProcessorMeta):
     for each evaluation of the template.
     """
 
-    def __init__(self, template, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._template = template
-
-    def get_context(self, evaluation_template):
-        return self
-
-    def preprocess(self):
-        """
-        Preprocess the given *subtree*, if possible.
-        """

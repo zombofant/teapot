@@ -158,7 +158,7 @@ class Pipeline:
                 template = self.loader.get_template(template_name)
                 template_args = dict(arguments)
                 template_args.update(callable(*args, **kwargs))
-                tree = template.process(template_args).tree
+                tree = template.process(template_args)
                 return self.apply_transforms(
                     __xsltea_request_object,
                     tree,

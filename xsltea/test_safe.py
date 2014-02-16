@@ -12,7 +12,7 @@ class TestForeachProcessor(unittest.TestCase):
     xmlsrc_simple = """<?xml version="1.0" ?>
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
-      exec:global="foo = list(range(3))">
+    ><exec:code>foo = list(range(3))</exec:code>
 <tea:for-each tea:bind="i" tea:from="foo">
     <b />
 </tea:for-each></test>"""
@@ -20,7 +20,7 @@ class TestForeachProcessor(unittest.TestCase):
     xmlsrc_nested = """<?xml version="1.0" ?>
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
-      exec:global="foo = list(range(3))">
+    ><exec:code>foo = list(range(3))</exec:code>
 <tea:for-each tea:bind="i" tea:from="foo">
     <tea:for-each tea:bind="j" tea:from="foo">
         <b />
@@ -30,19 +30,19 @@ class TestForeachProcessor(unittest.TestCase):
     xmlsrc_with_text = """<?xml version="1.0" ?>
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
-      exec:global="foo = list(range(3))">
+    ><exec:code>foo = list(range(3))</exec:code>
 <tea:for-each tea:bind="i" tea:from="foo">a</tea:for-each></test>"""
 
     xmlsrc_nested_with_text = """<?xml version="1.0" ?>
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
-      exec:global="foo = list(range(3))">
+    ><exec:code>foo = list(range(3))</exec:code>
 <tea:for-each tea:bind="i" tea:from="foo">a<tea:for-each tea:bind="j" tea:from="foo">b</tea:for-each>c</tea:for-each></test>"""
 
     xmlsrc_with_exec_text = """<?xml version="1.0" ?>
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
-      exec:global="foo = list(range(3))">
+    ><exec:code>foo = list(range(3))</exec:code>
 <tea:for-each tea:bind="i" tea:from="foo">
     <tea:for-each tea:bind="j" tea:from="foo">
         <exec:text>str(i)+str(j)</exec:text>
@@ -52,28 +52,30 @@ class TestForeachProcessor(unittest.TestCase):
     xmlsrc_with_exec_local = """<?xml version="1.0" ?>
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
-      exec:global="foo = list(range(3))">
+    ><exec:code>foo = list(range(3))</exec:code>
 <tea:for-each tea:bind="i" tea:from="foo">
     <tea:for-each tea:bind="j" tea:from="foo">
-        <foo exec:local="k = i+j"><exec:text>k</exec:text></foo>
+        <foo><exec:code>k = i+j</exec:code><exec:text>k</exec:text></foo>
     </tea:for-each>
 </tea:for-each></test>"""
 
     xmlsrc_with_unpack = """<?xml version="1.0" ?>
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
-      xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
-      exec:global="foo = list(zip(range(3), range(4, 8)))">
+      xmlns:tea="https://xmlns.zombofant.net/xsltea/processors">
+    ><exec:code>foo = list(zip(range(3), range(4, 8)))</exec:code>
 <tea:for-each tea:bind="i, j" tea:from="foo">
     <foo exec:attr="i+j"><exec:text>i+j</exec:text></foo>
 </tea:for-each></test>"""
 
+
+    def setUp(self):
+        self._loader = xsltea.template.XMLTemplateLoader()
+        self._loader.add_processor(xsltea.exec.ExecProcessor)
+        self._loader.add_processor(xsltea.safe.ForeachProcessor)
+
     def _load_xml(self, xmlstr):
-        template = xsltea.Template.from_buffer(xmlstr, "<string>")
-        template._add_processor(xsltea.exec.ScopeProcessor)
-        template._add_processor(xsltea.exec.ExecProcessor)
-        template._add_processor(xsltea.safe.ForeachProcessor)
-        template.preprocess()
-        return template, template.get_processor(xsltea.safe.ForeachProcessor)
+        template = self._loader.load_template(xmlstr, "<string>")
+        return template
 
     def test_copy(self):
         el = etree.Element("foo")
@@ -82,52 +84,52 @@ class TestForeachProcessor(unittest.TestCase):
         self.assertEqual(el.tail, el2.tail)
 
     def test_simple(self):
-        template, foreach_ns = self._load_xml(self.xmlsrc_simple)
+        template = self._load_xml(self.xmlsrc_simple)
         tree = template.process({})
-        bs = tree.tree.findall("b")
+        bs = tree.findall("b")
         self.assertEqual(len(bs), 3)
-        self.assertFalse(tree.tree.findall(
+        self.assertFalse(tree.findall(
             getattr(xsltea.namespaces.shared_ns, "for-each")))
 
     def test_nested(self):
-        template, foreach_ns = self._load_xml(self.xmlsrc_nested)
+        template = self._load_xml(self.xmlsrc_nested)
         tree = template.process({})
-        bs = tree.tree.findall("b")
+        bs = tree.findall("b")
         self.assertEqual(len(bs), 9)
-        self.assertFalse(tree.tree.findall(
+        self.assertFalse(tree.findall(
             getattr(xsltea.namespaces.shared_ns, "for-each")))
 
     def test_with_text(self):
-        template, foreach_ns = self._load_xml(self.xmlsrc_with_text)
+        template = self._load_xml(self.xmlsrc_with_text)
         tree = template.process({})
-        self.assertEqual(tree.tree.getroot().text,
+        self.assertEqual(tree.getroot().text,
                          "aaa")
 
     def test_nested_with_text(self):
-        template, foreach_ns = self._load_xml(self.xmlsrc_nested_with_text)
+        template = self._load_xml(self.xmlsrc_nested_with_text)
         tree = template.process({})
-        self.assertEqual(tree.tree.getroot().text,
+        self.assertEqual(tree.getroot().text,
                          "abbbcabbbcabbbc")
 
     def test_with_exec_text(self):
-        template, foreach_ns = self._load_xml(self.xmlsrc_with_exec_text)
+        template = self._load_xml(self.xmlsrc_with_exec_text)
         tree = template.process({})
         self.assertEqual("000102101112202122",
-                         tree.tree.getroot().text)
+                         tree.getroot().text)
 
     def test_with_exec_local(self):
-        template, foreach_ns = self._load_xml(self.xmlsrc_with_exec_local)
+        template = self._load_xml(self.xmlsrc_with_exec_local)
         tree = template.process({})
-        foo_texts = [element.text for element in tree.tree.findall("foo")]
+        foo_texts = [element.text for element in tree.findall("foo")]
         self.assertSequenceEqual(
             foo_texts,
             [str(i+j) for i in range(3) for j in range(3)])
 
     def test_with_unpack(self):
-        template, foreach_ns = self._load_xml(self.xmlsrc_with_unpack)
+        template = self._load_xml(self.xmlsrc_with_unpack)
         tree = template.process({})
-        foo_texts = [element.text for element in tree.tree.findall("foo")]
-        foo_attrs = [element.get("attr") for element in tree.tree.findall("foo")]
+        foo_texts = [element.text for element in tree.findall("foo")]
+        foo_attrs = [element.get("attr") for element in tree.findall("foo")]
         self.assertSequenceEqual(
             foo_texts,
             [str(i+j) for i, j in zip(range(3), range(4, 8))])
