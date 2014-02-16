@@ -20,6 +20,10 @@ class TestExecProcessor(unittest.TestCase):
 <test xmlns:exec="{}" exec:test="'foo' + 'bar', '{{urn:test}}test'"/>""".format(
         xsltea.exec.ExecProcessor.xmlns)
 
+    xmlsrc_eval_attrib_drop = """<?xml version="1.0" ?>
+<test xmlns:exec="{}" exec:test="None"/>""".format(
+        xsltea.exec.ExecProcessor.xmlns)
+
     xmlsrc_eval_text = """<?xml version="1.0" ?>
 <test xmlns:exec="{}"><exec:text>'foo' + 'bar'</exec:text>baz</test>""".format(
         xsltea.exec.ExecProcessor.xmlns)
@@ -65,6 +69,11 @@ class TestExecProcessor(unittest.TestCase):
         tree = template.process({})
         self.assertEqual(tree.getroot().attrib["{urn:test}test"],
                          "foobar")
+
+    def test_eval_attribute_drop(self):
+        template = self._load_xml(self.xmlsrc_eval_attrib_drop)
+        tree = template.process({})
+        self.assertFalse(tree.getroot().attrib)
 
     def test_eval_text(self):
         template = self._load_xml(self.xmlsrc_eval_text)
