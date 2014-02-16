@@ -59,131 +59,83 @@ class ForeachProcessor(TemplateProcessor):
     xmlns = shared_ns
     namespaces = {"tea": str(xmlns)}
 
-    def __init__(self, template, **kwargs):
-        super().__init__(template, **kwargs)
-        self._element_loops = {}
+    def __init__(self, allow_unsafe=False, **kwargs):
+        super().__init__(**kwargs)
+        self._allow_unsafe = allow_unsafe
+        self.attrhooks = {}
+        self.elemhooks = {
+            (str(self.xmlns), "for-each"): self.handle_foreach}
 
-    def _check_ast_bind_tree(self, subtree):
+    def handle_foreach(self, template, elem, filename, offset):
+        try:
+            from_ = elem.attrib[getattr(self.xmlns, "from")]
+            bind = elem.attrib[self.xmlns.bind]
+        except KeyError as err:
+            raise ValueError(
+                "missing required attribute on tea:for-each: @tea:{}".format(
+                    str(err).split("}", 1)[1]))
+
+        childfun_name = "children{}".format(offset)
+        precode = template.compose_childrenfun(elem, filename)
+        if precode:
+            precode[0].name = childfun_name
+
+        elemcode = compile("""\
+def _():
+    for _ in _:
+        yield ''
+        yield from children{}()""".format(offset),
+                       filename,
+                       "exec",
+                       ast.PyCF_ONLY_AST).body[0].body
+
+        loop = elemcode[0]
+
+        bind_ast = compile(bind,
+                           filename,
+                           "eval",
+                           ast.PyCF_ONLY_AST).body
+        self._prepare_bind_tree(bind_ast)
+
+        iter_ast = compile(from_,
+                           filename,
+                           "eval",
+                           ast.PyCF_ONLY_AST).body
+
+        if not self._allow_unsafe:
+            if not isinstance(iter_ast, ast.Name):
+                raise ValueError("in safe mode, only one plain Name is allowed "
+                                 "in @tea:from")
+
+        loop.iter = iter_ast
+        loop.target = bind_ast
+
+        loopbody = loop.body
+
+        if not precode:
+            del loopbody[1]
+
+        if elem.text:
+            loopbody[0].value.value = ast.Str(elem.text,
+                                              lineno=elem.sourceline,
+                                              col_offset=0)
+        else:
+            del loopbody[0]
+
+        if not loopbody:
+            del elemcode[0]
+
+        elemcode.extend(template.preserve_tail_code(elem, filename))
+
+        return precode, elemcode, []
+
+    def _prepare_bind_tree(self, subtree):
         if isinstance(subtree, ast.Name):
+            subtree.ctx = ast.Store()
             return
         elif isinstance(subtree, ast.Tuple):
+            subtree.ctx = ast.Store()
             for el in subtree.elts:
-                self._check_ast_bind_tree(el)
+                self._prepare_bind_tree(el)
         else:
             raise ValueError("can only bind to a single name or nested tuples")
-
-    def _compile_bind(self, bindstr):
-        if _has_ast:
-            return self._compile_bind_with_ast(bindstr)
-
-        raise NotImplementedError("Non-AST fallback not implemented yet")
-
-    def _compile_bind_with_ast(self, bindstr):
-        # tree is a module
-        tree = ast.parse(bindstr)
-        if len(tree.body) != 1:
-            raise ValueError("invalid syntax for tea:bind")
-
-        expr = tree.body[0].value
-        self._check_ast_bind_tree(expr)
-
-        return self._construct_exec_binder(bindstr)
-
-    def _compile_from(self, fromstr):
-        if _has_ast:
-            return self._compile_from_with_ast(fromstr)
-
-        raise NotImplementedError("Non-AST fallback not implemented yet")
-
-    def _compile_from_with_ast(self, fromstr):
-        # tree is a module
-        tree = ast.parse(fromstr)
-        if len(tree.body) != 1:
-            raise ValueError("invalid syntax for tea:from")
-
-        expr = tree.body[0].value
-        if not isinstance(expr, ast.Name):
-            raise ValueError("tea:from only supports plain names")
-
-        name = expr.id
-        del expr
-        del tree
-
-        def _fetcher(globals_dict, locals_dict):
-            try:
-                return locals_dict[name]
-            except KeyError:
-                pass
-            try:
-                return globals_dict[name]
-            except KeyError:
-                pass
-            raise NameError("name '{}' is not defined".format(name))
-
-        return _fetcher
-
-    def _construct_exec_binder(self, tuple_expr):
-        code = compile(tuple_expr + "=item", self._template.name, "exec")
-        def _exec_binder(item):
-            my_globals = {"item": item}
-            my_locals = dict()
-            exec(code, my_globals, my_locals)
-            return my_locals
-        return _exec_binder
-
-    def _foreach(self, binder, fetcher, template_tree, element, arguments):
-        logger.debug("for-each at element %s with name %s",
-                     template_tree.get_element_name(element),
-                     template_tree.get_element_id(element))
-        scope = template_tree.get_processor(xsltea.exec.ScopeProcessor)
-        globals_dict = scope.get_globals()
-        locals_dict = scope.get_locals_dict_for_element(element)
-        logger.debug("with scope: locals: %s", locals_dict)
-
-        iterable = fetcher(globals_dict, locals_dict)
-        subtree_template = list(element)
-        in_text = element.text
-        post_text = element.tail
-
-        try:
-            for item in iterable:
-                if in_text:
-                    yield in_text
-                if subtree_template:
-                    these_locals = dict(locals_dict)
-                    bound = binder(item)
-                    these_locals.update(bound)
-                    subtree = list(map(
-                        template_tree.deepcopy_subtree, subtree_template))
-                    iterable = iter(subtree)
-                    first = next(iterable)
-                    scope.update_defines_for_element(first, these_locals)
-                    yield first
-                    for item in iterable:
-                        scope.share_scope_with(item, first)
-                        yield item
-            if post_text:
-                yield post_text
-
-        except ValueError as err:
-            raise xsltea.errors.TemplateEvaluationError(
-                "failed to bind item to names") from err
-
-    def preprocess(self):
-        scope = self._template.get_processor(xsltea.exec.ScopeProcessor)
-        tree = self._template.tree
-        for foreach_elem in tree.xpath("//tea:for-each",
-                                       namespaces=self.namespaces):
-            bind_attr = foreach_elem.get(self.xmlns.bind)
-            from_attr = foreach_elem.get(getattr(self.xmlns, "from"))
-
-            binder = self._compile_bind(bind_attr)
-            fetcher = self._compile_from(from_attr)
-
-            self._template.hook_element_by_name(
-                foreach_elem,
-                type(self),
-                functools.partial(
-                    self._foreach,
-                    binder,
-                    fetcher))
