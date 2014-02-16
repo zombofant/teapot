@@ -76,9 +76,7 @@ class ForeachProcessor(TemplateProcessor):
                     str(err).split("}", 1)[1]))
 
         childfun_name = "children{}".format(offset)
-        precode = template.compose_childrenfun(elem, filename)
-        if precode:
-            precode[0].name = childfun_name
+        precode = template.compose_childrenfun(elem, filename, childfun_name)
 
         elemcode = compile("""\
 def _():

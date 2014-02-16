@@ -47,32 +47,6 @@ class _TreeFormatter:
         return str(etree.tostring(self._tree))
 
 class Template:
-    _children_fun_template = compile(
-        "def childrenX(): pass",
-        "<nowhere beach>",
-        "exec",
-        ast.PyCF_ONLY_AST).body[0]
-    _root_template = compile(
-        """def root(append_children, arguments):
-    elem = etree.Element("", attrib={})
-    makeelement = elem.makeelement
-    elem.text = ""
-    append_children(elem, childfun())
-    return elem.getroottree()""",
-        "<nowhere beach>",
-        "exec",
-        ast.PyCF_ONLY_AST)
-    _elemcode_template = compile(
-        """elem = makeelement("", attrib={})
-elem.text = ""
-elem.tail = ""
-append_children(elem, childfun())
-yield elem""",
-        "<nowhere beach>",
-        "exec",
-        ast.PyCF_ONLY_AST).body
-    _elem_varname = "elem"
-
     @staticmethod
     def append_children(to_element, children_iterator):
         def text_append(s):
@@ -164,8 +138,13 @@ yield elem""",
 
         return precode, elemcode, d, postcode
 
-    def compose_childrenfun(self, elem, filename):
-        children_fun = copy.deepcopy(self._children_fun_template)
+    def compose_childrenfun(self, elem, filename, name):
+        children_fun = compile("""\
+def {}():
+    pass""".format(name),
+                               filename,
+                               "exec",
+                               ast.PyCF_ONLY_AST).body[0]
         precode = []
         midcode = []
         postcode = []
@@ -189,23 +168,23 @@ yield elem""",
         call.args[0].s = elem.tag
         call.keywords[0].value = attrdict
 
-    def _patch_append_func(self, call, childfun_name):
-        subcall = call.args[1]
-        subcall.func.id = childfun_name
-
     def default_subtree(self, elem, filename, offset=0):
         childfun_name = "children{}".format(offset)
-        precode = self.compose_childrenfun(elem, filename)
-        if precode:
-            precode[0].name = childfun_name
-        elemcode = copy.deepcopy(self._elemcode_template)
+        precode = self.compose_childrenfun(elem, filename, childfun_name)
+        elemcode = compile("""\
+elem = makeelement("", attrib={{}})
+elem.text = ""
+elem.tail = ""
+append_children(elem, {}())
+yield elem""".format(childfun_name),
+                           filename,
+                           "exec",
+                           ast.PyCF_ONLY_AST).body
         postcode = []
 
         if not precode:
             # remove children statement
             del elemcode[3]
-        else:
-            self._patch_append_func(elemcode[3].value, childfun_name)
 
         if elem.tail:
             elemcode[2].value.s = elem.tail
@@ -247,18 +226,26 @@ yield elem""",
         root = tree.getroot()
 
         childfun_name = "children"
-        precode = self.compose_childrenfun(root, filename)
+        precode = self.compose_childrenfun(root, filename, childfun_name)
         if precode:
             precode[0].name = childfun_name
 
-        rootmod = copy.deepcopy(self._root_template)
+        rootmod = compile("""\
+def root(append_children, arguments):
+    elem = etree.Element("", attrib={{}})
+    makeelement = elem.makeelement
+    elem.text = ""
+    append_children(elem, {}())
+    return elem.getroottree()""".format(childfun_name),
+                          filename,
+                          "exec",
+                          ast.PyCF_ONLY_AST)
         rootfun = rootmod.body[0]
         attr_precode, attr_elemcode, attrdict, attr_postcode = \
             self.compose_attrdict(root, filename)
         self._patch_element_constructor(rootfun.body[0].value, root, attrdict)
-        if precode:
-            self._patch_append_func(rootfun.body[3].value, childfun_name)
-        else:
+
+        if not precode:
             del rootfun.body[3]
 
         if root.text:
