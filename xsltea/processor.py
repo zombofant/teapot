@@ -133,21 +133,106 @@ class ProcessorMeta(type):
 
 class TemplateProcessor(metaclass=ProcessorMeta):
     """
-    This is a base for namespace processors. Each namespace processor deals with
-    XML elements and attributes from a specific namespace (or set of
-    namespaces).
+    This is the base class for template processors.
 
-    It takes care of preparing and executing the namespaces effects in the
-    template based on the arguments passed from the function invoking the
-    template.
+    Processor instances must have two attributes:
 
-    Template processors should apply any hooks (see
-    :meth:`~xsltea.Template.hook_element_by_id` and
-    :meth:`~xsltea.Template.hook_element_by_name`) they need in the
-    :meth:`preprocess` method, which is called upon creation of the template
-    (i.e. once per template, not once per template evaluation). Hooks are called
-    for each evaluation of the template.
+    .. attribute:: attrhooks
+
+       A dictionary containing entries of the structure
+       ``(xmlns, name): attribute_hook``. The ``xmlns`` must be a string
+       refering to an XML namespace (or :data:`None`, to match on namespaceless
+       attributes). `name` must be a string refering to the attributes local
+       name or :data:`None` to match all attributes in the namespace.
+
+       The signature and semantics of the ``attribute_hook`` function are as
+       follows:
+
+       .. function:: attribute_hook(template, element, key, value, filename) ->
+                     (precode, elemcode, keycode, valuecode, postcode)
+
+          The *template* is the template which is calling the hook. This is
+          useful to make use of the helper functions provided by the
+          :class:`Template` class.
+
+          *element* is the :class:`lxml.etree._Element` instance to which the
+          attribute having the name *key* (including the namespace in the usual
+          etree notation) belongs. To save lookups, the *value* of the attribute
+          is also included.
+
+          *filename* is the name of the template being processed. This should be
+          passed to any :func:`compile` calls being issued by the hook.
+
+          The return value is a tuple of several items:
+
+          * *precode*: A list of AST statement objects (such as
+            :class:`ast.Expr` and :class:`ast.Assign`) which are prepended to
+            the code of the function describing the element (and all of its
+            siblings).
+          * *elemcode*: A list of AST statement objects, which are inserted
+            after the element construction. Within these, the name `elem` refers
+            to the element currently being dealt with. It is thus possible to
+            include calls to `elem.set(key, value)` in that code.
+          * *keycode* and *valuecode*: If no special handling is required, the
+            key and value expressions for the attribute, as you would pass them
+            to `elem.set()` can be passed here directly. If you set the
+            attribute manually in *elemcode*, set this to :data:`None`. Setting
+            the attribute using *keycode* and *valuecode* might be faster.
+          * *postcode*: This code is appended to the end of the function
+            describing the element (and all of its siblings.
+
+    .. attribute:: elemhooks
+
+       A dictionary containing entries of the structure
+       ``(xmlns, name): element_hook``. The ``xmlns`` and ``name`` elements have
+       the same semantics as for :attr:`attrhooks`, but they refer to element
+       names instead of attribute names.
+
+       The ``element_hook`` function semantics are as follows:
+
+       .. function:: element_hook(template, elemement, filename, offset) ->
+                     (precode, elemcode, postcode)
+
+          The *template* is the template which is calling the hook.
+
+          *element* is the element which is being hooked. If you want the
+          element to appear in the output tree, you must construct it in the
+          *elemcode* and ``yield`` it from there.
+
+          *filename* is the name of the template being operated on. *offset* is
+          the sibling index of the element you are operating on. Use that as a
+          suffix for any names, except ``elem``, you create within any of the
+          code arrays.
+
+          The return value is a tuple of several items:
+          * *precode*: A list of AST statement objects (such as
+            :class:`ast.Expr` and :class:`ast.Assign`) which are prepended to
+            the code of the function describing the element and all of its
+            siblings. Use this to define a children function, if needed (see
+            :meth:`~xsltea.template.Template.compose_childrenfun` for a utility
+            doing that for you).
+          * *elemcode*: A list of statements which create the element in a
+            variable called ``elem`` and ``yield`` it.
+          * *postcode*: A list of statements which is appended to the function
+            defining the element and all of its sibilings.
+
+          You can not only yield lxml elements, but also strings. Strings will
+          be inserted as text where elements would be inserted as elements as
+          children to the parent element.
+
+          It is more efficient to add ``tail``-text directly to the element, if
+          you are explicitly creating an element anyways.
+
+          A ``makeelement`` function is available in the scope all of the code
+          is evaluated. It is recommended to use that function instead of
+          ``etree.Element`` to create elements.
+
+    .. note::
+       This class does in fact nothing. It had historical purpose though and it
+       is thought that there might be future uses for having a common baseclass
+       for all template processors.
+
+       Please note that while inheriting from :class:`TemplateProcessor` is
+       optional, using the metaclass :class:`ProcessorMeta` is required!
+
     """
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
