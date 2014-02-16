@@ -1,12 +1,15 @@
+import cgi
 import collections
 import copy
+import logging
 import re
 import urllib
-import cgi
 
 from http.cookies import SimpleCookie, CookieError
 
 import teapot.mime
+
+logger = logging.getLogger(__name__)
 
 class Method:
     __init__ = None
@@ -506,6 +509,8 @@ class Request:
             self._accept_charset = teapot.accept.all_charsets()
         self._post_data = None
         self._cookie_data = None
+
+        logger.debug("user agent info: %s", self._user_agent_info)
 
         self.body_stream = body_stream
         self.content_length = content_length
