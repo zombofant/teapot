@@ -16,6 +16,7 @@ More specialized pipelines for XML and HTML output formats are also available:
 """
 
 import abc
+import functools
 import logging
 
 import lxml.etree as etree
@@ -134,36 +135,56 @@ class Pipeline:
             except KeyError:
                 return self._default_handler
 
-    def apply_transforms(self, request, tree, arguments):
+    def apply_transforms(self, request):
         """
         Apply the whole pipeline, including output formatting, to the given
         *tree*, using the information from the original *request*.
         """
 
-        handler = self._find_handler_for_content_type(
-            request.accepted_content_type)
+        handler = iter(self._find_handler_for_content_type(
+            request.accepted_content_type)(request))
 
+        tree, arguments = yield handler.send(None)
         for transform in self.iter_transforms():
             tree = transform.transform(tree, arguments)
 
-        return handler(request, tree)
+        yield handler.send(tree)
+
+    def _decorated(self, arguments, callable, template_name, request,
+                   *args, **kwargs):
+        template = self.loader.get_template(template_name)
+        template_args = dict(arguments)
+        decorated_iter = iter(callable(*args, **kwargs))
+        response = next(decorated_iter)
+
+        transform_iter = iter(self.apply_transforms(request))
+        content_type = next(transform_iter)
+        response.content_type = content_type
+        yield response
+
+        decorated_arguments = next(decorated_iter)
+        template_args.update(decorated_arguments)
+        tree = template.process(template_args)
+
+        yield transform_iter.send((tree, template_args))
 
     def with_template(self, template_name, arguments=None):
         if arguments is None:
             arguments = {}
+
         def decorator(callable):
+            decorated_delegate = functools.partial(
+                self._decorated,
+                arguments,
+                callable,
+                template_name)
             def decorated(*args,
                           _Pipeline__xsltea_request_object: teapot.request.Request,
                           **kwargs):
-                template = self.loader.get_template(template_name)
-                template_args = dict(arguments)
-                template_args.update(callable(*args, **kwargs))
-                tree = template.process(template_args)
-                return self.apply_transforms(
-                    __xsltea_request_object,
-                    tree,
-                    template_args)
+                return decorated_delegate(__xsltea_request_object, *args, **kwargs)
+
             decorated = teapot.routing.make_routable([])(decorated)
+            decorated.__name__ = callable.__name__
             info = teapot.getrouteinfo(decorated)
             info.selectors.append(
                 teapot.routing.selectors.content_type(
@@ -217,16 +238,14 @@ class XMLPipeline(Pipeline):
         if not strict:
             self._output_types[None] = self._negotiate
 
-    def _tostring(self, tree, charset, content_type, **kwargs):
+    def _tostring(self, tree, charset, **kwargs):
         etree.cleanup_namespaces(tree)
-        return teapot.response.Response(
-            content_type,
-            etree.tostring(
-                tree,
-                encoding=charset,
-                xml_declaration=True,
-                pretty_print=self.pretty_print,
-                **kwargs))
+        return etree.tostring(
+            tree,
+            encoding=charset,
+            xml_declaration=True,
+            pretty_print=self.pretty_print,
+            **kwargs)
 
     def _negotiate_charset(self, request):
         charsets = request.accept_charset.get_sorted_by_preference()
@@ -242,11 +261,12 @@ class XMLPipeline(Pipeline):
 
         return charset
 
-    def _negotiate(self, request, tree):
-        return self._tostring(
-            tree,
-            self._negotiate_charset(request),
-            request.accepted_content_type or teapot.mime.Type.application_xml)
+    def _negotiate(self, request):
+        content_type = (request.accepted_content_type or
+                        teapot.mime.Type.application_xml)
+        charset = self._negotiate_charset(request)
+        tree = yield content_type.with_charset(charset)
+        yield self._tostring(tree, charset)
 
 class XHTMLPipeline(XMLPipeline):
     """
@@ -348,7 +368,6 @@ class XHTMLPipeline(XMLPipeline):
         return self._tostring(
             tree,
             charset,
-            teapot.mime.Type.application_xhtml,
             **kwargs)
 
     def _as_prefixless_xhtml(self, tree, charset, **kwargs):
@@ -364,20 +383,22 @@ class XHTMLPipeline(XMLPipeline):
         return self._tostring(
             self._remove_prefixes_transform.apply(tree),
             charset,
-            teapot.mime.Type.text_html,
             **kwargs)
 
-    def _negotiate(self, request, tree):
+    def _negotiate(self, request):
         features = request.user_agent_info.features
         if teapot.request.UserAgentFeatures.no_xhtml in features:
             # no XHTML support, no matter what
             transform = self._as_html
+            content_type = teapot.mime.Type.text_html
         else:
             if (    request.accepted_content_type is None or
                     "xhtml" not in request.accepted_content_type.subtype):
                 transform = self._as_html
+                content_type = teapot.mime.Type.text_html
             else:
                 transform = self._as_full_xhtml
+                content_type = teapot.mime.Type.application_xhtml
 
         if transform == self._as_full_xhtml:
             if teapot.request.UserAgentFeatures.prefixed_xhtml not in features:
@@ -385,7 +406,9 @@ class XHTMLPipeline(XMLPipeline):
 
         charset = self._negotiate_charset(request)
 
-        return transform(tree, charset)
+        tree = yield content_type.with_charset(charset)
+
+        yield transform(tree, charset)
 
 class PathResolver(etree.Resolver):
     def __init__(self, *sources, prefix="xsltea:"):

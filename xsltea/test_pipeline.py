@@ -53,21 +53,24 @@ class TestXMLPipeline(unittest.TestCase):
         self.tree = etree.fromstring("""<?xml version="1.0"?>
 <foo><bar /></foo>""")
 
+    def _apply_transforms(self, pipeline, request, tree, args):
+        transform_iter = pipeline.apply_transforms(request)
+        _ = next(transform_iter)
+        return transform_iter.send((tree, args))
+
     def test_default(self):
         pipeline = xsltea.pipeline.XMLPipeline()
         request = teapot.request.Request()
-        result = pipeline.apply_transforms(request, self.tree, {}).body
-        self.assertEqual(
-            """<?xml version='1.0' encoding='utf-8'?>
+        result = self._apply_transforms(pipeline, request, self.tree, {})
+        self.assertEqual("""<?xml version='1.0' encoding='utf-8'?>
 <foo><bar/></foo>""".encode("utf-8"),
             result)
 
     def test_pretty_print(self):
         pipeline = xsltea.pipeline.XMLPipeline(pretty_print=True)
         request = teapot.request.Request()
-        result = pipeline.apply_transforms(request, self.tree, {}).body
-        self.assertEqual(
-            """<?xml version='1.0' encoding='utf-8'?>
+        result = self._apply_transforms(pipeline, request, self.tree, {})
+        self.assertEqual("""<?xml version='1.0' encoding='utf-8'?>
 <foo>
   <bar/>
 </foo>
@@ -94,6 +97,11 @@ class TestXHTMLPipeline(unittest.TestCase):
   <h:body />
 </h:html>""")
 
+    def _apply_transforms(self, pipeline, request, tree, args):
+        transform_iter = pipeline.apply_transforms(request)
+        _ = next(transform_iter)
+        return transform_iter.send((tree, args))
+
     def test_auto_to_html(self):
         pipeline = xsltea.pipeline.XHTMLPipeline()
         request = teapot.request.Request(user_agent="Firefox/6.0")
@@ -102,11 +110,10 @@ class TestXHTMLPipeline(unittest.TestCase):
             teapot.request.UserAgentFeatures.no_xhtml,
             request.user_agent_info.features)
 
-        result = pipeline.apply_transforms(request, self.tree, {}).body
+        result = self._apply_transforms(pipeline, request, self.tree, {})
         # the namespace should indeed not be there, no idea why it is there and
         # how to get rid of it
-        self.assertEqual(
-            """<!DOCTYPE html>
+        self.assertEqual("""<!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <title>foo</title>
@@ -123,9 +130,8 @@ class TestXHTMLPipeline(unittest.TestCase):
             teapot.request.UserAgentFeatures.prefixed_xhtml,
             request.user_agent_info.features)
 
-        result = pipeline.apply_transforms(request, self.tree, {}).body
-        self.assertEqual(
-            """<?xml version='1.0' encoding='utf-8'?>
+        result = self._apply_transforms(pipeline, request, self.tree, {})
+        self.assertEqual("""<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE html>
 <h:html xmlns:h="http://www.w3.org/1999/xhtml">
   <h:head>
@@ -143,7 +149,7 @@ class TestXHTMLPipeline(unittest.TestCase):
             teapot.request.UserAgentFeatures.prefixed_xhtml,
             request.user_agent_info.features)
 
-        result = pipeline.apply_transforms(request, self.tree, {}).body
+        result = self._apply_transforms(pipeline, request, self.tree, {})
         self.assertEqual(
             """<?xml version='1.0' encoding='utf-8'?>
 <!DOCTYPE html>
