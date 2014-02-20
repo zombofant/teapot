@@ -76,6 +76,7 @@ class ExecProcessor(TemplateProcessor):
             (str(self.xmlns), None): self.handle_exec_any_attribute}
         self.elemhooks = {
             (str(self.xmlns), "code"): self.handle_exec_code,
+            (str(self.xmlns), "if"): self.handle_exec_if,
             (str(self.xmlns), "text"): self.handle_exec_text}
 
     def handle_exec_any_attribute(self, template, elem, attrib, value, filename):
@@ -132,3 +133,43 @@ if attrval is not None:
         elemcode = template.preserve_tail_code(elem, filename)
         elemcode.insert(0, yielder)
         return [], elemcode, []
+
+    def handle_exec_if(self, template, elem, filename, offset):
+        attrib = elem.attrib
+        try:
+            condition_code = attrib["condition"]
+        except KeyError:
+            raise ValueError("exec:if requires @condition")
+        condition_code = compile(condition_code,
+                                 filename,
+                                 "eval",
+                                 ast.PyCF_ONLY_AST).body
+
+        childfun_name = "children{}".format(offset)
+        precode = template.compose_childrenfun(elem, filename, childfun_name)
+
+        elemcode = compile("""\
+if _:
+    yield ''
+    yield from children{}()""".format(offset),
+                           filename,
+                           "exec",
+                           ast.PyCF_ONLY_AST).body
+
+        elemcode[0].test = condition_code
+
+        if not precode:
+            del elemcode[0].body[1]
+
+        if elem.text:
+            elemcode[0].body[0].value.value = ast.Str(
+                elem.text,
+                lineno=elem.sourceline,
+                col_offset=0)
+        else:
+            del elemcode[0].body[0]
+
+        if not elemcode[0].body:
+            del elemcode[0]
+
+        return precode, elemcode, []
