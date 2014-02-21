@@ -59,3 +59,21 @@ class TestResponse(unittest.TestCase):
             content_type, "foobar")
         response.negotiate_charset(client_preferences)
         self.assertEqual(response.content_type.charset, "utf-8")
+
+    def test_cookies(self):
+        response = teapot.response.Response(None)
+
+        response.cookies["foo"] = "bar"
+        response.cookies["foo"]["secure"] = True
+        response.cookies["foo"]["path"] = "/"
+
+        response.cookies["bar"] = "baz"
+        response.cookies["bar"]["httponly"] = True
+
+        headers = set(response.get_header_tuples())
+        self.assertEqual(
+            headers,
+            {
+                ("Set-Cookie", "foo=bar; Path=/; secure"),
+                ("Set-Cookie", "bar=baz; httponly")
+            })

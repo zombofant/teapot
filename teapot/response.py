@@ -18,6 +18,7 @@ neccessary information to create a suitable response for the client.
 import codecs
 import copy
 import logging
+import http.cookies
 import itertools
 
 import teapot.accept
@@ -122,6 +123,7 @@ class Response:
         self.content_type = copy.copy(content_type)
         self.body = body
         self.last_modified = last_modified
+        self.cookies = http.cookies.SimpleCookie()
 
         if self.content_type and \
            self.content_type.charset is not None \
@@ -142,7 +144,8 @@ class Response:
         if self.last_modified:
             yield ("Last-Modified",
                    teapot.timeutils.format_http_date(self.last_modified))
-
+        for v in self.cookies.values():
+            yield ("Set-Cookie", v.output(header="").lstrip())
 
     def negotiate_charset(self, preference_list, strict=False):
         """
