@@ -377,6 +377,16 @@ class Request:
        Negotiation takes place, it should be set to the content type which was
        ultimately selected.
 
+    .. attribute:: auth
+
+       The *auth* attribute is unused in teapot as it stands. It is reserved for
+       applications with the specific purpose of storing authentication and
+       authorization related data. Usually, an application would fill this with
+       authentication information in :meth:`Router.pre_route_hook`, so routing
+       selectors can perform authorization while routing.
+
+       It is initialized to :data:`None` on construction.
+
     """
 
     @classmethod
@@ -518,6 +528,8 @@ class Request:
         self.raw_http_headers = raw_http_headers
         self.if_modified_since = if_modified_since
         self.accepted_content_type = None
+
+        self.auth = None
 
     def _parse_post_data(self):
         field_storage = cgi.FieldStorage(
