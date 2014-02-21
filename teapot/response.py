@@ -17,9 +17,9 @@ neccessary information to create a suitable response for the client.
 
 import codecs
 import copy
-import logging
 import http.cookies
 import itertools
+import logging
 
 import teapot.accept
 import teapot.timeutils
@@ -169,8 +169,8 @@ class Response:
             return
 
         candidates = (pref.value
-                       for pref
-                       in preference_list.get_sorted_by_preference())
+                      for pref
+                      in preference_list.get_sorted_by_preference())
         candidates = list(itertools.islice(candidates, 4))
         if "utf-8" not in candidates and not strict:
             candidates.append("utf-8")
