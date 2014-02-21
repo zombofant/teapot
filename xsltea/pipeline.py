@@ -150,14 +150,14 @@ class Pipeline:
 
         yield handler.send(tree)
 
-    def _decorated(self, arguments, callable, template_name, request,
+    def _decorated(self, __arguments, __callable, __template_name, __request,
                    *args, **kwargs):
-        template = self.loader.get_template(template_name)
-        template_args = dict(arguments)
-        decorated_iter = iter(callable(*args, **kwargs))
+        template = self.loader.get_template(__template_name)
+        template_args = dict(__arguments)
+        decorated_iter = iter(__callable(*args, **kwargs))
         response = next(decorated_iter)
 
-        transform_iter = iter(self.apply_transforms(request))
+        transform_iter = iter(self.apply_transforms(__request))
         content_type = next(transform_iter)
         response.content_type = content_type
         yield response
@@ -183,8 +183,9 @@ class Pipeline:
                           **kwargs):
                 return decorated_delegate(__xsltea_request_object, *args, **kwargs)
 
-            decorated = teapot.routing.make_routable([])(decorated)
             decorated.__name__ = callable.__name__
+            decorated.__annotations__.update(callable.__annotations__)
+            decorated = teapot.routing.make_routable([])(decorated)
             info = teapot.getrouteinfo(decorated)
             info.selectors.append(
                 teapot.routing.selectors.content_type(
