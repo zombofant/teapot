@@ -44,6 +44,13 @@ class Pipeline:
     :ref:`teapot.routing.return_protocols`.
 
     If no loader is provided in the chain, the default loader applies.
+
+    .. attribute:: local_transforms
+
+       This attribute holds the list of transforms to apply to the output before
+       forwarding it to the next template in the chain (or passing it to the
+       output handler).
+
     """
 
     def __init__(self, *, chain_from=None, chain_to=None, **kwargs):
