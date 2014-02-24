@@ -561,7 +561,7 @@ def make_routable(initial_selectors, order=0, make_constructor_routable=False):
 
     return decorator
 
-def route(path, *paths, order=0, methods=None, make_constructor_routable=False):
+def route(*paths, order=0, methods=None, make_constructor_routable=False):
     """
     Decorate a (static-, class- or instance-) method or function with routing
     information. Note that decorating a class using this decorator is not
@@ -602,12 +602,14 @@ def route(path, *paths, order=0, methods=None, make_constructor_routable=False):
 
     """
 
-    paths = [path] + list(paths)
     paths = [path if hasattr(path, "select")
                   else teapot.routing.selectors.formatted_path(path)
              for path in paths]
 
-    selectors = [teapot.routing.selectors.one_of(paths)]
+    if paths:
+        selectors = [teapot.routing.selectors.one_of(paths)]
+    else:
+        selectors = []
     if methods is not None:
         selectors.append(teapot.routing.selectors.method(*methods))
     del paths
