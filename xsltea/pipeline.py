@@ -169,11 +169,11 @@ class Pipeline:
         response.content_type = content_type
         yield response
 
-        decorated_arguments = next(decorated_iter)
-        template_args.update(decorated_arguments)
+        user_template_args, user_transform_args = next(decorated_iter)
+        template_args.update(user_template_args)
         tree = template.process(template_args)
 
-        yield transform_iter.send((tree, template_args))
+        yield transform_iter.send((tree, user_transform_args))
 
     def with_template(self, template_name, arguments=None):
         if arguments is None:
