@@ -634,8 +634,7 @@ def traverse_to_root(routeinfo):
 
 def get_routing_result(routecall):
     error = yield from routecall
-    if error is not None:
-        raise error
+    yield error
 
 def map_unique(func, l):
     values = set()
@@ -666,10 +665,8 @@ def find_route(root, request):
 
     localrequest = Context.from_request(request)
     error = None
-    try:
-        candidates = list(get_routing_result(info.route(localrequest)))
-    except teapot.errors.ResponseError as err:
-        error = err
+    candidates = list(get_routing_result(info.route(localrequest)))
+    error = candidates.pop()
 
     if not candidates:
         return False, error
