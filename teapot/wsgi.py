@@ -10,6 +10,7 @@ server.
 
 """
 
+import itertools
 import logging
 import urllib.parse
 
@@ -62,7 +63,7 @@ class Application:
 
         return urllib.parse.parse_qs(query)
 
-    def forward_response(self, response, start_response):
+    def forward_response(self, start_response, environ, response):
         """
         Forwards a :class:`~teapot.response.Response` instance (such as from a
         caught :class:`~teapot.errors.ResponseError`) to the WSGI
@@ -75,16 +76,11 @@ class Application:
         must be the ``start_response`` callable WSGI handed to the application.
         """
         response.negotiate_charset(teapot.accept.CharsetPreferenceList())
-        start_response(
-            "{:03d} {}".format(
-                response.http_response_code,
-                response.http_response_message),
-            list(response.get_header_tuples())
-        )
-        if response.body is not None:
-            return [response.body]
-        else:
-            return []
+        return self._generate_response(
+            start_response,
+            environ,
+            response,
+            iter([] if response.body is None else [response.body]))
 
     def handle_decoding_error(self, s):
         """
@@ -112,7 +108,7 @@ class Application:
         """
         self.handle_decoding_error(query)
 
-    def handle_pre_start_response_error(self, error, start_response):
+    def handle_pre_start_response_error(self, start_response, environ, error):
         """
         Handle an exception which happens before the response has started.
 
@@ -120,7 +116,45 @@ class Application:
         :class:`~teapot.response.Response` instance and *start_response* must be
         the well known callable from the WSGI interface.
         """
-        return self.forward_response(error, start_response)
+        return self.forward_response(start_response, environ, error)
+
+    def _start_response(self, start_response, response_obj):
+        start_response(
+            "{:03d} {}".format(
+                response_obj.http_response_code,
+                response_obj.http_response_message),
+            list(response_obj.get_header_tuples())
+        )
+
+    @staticmethod
+    def _file_wrapper(filelike, block_size=8192):
+        with filelike as f:
+            data = f.read(block_size)
+            while data:
+                yield data
+                data = f.read(block_size)
+
+    def _generate_response(self, start_response, environ,
+                           response_obj, result_iter):
+        self._start_response(start_response, response_obj)
+        try:
+            first_object = next(result_iter)
+        except StopIteration:
+            logger.debug("empty sequence response")
+            return []
+
+        if hasattr(first_object, "read"):
+            try:
+                file_wrapper = environ["wsgi.file_wrapper"]
+            except KeyError:
+                logger.info("non-wrapped file, reading whole file chunkedly")
+                return self._file_wrapper(first_object)
+            else:
+                logger.debug("wrapped file")
+                return file_wrapper(first_object)
+        else:
+            logger.debug("normal, iterable response")
+            return itertools.chain((first_object,), result_iter)
 
     def __call__(self, environ, start_response):
         """
@@ -156,17 +190,13 @@ class Application:
                 # forward to next layer of processing
                 raise
             except Exception as err:
-                yield from self.handle_exception(err)
-                return
+                return self.handle_exception(err)
         except teapot.errors.ResponseError as err:
-            yield from self.handle_pre_start_response_error(
-                err, start_response)
-            return
+            return self.handle_pre_start_response_error(
+                start_response, environ, err)
 
-        start_response(
-            "{:03d} {}".format(
-                headers.http_response_code,
-                headers.http_response_message),
-            list(headers.get_header_tuples()))
-
-        yield from result
+        return self._generate_response(
+            start_response,
+            environ,
+            headers,
+            result)
