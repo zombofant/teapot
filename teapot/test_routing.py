@@ -723,6 +723,23 @@ class TestRouter(unittest.TestCase):
 
         self.assertEqual(ctx.exception.http_response_code, 304)
 
+    def test_custom_group_routablilty(self):
+        router = teapot.routing.Router()
+
+        @router.route("/")
+        def foo():
+            return teapot.response.Response(
+                teapot.mime.Type.text_plain.with_charset("utf8"),
+                body=b"foo")
+
+        request = teapot.request.Request(local_path="/")
+        result = list(router.route_request(request))
+        response = result.pop(0)
+        self.assertEqual(
+            teapot.mime.Type.text_plain.with_charset("utf8"),
+            response.content_type)
+        self.assertEqual(result[0], b"foo")
+
     def tearDown(self):
         del self._root
         del self._now

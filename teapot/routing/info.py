@@ -2,9 +2,12 @@
 # teapot.routing package.
 
 import abc
+import collections.abc
 import copy
 import functools
 import logging
+
+from teapot.utils import sortedlist
 
 __all__ = [
     "isroutable",
@@ -162,6 +165,44 @@ class Group(Info):
             return first_error
         finally:
             logger.debug("leaving routing group %r", self)
+
+class CustomGroup(Group, collections.abc.MutableSet):
+    """
+    This is a group of *routenodes* which are automatically sorted for their
+    *order* values. This is different from the default :class:`Group`
+    implementation, which is both not expected to change after instanciation and
+    expects that their routenodes are already sorted correctly.
+
+    The :class:`CustomGroup` can be used to group routables together by
+    hand. Its methods provide means to modify the set of routables during
+    runtime. It is based on a sortedlist implementation, which is either sourced
+    from the blist package, if it is available, or from a much slower drop-in
+    replacement provided by teapot.
+    """
+
+    def __init__(self, selectors, routenodes=None, **kwargs):
+        super().__init__(selectors, [], **kwargs)
+        self.routenodes = sortedlist()
+        if routenodes:
+            self.routenodes.extend(routenodes)
+
+        for routenode in self.routenodes:
+            routenode.parent = self
+
+    def __contains__(self, other):
+        return other in self.routenodes
+
+    def __iter__(self):
+        return iter(self.routenodes)
+
+    def __len__(self):
+        return len(self.routenodes)
+
+    def add(self, other):
+        self.routenodes.add(other)
+
+    def discard(self, other):
+        self.routenodes.discard(other)
 
 class Object(Group):
     """
