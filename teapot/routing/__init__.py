@@ -638,14 +638,17 @@ def find_route(root, request):
     on the request.
     """
 
-    if not isroutable(root):
-        raise TypeError("{!r} is not routable".format(root))
+    if not isinstance(root, teapot.routing.info.Info):
+        if not isroutable(root):
+            raise TypeError("{!r} is not routable".format(root))
+        info = getrouteinfo(root)
+    else:
+        info = root
 
     localrequest = Context.from_request(request)
     error = None
     try:
-        candidates = list(get_routing_result(
-            getrouteinfo(root).route(localrequest)))
+        candidates = list(get_routing_result(info.route(localrequest)))
     except teapot.errors.ResponseError as err:
         error = err
 
@@ -723,27 +726,7 @@ class Router:
     modes of the routables into a single defined response format. Routing takes
     place in the context of the root routable object *root*.
 
-    The following result types are supported:
-
-    * A routable may simply return a completely set up
-      :class:`~teapot.response.Response` object which contains the respones to
-      be delivered.
-    * A routable may return an iterable (e. g. by being a generator), whose
-      first element must be a :class:`~teapot.response.Response` object
-      containing all required metadata to create the response headers. Iteration
-      on the iterable does not continue until the response headers are sent.
-
-      Now different things can happen:
-
-      * either, the :attr:`~teapot.response.Response.body` attribute of the
-        response is :data:`None`. In that case it is assumed that the remaining
-        elements of the iterable are :class:`bytes` objects which form the
-        response body.
-      * or, the :attr:`~teapot.response.Response.body` attribute contains a
-        bytes instance. It is returned as response body (yielded once).
-      * or, the :attr:`~teapot.response.Response.body` attribute is another
-        iterable, which is then iterated over and forwarded using
-        ``yield from``.
+    The :ref:`teapot.routing.return_protocols` are supported.
 
     Before evaluating a response, the
     :meth:`~teapot.response.Response.negotiate_charset` method is called with
@@ -751,8 +734,13 @@ class Router:
     the request.
     """
 
-    def __init__(self, root):
-        self._root = root
+    def __init__(self, root=None):
+        if root is None:
+            self._owns_root = True
+            self._root = teapot.routing.info.CustomGroup([])
+        else:
+            self._owns_root = False
+            self._root = getrouteinfo(root)
 
     def handle_not_found(self, request):
         """
@@ -876,3 +864,23 @@ class Router:
 
         result = data()
         yield from self.wrap_result(request, result)
+
+    def route(self, *args, **kwargs):
+        """
+        This takes the same arguments as :func:`~teapot.routing.route`, but
+        immediately mounts the callable decorated with the returned decorator in
+        the routing tree.
+
+        This throws :class:`ValueError`, if the *root* argument to the
+        constructor of :class:`Router` has not been :data:`None`.
+        """
+        if not self._owns_root:
+            raise ValueError("Cannot use @Router.route with routers which "
+                             "have been created with non-empty root.")
+
+        def decorator(obj):
+            obj = route(*args, **kwargs)(obj)
+            self._root.add(getrouteinfo(obj))
+            return obj
+
+        return decorator
