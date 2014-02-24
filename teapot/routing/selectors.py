@@ -3,9 +3,10 @@
 
 import abc
 import functools
-import string
-import re
 import logging
+import os
+import re
+import string
 
 import teapot.request
 import teapot.forms
@@ -19,7 +20,8 @@ __all__ = [
     "content_type",
     "method",
     "formatted_path",
-    "webform"
+    "webform",
+    "file_from_directory"
     ]
 
 logger = logging.getLogger(__name__)
@@ -973,3 +975,101 @@ class webform(Selector):
 
     def unselect(self, request):
         return True
+
+
+class file_from_directory(formatted_path):
+    """
+    Select the remainder of the path (after the given *prefix*) as a file from a
+    directory given by *rootpath*. The file is opened with *mode* and passed to
+    *destarg*.
+
+    Before opening the file, the path obtained from the request is appended to
+    the *rootpath*. The result is absolutified with :func:`os.path.abspath` and
+    afterwards another check takes place whether the path is still within
+    *rootpath*.
+
+    .. warning::
+
+       For this check to be sufficient, it is required that *rootpath* ends with
+       a slash.
+
+    If the path outside the *rootpath*, a 403 error is raised.
+
+    If the path is valid and *filterfunc* is not :data:`None`, it is called with
+    the path as only argument. If the return value is false, the selector
+    fails.
+
+    If the cannot be opened, an error is logged and the selector fails.
+
+    For unselecting, the file object passed to the argument must have a *name*
+    attribute, giving the full path to the file. The path is validated like
+    above (including the call to the filterfunc) and if all validation checks
+    succeed, unselection is performed.
+    """
+
+    def __init__(self, prefix, rootpath, destarg, filterfunc=None, mode="rb",
+                 **kwargs):
+        super().__init__(prefix+"{__file_from_directory_filename:s}", **kwargs)
+        self._rootpath = rootpath
+        self._destarg = destarg
+        self._filterfunc = filterfunc
+        self._mode = mode
+
+    def _map_path(self, path):
+        fullpath = os.path.abspath(os.path.join(self._rootpath, path))
+        if not fullpath.startswith(self._rootpath):
+            return False
+
+        return fullpath
+
+    def select(self, request):
+        logger.debug("file_from_directory: recurse into formatted path")
+        if not super().select(request):
+            return False
+
+        filename = request.kwargs.pop("__file_from_directory_filename")
+        mapped_filename = self._map_path(filename)
+        logger.debug("file_from_directory: path mapped to: %s", mapped_filename)
+        if mapped_filename is False:
+            logger.debug("file_from_directory: outside root path")
+            raise teapot.errors.make_response_error(403, "Forbidden")
+
+        if self._filterfunc is not None:
+            if not self._filterfunc(mapped_filename):
+                logger.debug("file_from_directory: hidden by filter")
+                return False
+
+        try:
+            f = open(mapped_filename, self._mode)
+        except OSError:
+            logger.warn("file_from_directory: file not found: %s", mapped_filename)
+            return False
+
+        if self._destarg is None:
+            request.args.append(f)
+        else:
+            request.kwargs[self._destarg] = f
+
+        return True
+
+    def unselect(self, request):
+        if self._destarg is None:
+            f = request.args.pop()
+        else:
+            f = request.kwargs[self._destarg]
+
+        if not hasattr(f, "name"):
+            raise TypeError("File for file_from_directory must have a name "
+                            "attribute for unrouting")
+
+        if not f.name.startswith(self._rootpath):
+            raise ValueError("File for file_from_directory is outside of the "
+                             "rootpath for unrouting")
+
+        if self._filterfunc is not None and not self._filterfunc(f.name):
+            raise ValueError("File for file_from_directory is hidden by "
+                             "filterfunc")
+
+        path = f.name[len(self._rootpath):]
+
+        request.path = path + request.path
