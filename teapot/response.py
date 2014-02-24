@@ -20,6 +20,10 @@ import copy
 import http.cookies
 import itertools
 import logging
+import os
+import stat
+
+from datetime import datetime, timedelta
 
 import teapot.accept
 import teapot.timeutils
@@ -109,6 +113,22 @@ class Response:
         teapot.accept.CharsetPreference("utf-32be", 0.7),
         teapot.accept.CharsetPreference("latin1", 0.6)
     ]
+
+    @classmethod
+    def file(cls, content_type, filelike,
+             response_code=200,
+             response_message=None,
+             last_modified=None):
+        if hasattr(filelike, "fileno") and last_modified is None:
+            statinfo = os.fstat(filelike.fileno())
+            last_modified = datetime.utcfromtimestamp(statinfo.st_mtime)
+
+        return cls(
+            content_type,
+            body=filelike,
+            response_code=response_code,
+            response_message=response_message,
+            last_modified=last_modified)
 
     def __init__(self,
                  content_type,
