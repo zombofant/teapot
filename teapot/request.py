@@ -4,6 +4,7 @@ import copy
 import logging
 import re
 import urllib
+import urllib.parse
 
 from http.cookies import SimpleCookie, CookieError
 
@@ -399,7 +400,9 @@ class Request:
             input_stream,
             content_length,
             content_type,
-            http_headers):
+            http_headers,
+            scriptname,
+            serverport):
         """
         This is a forward-compatible way to construct a request object out of
         the information typically available from a CGI or WSGI environment.
@@ -475,6 +478,12 @@ class Request:
                 logger.warn("failed to parse If-Modified-Since header: %s", err)
                 if_modified_since = None
 
+        try:
+            servername = headers["Host"]
+        except KeyError:
+            logger.warn("No Host header")
+            servername = None
+
         return cls(
             request_method,
             path_info,
@@ -490,7 +499,10 @@ class Request:
             content_length,
             content_type,
             if_modified_since=if_modified_since,
-            raw_http_headers=headers)
+            raw_http_headers=headers,
+            servername=servername,
+            serverport=serverport,
+            scriptname=scriptname)
 
     def __init__(self,
                  method=Method.GET,
@@ -503,8 +515,11 @@ class Request:
                  content_length=0,
                  content_type=None,
                  if_modified_since=None,
-                 raw_http_headers=[]):
-        self._method = method
+                 servername="localhost",
+                 serverport=80,
+                 scriptname="",
+                 raw_http_headers={}):
+        self.method = method
         self._path = local_path
         self._scheme = scheme
         self._query_data = {} if query_data is None else query_data
@@ -528,6 +543,19 @@ class Request:
         self.raw_http_headers = raw_http_headers
         self.if_modified_since = if_modified_since
         self.accepted_content_type = None
+
+        if not servername:
+            try:
+                servername = raw_http_headers["Host"].pop()
+            except (KeyError, ValueError):
+                pass
+
+        if serverport:
+            serverport = int(serverport)
+
+        self.servername = servername
+        self.serverport = serverport
+        self.scriptname = scriptname
 
         self.auth = None
 
@@ -579,10 +607,6 @@ class Request:
         return self._accept_language
 
     @property
-    def method(self):
-        return self._method
-
-    @property
     def path(self):
         return self._path
 
@@ -627,3 +651,40 @@ class Request:
     @property
     def user_agent_info(self):
         return self._user_agent_info
+
+    def reconstruct_url(self, relative=False):
+        if self._post_data:
+            raise ValueError("Cannot construct an URL with POST data.")
+
+        segments = []
+
+        if not relative:
+            if not self.servername:
+                raise ValueError("Cannot reconstruct absolute URL with empty "
+                                 "or None server name")
+
+            serverport = self.serverport
+            if serverport:
+                if (    (serverport == 443 and self._scheme == "https") or
+                        (serverport == 80 and self._scheme == "htpp")):
+                    serverport = None
+
+            segments += [self._scheme, "://", self.servername]
+            if serverport:
+                segments += [":", str(serverport)]
+
+        if self.scriptname:
+            segments.append(self.scriptname)
+        segments.append(self._path)
+
+        if self._query_data:
+            segments.append("?")
+            subsegments = []
+            for k, vs in self._query_data.items():
+                for v in vs:
+                    subsegments.append("{k}={v}".format(
+                        k=k,
+                        v=urllib.parse.quote_plus(str(v))))
+            segments.append("&".join(subsegments))
+
+        return "".join(segments)

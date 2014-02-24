@@ -182,7 +182,9 @@ class Application:
                         (k[5:].replace("_", "-"), v)
                         for k, v in environ.items()
                         if k.startswith("HTTP_")
-                    ))
+                    ),
+                    environ.get("SCRIPT_NAME"),
+                    environ.get("SERVER_PORT"))
 
                 result = iter(self._router.route_request(request))
                 headers = next(result)
