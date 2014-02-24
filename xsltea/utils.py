@@ -14,8 +14,7 @@ Uniquely identifying elements
 import binascii
 import random
 
-# FIXME: provide drop-in replacement if blist is not available
-from blist import sortedlist
+from teapot.utils import sortedlist
 
 from .namespaces import xml
 
