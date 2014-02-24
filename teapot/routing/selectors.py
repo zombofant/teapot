@@ -928,6 +928,7 @@ class method(Selector):
         self._request_methods.add(unroute_request_method)
 
     def select(self, request):
+        logger.debug("method: %r in %r", request.method, self._request_methods)
         return request.method in self._request_methods
 
     def unselect(self, request):
