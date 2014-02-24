@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 
 import teapot.accept
 import teapot.timeutils
+import teapot.routing.info
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +145,7 @@ class Response:
         self.body = body
         self.last_modified = last_modified
         self.cookies = http.cookies.SimpleCookie()
+        self.custom_headers = []
 
         if self.content_type and \
            self.content_type.charset is not None \
@@ -166,6 +168,7 @@ class Response:
                    teapot.timeutils.format_http_date(self.last_modified))
         for v in self.cookies.values():
             yield ("Set-Cookie", v.output(header="").lstrip())
+        yield from self.custom_headers
 
     def negotiate_charset(self, preference_list, strict=False):
         """
@@ -207,3 +210,56 @@ class Response:
                 break
 
         self.content_type = self.content_type.with_charset(candidate)
+
+def make_redirect_response(
+        original_request,
+        routable_or_url,
+        *args,
+        redirect_mode=303,
+        **kwargs):
+    """
+    Make a redirect ResponseError object which can be returned as result
+    response in any return protocol or raised as an exception.
+
+    If *routable_or_url* is an object with routing information, the remaining
+    *args* and *kwargs* are passed to :func:`~teapot.routing.unroute` together
+    with the routable. The request obtained from unrouting is used to construct
+    the URL to redirect to.
+
+    If *routable_or_url* is not an object with routing information, it is
+    supposed to be a string.
+    """
+
+    import teapot.errors
+
+    if teapot.routing.info.isroutable(routable_or_url):
+        route_context = teapot.routing.unroute(
+            routable_or_url,
+            *args,
+            **kwargs)
+        request = copy.copy(original_request)
+        request.path = route_context.path
+        request.post_data.clear()
+        request.post_data.update(route_context.post_data)
+        request.query_data.clear()
+        request.query_data.update(route_context.query_data)
+        url = request.reconstruct_url(relative=True)
+    else:
+        try:
+            relative = kwargs.pop("relative")
+        except KeyError:
+            relative = True
+        if args or kwargs:
+            raise ValueError("No support for arguments in make_redirect_response "
+                             "with fixed URL")
+        url = routable_or_url
+
+    response = teapot.errors.ResponseError(
+        redirect_mode,
+        None,
+        None)
+
+    response.custom_headers.append(
+        ("Location", url))
+
+    return response

@@ -43,3 +43,5 @@ def make_response_error(response_code, plain_message, **kwargs):
                          teapot.mime.Type.text_plain,
                          plain_message,
                          **kwargs)
+
+make_error_response = make_response_error

@@ -342,7 +342,7 @@ class Context:
             if accept_language is not None \
             else teapot.accept.all_languages()
 
-        self._method = request_method
+        self.method = request_method
         self._original_request = original_request
         self.path = path
         self._query_data = {} if query_data is None else query_data
@@ -382,10 +382,6 @@ class Context:
     def kwargs(self, value):
         self._kwargs.clear()
         self._kwargs.update(value)
-
-    @property
-    def method(self):
-        return self._method
 
     @property
     def original_request(self):
