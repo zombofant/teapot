@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 routeinfo_attr = "__net_zombofant_teapot_routeinfo__"
 
+import teapot.errors
+
 def isroutable(obj):
     """
     Test whether the given *obj* has teapot routing information.
