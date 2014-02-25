@@ -141,9 +141,13 @@ class Template:
         super().__init__()
         self._attrhooks = attrhooks
         self._elemhooks = elemhooks
+        self._storage = {}
+        self._reverse_storage = {}
         self._process = self.parse_tree(tree, filename)
         del self._attrhooks
         del self._elemhooks
+        del self._reverse_storage
+        del self._storage
 
     def default_attrhandler(self, elem, key, value, filename):
         precode = []
@@ -314,7 +318,7 @@ yield elem""".format(childfun_name),
             precode[0].name = childfun_name
 
         rootmod = compile("""\
-def root(append_children, href, request, arguments):
+def root(append_children, template_storage, href, request, arguments):
     elem = etree.Element("", attrib={{}})
     makeelement = elem.makeelement
     elem.text = ""
@@ -347,7 +351,9 @@ def root(append_children, href, request, arguments):
         globals_dict = dict(globals())
         locals_dict = {}
         exec(code, globals_dict, locals_dict)
-        return functools.partial(locals_dict["root"], self.append_children)
+        return functools.partial(locals_dict["root"],
+                                 self.append_children,
+                                 self._storage)
 
     def preserve_tail_code(self, elem, filename):
         """
@@ -389,6 +395,30 @@ def root(append_children, href, request, arguments):
         except Exception as err:
             raise TemplateEvaluationError(
                 "template evaluation failed") from err
+
+    def store(self, obj):
+        try:
+            hash(obj)
+        except (TypeError, ValueError):
+            obj_key = (False, id(obj))
+        else:
+            obj_key = (True, obj)
+
+        try:
+            return self._reverse_storage[obj_key][0]
+        except KeyError:
+            pass
+
+        while True:
+            identifier = binascii.b2a_hex(
+                random.getrandbits(8*12).to_bytes(12, "little")).decode()
+            if identifier not in self._storage:
+                break
+
+        self._reverse_storage[obj_key] = identifier
+        self._storage[identifier] = obj
+
+        return identifier
 
 
 class TemplateLoader(metaclass=abc.ABCMeta):
