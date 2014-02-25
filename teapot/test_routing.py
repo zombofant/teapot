@@ -695,6 +695,9 @@ class TestRouter(unittest.TestCase):
 
             yield "ohai".encode(response.content_type.charset)
 
+        def fake(self):
+            pass
+
     def get_router(self):
         return teapot.routing.Router(
             self._root)
@@ -712,6 +715,10 @@ class TestRouter(unittest.TestCase):
         self.assertEqual(response.content_type,
                          teapot.mime.Type.text_plain.with_charset("utf8"))
         self.assertSequenceEqual(result, [b"ohai"])
+        self.assertEqual(request.current_routable,
+                         self._root.index)
+        self.assertNotEqual(request.current_routable,
+                            self._root.fake)
 
     def test_304_not_modified(self):
         router = self.get_router()

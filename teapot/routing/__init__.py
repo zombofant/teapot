@@ -903,6 +903,7 @@ class Router:
                 return self.handle_not_found(request)
             raise data
 
+        request.current_routable = data.routable
         result = data()
         yield from self.wrap_result(request, result)
 

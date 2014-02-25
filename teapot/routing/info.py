@@ -6,6 +6,7 @@ import collections.abc
 import copy
 import functools
 import logging
+import types
 
 from teapot.utils import sortedlist
 
@@ -68,6 +69,7 @@ class RouteDestination:
                  callable,
                  content_types=None,
                  languages=None,
+                 routable=None,
                  **kwargs):
         super().__init__(**kwargs)
         self._callable = callable
@@ -75,6 +77,7 @@ class RouteDestination:
                              else set(content_types)
         self.languages = {None} if languages is None \
                          else set(languages)
+        self.routable = routable
 
     def __call__(self):
         return self._callable()
@@ -296,7 +299,8 @@ class Leaf(Info):
                 *localrequest.args,
                 **localrequest.kwargs),
             content_types=localrequest.content_types,
-            languages=localrequest.languages)
+            languages=localrequest.languages,
+            routable=self.callable)
 
 class MethodLeaf(Leaf):
     """
@@ -306,7 +310,7 @@ class MethodLeaf(Leaf):
     def __init__(self, selectors, callable, obj, **kwargs):
         super().__init__(
             selectors,
-            functools.partial(callable, obj),
+            types.MethodType(callable, obj),
             **kwargs)
 
 class LeafPrototype(Leaf):
