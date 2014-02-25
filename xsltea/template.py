@@ -101,9 +101,13 @@ class Template:
             text_append = later_text_append
 
     @staticmethod
-    def href(request, url):
+    def href(request, url, *args, **kwargs):
         if teapot.isroutable(url):
-            return teapot.routing.unroute_to_url(request, url)
+            return teapot.routing.unroute_to_url(request, url, *args, **kwargs)
+
+        if args or kwargs:
+            raise TypeError("href only takes additional arguments if first "
+                            "argument is routable.")
 
         if url.startswith("/"):
             url = url[1:]
