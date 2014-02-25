@@ -373,25 +373,11 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         super().__init__(**kwargs)
         self._sources = list(sources)
         self._cache = {}
-        self._processors = []
         self._resolver = PathResolver(*sources)
         self._parser = self._resolver._parser
         self._attrhooks = None
         self._elemhooks = None
-
-    def _add_processor(self, processor_cls, added, new_processors):
-        if processor_cls in new_processors:
-            return
-
-        if processor_cls in added:
-            raise ValueError("{} has recursive dependencies".format(
-                processor_cls))
-
-        added.add(processor_cls)
-        for requires in processor_cls.REQUIRES:
-                self._add_processor(requires, added, new_processors)
-
-        new_processors.append(processor_cls)
+        self._processors = []
 
     @abc.abstractmethod
     def _load_template_etree(self, buf, name):
@@ -407,8 +393,8 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         self._attrhooks = {}
         self._elemhooks = {}
         for processor in self._processors:
-            self._attrhooks.update(processor().attrhooks)
-            self._elemhooks.update(processor().elemhooks)
+            self._attrhooks.update(processor.attrhooks)
+            self._elemhooks.update(processor.elemhooks)
 
     def load_template(self, buf, name):
         """
@@ -425,42 +411,17 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         template = Template(tree, name, self._attrhooks, self._elemhooks)
         return template
 
-    def add_processor(self, processor_cls):
+    def add_processor(self, processor):
         """
         Add a template processor class to the list of template processors which
         shall be applied to all templates loaded using this engine.
 
-        This also recursively loads all required processor classes; if this
-        leads to a circular require, a :class:`ValueError` is raised.
-
-        Inserting a processor with :attr:`xsltea.processor.ProcessorMeta.BEFORE`
-        restrictions is in the worst case (no restrictions apply) linear in
-        amount of currently added processors.
-
         Drops the template cache.
         """
-        if processor_cls in self._processors:
-            return
-
-        # delegate to infinite-recursion-safe function :)
-        for required in processor_cls.REQUIRES:
-            self.add_processor(required)
-
-        new_index = None
-        if processor_cls.BEFORE:
-            # we can ignore AFTER here, because we, by default, insert at the
-            # end.
-            new_index = len(self._processors)
-            for i, other_cls in enumerate(self._processors):
-                if other_cls in processor_cls.BEFORE:
-                    new_index = min(i, new_index)
-                    break
-
-        if new_index is not None:
-            self._processors.insert(new_index, processor_cls)
-        else:
-            # no ordering restrictions found
-            self._processors.append(processor_cls)
+        # backwards compatibility
+        if isinstance(processor, type) and hasattr(processor, "__call__"):
+            processor = processor()
+        self._processors.append(processor)
 
         # drop cache
         self._cache.clear()
