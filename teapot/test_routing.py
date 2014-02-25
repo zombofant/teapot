@@ -55,6 +55,18 @@ class SomeRoutable(metaclass=teapot.RoutableMeta):
         self.args = args
         self.kwargs = kwargs
 
+    @teapot.queryarg("foo", "bar", default=None)
+    @teapot.route("querytest_with_None_default")
+    def fooquery_with_None_default(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+    @teapot.queryarg("foo", "bar", default="foo")
+    @teapot.route("querytest_with_value_default")
+    def fooquery_with_value_default(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
     @teapot.cookie("foo", "cookie")
     @teapot.cookie("foo2", None)
     @teapot.route("cookietest")
@@ -438,6 +450,30 @@ class TestRouting(unittest.TestCase):
             args)
         self.assertDictEqual(
             {"bar": tuple(values[:2])},
+            kwargs)
+
+    def test_query_with_value_default(self):
+        args, kwargs = self.get_routed_args(
+            path="/querytest_with_value_default",
+            query_data={})
+
+        self.assertSequenceEqual(
+            [],
+            args)
+        self.assertDictEqual(
+            {"bar": "foo"},
+            kwargs)
+
+    def test_query_with_None_default(self):
+        args, kwargs = self.get_routed_args(
+            path="/querytest_with_None_default",
+            query_data={})
+
+        self.assertSequenceEqual(
+            [],
+            args)
+        self.assertDictEqual(
+            {"bar": None},
             kwargs)
 
     def test_cookie(self):

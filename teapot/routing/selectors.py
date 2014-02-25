@@ -181,7 +181,13 @@ class ArgumentSelector(Selector):
 
     def __init__(self, argname, destarg,
                  argtype=str,
-                 unpack_sequence=False, **kwargs):
+                 unpack_sequence=False,
+                 **kwargs):
+        try:
+            self._default = kwargs.pop("default")
+            self._has_default = True
+        except KeyError:
+            self._has_default = False
         super().__init__(**kwargs)
         self._argname = argname
         self._destarg = destarg
@@ -236,8 +242,10 @@ class ArgumentSelector(Selector):
         except ValueError as err:
             # processing the given request arguments failed, thus the selector
             # does not match
-            # TODO: allow different failure modes
-            return False
+            if self._has_default:
+                args = [self._default]
+            else:
+                return False
 
         if self._destarg is None:
             if self._unpack_sequence:
@@ -274,12 +282,18 @@ class ArgumentSelector(Selector):
                 else:
                     args = request.kwargs[self._destarg]
             except KeyError as err:
-                raise ValueError("missing argument: {}".format(str(err))) \
-                    from None
+                if self._has_default:
+                    args = None
+                else:
+                    raise ValueError("missing argument: {}".format(str(err))) \
+                        from None
             except IndexError as err:
                 raise ValueError("not enough arguments") from None
 
         logger.debug("queryarg: args=%r", args)
+
+        if args is None:
+            return
 
         if not self._is_sequence:
             args = [args]
