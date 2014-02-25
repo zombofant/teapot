@@ -137,13 +137,15 @@ class Template:
 
     from_buffer = from_string
 
-    def __init__(self, tree, filename, attrhooks, elemhooks):
+    def __init__(self, tree, filename, attrhooks, elemhooks, loader=None):
         super().__init__()
         self._attrhooks = attrhooks
         self._elemhooks = elemhooks
         self._storage = {}
         self._reverse_storage = {}
+        self.loader = loader
         self._process = self.parse_tree(tree, filename)
+        self.tree = tree
         del self._attrhooks
         del self._elemhooks
         del self._reverse_storage
@@ -468,7 +470,7 @@ class TemplateLoader(metaclass=abc.ABCMeta):
     def load_template(self, buf, name):
         """
         If more customization is required, this method can be overwritten to
-        provdie a fully qualified template object (including all processors
+        provide a fully qualified template object (including all processors
         attached to this loader) from the buffer-compatible object in *buf*
         obtained from a source object called *name*.
 
@@ -477,7 +479,8 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         """
         self._update_hooks()
         tree = self._load_template_etree(buf, name)
-        template = Template(tree, name, self._attrhooks, self._elemhooks)
+        template = Template(tree, name, self._attrhooks, self._elemhooks,
+                            loader=self)
         return template
 
     def add_processor(self, processor):

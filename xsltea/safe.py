@@ -9,13 +9,7 @@ called.
 .. autoclass:: ForeachProcessor
 
 """
-try:
-    import ast
-    _has_ast = True
-except ImportError:
-    import keyword
-    _has_ast = False
-
+import ast
 import functools
 import logging
 
@@ -137,3 +131,51 @@ def _():
                 self._prepare_bind_tree(el)
         else:
             raise ValueError("can only bind to a single name or nested tuples")
+
+
+class IncludeProcessor(TemplateProcessor):
+    xmlns = shared_ns
+
+    def __init__(self, override_loader=None, **kwargs):
+        super().__init__(**kwargs)
+        self._override_loader = None
+
+        self.attrhooks = {}
+        self.elemhooks = {
+            (str(self.xmlns), "include"): [self.handle_include]
+        }
+
+    def handle_include(self, template, elem, filename, offset):
+        try:
+            xpath = elem.get(self.xmlns.xpath, "/*")
+            source = elem.attrib[self.xmlns.source]
+            nsmap = elem.get(self.xmlns.nsmap, "{}")
+        except KeyError as err:
+            raise ValueError(
+                "missing required attribute on tea:include: @tea:{}".format(
+                    str(err).split("}", 1)[1]))
+
+        loader = self._override_loader
+        if loader is None:
+            if not hasattr(template, "loader"):
+                raise ValueError("Cannot include other template: no loader"
+                                 " specified for current template and no override"
+                                 " present")
+            loader = template.loader
+
+        tree = loader.get_template(source).tree
+        elements = tree.xpath(xpath,
+                              namespaces=ast.literal_eval(nsmap))
+
+        offset = offset * 1000
+
+        precode, elemcode, postcode = [], [], []
+        for element in elements:
+            elem_precode, elem_elemcode, elem_postcode = \
+                template.parse_subtree(element, filename, offset)
+
+            precode.extend(elem_precode)
+            elemcode.extend(elem_elemcode)
+            postcode.extend(elem_postcode)
+
+        return precode, elemcode, postcode
