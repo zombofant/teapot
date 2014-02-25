@@ -171,7 +171,7 @@ class Pipeline:
 
         user_template_args, user_transform_args = next(decorated_iter)
         template_args.update(user_template_args)
-        tree = template.process(template_args)
+        tree = template.process(__request, template_args)
 
         yield transform_iter.send((tree, user_transform_args))
 

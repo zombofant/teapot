@@ -285,7 +285,7 @@ yield elem""".format(childfun_name),
             precode[0].name = childfun_name
 
         rootmod = compile("""\
-def root(append_children, arguments):
+def root(append_children, request, arguments):
     elem = etree.Element("", attrib={{}})
     makeelement = elem.makeelement
     elem.text = ""
@@ -340,18 +340,21 @@ def root(append_children, arguments):
                                       col_offset=0)
         return body
 
-    def process(self, arguments):
+    def process(self, arguments, request=None):
         """
         Evaluate the template using the given *arguments*. The contents of
         *arguments* is made available under the name *arguments* inside the
         template.
+
+        *request* is supposed to be a teapot request object. Some processors
+        might require this, but it is in general optional.
 
         Any exceptions thrown during template evaluation are caught and
         converted into :class:`~xsltea.errors.TemplateEvaluationError`, with the
         original exception being attached as context.
         """
         try:
-            return self._process(arguments)
+            return self._process(request, arguments)
         except Exception as err:
             raise TemplateEvaluationError(
                 "template evaluation failed") from err
