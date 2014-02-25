@@ -56,10 +56,12 @@ class webformfield:
         return webformfield_decorator
 
     def __get__(self, instance, owner):
-        try:
-            return getattr(instance, "_values_dict")[self.field_name]
-        except KeyError:
-            return self
+        if instance is not None:
+            try:
+                return getattr(instance, "_values_dict")[self.field_name]
+            except KeyError:
+                return None
+        return self
 
     def _setwebformfield(self, name):
         setattr(self, self._webformfield_attr, name)
@@ -113,11 +115,12 @@ class WebForm(metaclass=abc.ABCMeta):
 
     """
 
-    def __init__(self, field_value_dict):
+    def __init__(self, field_value_dict=None):
         self._error_dict = {}
         self._values_dict = {}
         self._find_webformfields()
-        self._apply_field_values(field_value_dict)
+        if field_value_dict is not None:
+            self._apply_field_values(field_value_dict)
 
     def _find_webformfields(self):
         self._webformfields = []

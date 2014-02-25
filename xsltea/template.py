@@ -18,6 +18,9 @@ import functools
 import logging
 import random
 
+import teapot
+import teapot.routing
+
 import lxml.etree as etree
 
 from .errors import TemplateEvaluationError
@@ -96,6 +99,18 @@ class Template:
             to_element.append(child)
             prev = child
             text_append = later_text_append
+
+    @staticmethod
+    def href(request, url):
+        if teapot.isroutable(url):
+            return teapot.routing.unroute_to_url(request, url)
+
+        if url.startswith("/"):
+            url = url[1:]
+        if request.scriptname:
+            return request.scriptname + url
+        else:
+            return "/" + url
 
     @staticmethod
     def lookup_hook(hookmap, tag):
@@ -299,7 +314,7 @@ yield elem""".format(childfun_name),
             precode[0].name = childfun_name
 
         rootmod = compile("""\
-def root(append_children, request, arguments):
+def root(append_children, href, request, arguments):
     elem = etree.Element("", attrib={{}})
     makeelement = elem.makeelement
     elem.text = ""
@@ -368,7 +383,9 @@ def root(append_children, request, arguments):
         original exception being attached as context.
         """
         try:
-            return self._process(request, arguments)
+            return self._process(functools.partial(self.href, request),
+                                 request,
+                                 arguments)
         except Exception as err:
             raise TemplateEvaluationError(
                 "template evaluation failed") from err

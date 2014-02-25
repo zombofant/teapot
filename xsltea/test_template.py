@@ -2,6 +2,8 @@ import unittest
 
 import lxml.etree as etree
 
+import teapot.request
+
 import xsltea.exec
 import xsltea.template
 
@@ -15,6 +17,8 @@ class TestTemplate(unittest.TestCase):
 
     xmlsrc_identity = """<test><test2 a="b" /><test3 c="d">spam<test4>foo</test4>bar<test5 e="f">baz</test5>fnord</test3></test>"""
 
+    xmlsrc_href = """<test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"><a><exec:text>href('/foo/bar')</exec:text></a><b><exec:text>href('foo/bar')</exec:text></b></test>"""
+
     def test_identity(self):
         tree = etree.fromstring(self.xmlsrc_identity,
                                 parser=xsltea.template.xml_parser)
@@ -25,6 +29,22 @@ class TestTemplate(unittest.TestCase):
         self.assertEqual(
             etree.tostring(tree),
             etree.tostring(template.process({})))
+
+    def test_href(self):
+        loader = xsltea.template.XMLTemplateLoader()
+        loader.add_processor(xsltea.exec.ExecProcessor())
+
+        request = teapot.request.Request(
+            scriptname="/root/")
+
+        template = loader.load_template(self.xmlsrc_href, "<string>")
+        tree = template.process({}, request=request)
+        self.assertEqual(
+            tree.xpath("a").pop().text,
+            "/root/foo/bar")
+        self.assertEqual(
+            tree.xpath("b").pop().text,
+            "/root/foo/bar")
 
 class TestTemplateLoader(unittest.TestCase):
     def setUp(self):
