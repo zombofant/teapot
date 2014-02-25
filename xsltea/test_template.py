@@ -18,6 +18,7 @@ class StoringProcessor(xsltea.processor.TemplateProcessor):
         self._a = "foo"
         self._b = 1
         self._c = [1, 2, "bar"]
+        self._d = 1
         self.attrhooks = {}
         self.elemhooks = {
             (str(self.xmlns), "foo"): [self.handle_elem]
@@ -28,10 +29,12 @@ class StoringProcessor(xsltea.processor.TemplateProcessor):
         faketree.text = """str([
             template_storage[{!r}],
             template_storage[{!r}],
+            template_storage[{!r}],
             template_storage[{!r}]])""".format(
                 template.store(self._a),
                 template.store(self._b),
-                template.store(self._c))
+                template.store(self._c),
+                template.store(self._d))
         return template.parse_subtree(faketree, filename, offset)
 
 
@@ -82,7 +85,7 @@ class TestTemplate(unittest.TestCase):
         loader.add_processor(StoringProcessor())
         template = loader.load_template(self.xmlsrc_storage, "<string>")
         tree = template.process({})
-        l = ["foo", 1, [1, 2, "bar"]]
+        l = ["foo", 1, [1, 2, "bar"], 1]
         self.assertEqual(
             tree.xpath("/test").pop().text,
             str(l))

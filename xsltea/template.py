@@ -405,7 +405,7 @@ def root(append_children, template_storage, href, request, arguments):
             obj_key = (True, obj)
 
         try:
-            return self._reverse_storage[obj_key][0]
+            return self._reverse_storage[obj_key]
         except KeyError:
             pass
 
