@@ -23,12 +23,12 @@ class TemplateProcessor:
     .. attribute:: attrhooks
 
        A dictionary containing entries of the structure
-       ``(xmlns, name): attribute_hook``. The ``xmlns`` must be a string
+       ``(xmlns, name): [attribute_hook]``. The ``xmlns`` must be a string
        refering to an XML namespace (or :data:`None`, to match on namespaceless
        attributes). `name` must be a string refering to the attributes local
        name or :data:`None` to match all attributes in the namespace.
 
-       The signature and semantics of the ``attribute_hook`` function are as
+       The signature and semantics of the ``attribute_hook`` functions are as
        follows:
 
        .. function:: attribute_hook(template, element, key, value, filename) ->
@@ -67,11 +67,11 @@ class TemplateProcessor:
     .. attribute:: elemhooks
 
        A dictionary containing entries of the structure
-       ``(xmlns, name): element_hook``. The ``xmlns`` and ``name`` elements have
+       ``(xmlns, name): [element_hook]``. The ``xmlns`` and ``name`` elements have
        the same semantics as for :attr:`attrhooks`, but they refer to element
        names instead of attribute names.
 
-       The ``element_hook`` function semantics are as follows:
+       The ``element_hook`` functions semantics are as follows:
 
        .. function:: element_hook(template, elemement, filename, offset) ->
                      (precode, elemcode, postcode)

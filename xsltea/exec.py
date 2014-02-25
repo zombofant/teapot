@@ -73,11 +73,11 @@ class ExecProcessor(TemplateProcessor):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.attrhooks = {
-            (str(self.xmlns), None): self.handle_exec_any_attribute}
+            (str(self.xmlns), None): [self.handle_exec_any_attribute]}
         self.elemhooks = {
-            (str(self.xmlns), "code"): self.handle_exec_code,
-            (str(self.xmlns), "if"): self.handle_exec_if,
-            (str(self.xmlns), "text"): self.handle_exec_text}
+            (str(self.xmlns), "code"): [self.handle_exec_code],
+            (str(self.xmlns), "if"): [self.handle_exec_if],
+            (str(self.xmlns), "text"): [self.handle_exec_text]}
 
     def handle_exec_any_attribute(self, template, elem, attrib, value, filename):
         valuecode = compile(value,
@@ -96,7 +96,7 @@ class ExecProcessor(TemplateProcessor):
         else:
             # strip namespace
             keycode = ast.Str(attrib.split("}", 1)[1],
-                              lineno=elem.sourceline,
+                              lineno=elem.sourceline or 0,
                               col_offset=0)
 
         elemcode = compile("""\
@@ -164,7 +164,7 @@ if _:
         if elem.text:
             elemcode[0].body[0].value.value = ast.Str(
                 elem.text,
-                lineno=elem.sourceline,
+                lineno=elem.sourceline or 0,
                 col_offset=0)
         else:
             del elemcode[0].body[0]

@@ -130,6 +130,18 @@ class Template:
         del self._attrhooks
         del self._elemhooks
 
+    def default_attrhandler(self, elem, key, value, filename):
+        precode = []
+        elemcode = []
+        keycode = ast.Str(key,
+                          lineno=elem.sourceline or 0,
+                          col_offset=0)
+        valuecode = ast.Str(value,
+                            lineno=elem.sourceline or 0,
+                            col_offset=0)
+        postcode = []
+        return precode, elemcode, keycode, valuecode, postcode
+
     def compose_attrdict(self, elem, filename):
         """
         Create code which constructs the attributes for the given *elem*.
@@ -141,27 +153,24 @@ class Template:
         precode = []
         elemcode = []
         postcode = []
-        d = ast.Dict(lineno=elem.sourceline, col_offset=0)
+        d = ast.Dict(lineno=elem.sourceline or 0, col_offset=0)
         d.keys = []
         d.values = []
         for key, value in elem.attrib.items():
             try:
-                handler = self.lookup_hook(self._attrhooks, key)
+                handlers = self.lookup_hook(self._attrhooks, key)
             except KeyError:
-                attr_precode = []
-                attr_elemcode = []
-                attr_keycode = ast.Str(key,
-                                       lineno=elem.sourceline,
-                                       col_offset=0)
-                attr_valuecode = ast.Str(value,
-                                         lineno=elem.sourceline,
-                                         col_offset=0)
-                attr_postcode = []
+                handlers = []
+            for handler in handlers:
+                result = handler(self, elem, key, value, filename)
+                if result:
+                    break
             else:
-                attr_precode, attr_elemcode, \
-                attr_keycode, attr_valuecode, \
-                attr_postcode = \
-                    handler(self, elem, key, value, filename)
+                result = self.default_attrhandler(elem, key, value, filename)
+            attr_precode, attr_elemcode, \
+            attr_keycode, attr_valuecode, \
+            attr_postcode = result
+
 
             precode.extend(attr_precode)
             elemcode.extend(attr_elemcode)
@@ -270,11 +279,16 @@ yield elem""".format(childfun_name),
         """
 
         try:
-            handler = self.lookup_hook(self._elemhooks, elem.tag)
+            handlers = self.lookup_hook(self._elemhooks, elem.tag)
         except KeyError:
-            return self.default_subtree(elem, filename, offset)
-        else:
-            return handler(self, elem, filename, offset)
+            handlers = []
+
+        for handler in handlers:
+            result = handler(self, elem, filename, offset)
+            if result:
+                return result
+
+        return self.default_subtree(elem, filename, offset)
 
     def parse_tree(self, tree, filename):
         root = tree.getroot()
@@ -336,7 +350,7 @@ def root(append_children, request, arguments):
                 "exec",
                 flags=ast.PyCF_ONLY_AST).body
         body[0].value.value = ast.Str(elem.tail,
-                                      lineno=elem.sourceline,
+                                      lineno=elem.sourceline or 0,
                                       col_offset=0)
         return body
 
@@ -393,11 +407,16 @@ class TemplateLoader(metaclass=abc.ABCMeta):
     def _update_hooks(self):
         if self._attrhooks is not None and self._elemhooks is not None:
             return
-        self._attrhooks = {}
-        self._elemhooks = {}
+        attrhooks = {}
+        elemhooks = {}
         for processor in self._processors:
-            self._attrhooks.update(processor.attrhooks)
-            self._elemhooks.update(processor.elemhooks)
+            for selector, hooks in processor.attrhooks.items():
+                attrhooks.setdefault(selector, []).extend(hooks)
+            for selector, hooks in processor.elemhooks.items():
+                elemhooks.setdefault(selector, []).extend(hooks)
+
+        self._attrhooks = attrhooks
+        self._elemhooks = elemhooks
 
     def load_template(self, buf, name):
         """

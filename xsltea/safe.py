@@ -64,7 +64,7 @@ class ForeachProcessor(TemplateProcessor):
         self._allow_unsafe = allow_unsafe
         self.attrhooks = {}
         self.elemhooks = {
-            (str(self.xmlns), "for-each"): self.handle_foreach}
+            (str(self.xmlns), "for-each"): [self.handle_foreach]}
 
     def handle_foreach(self, template, elem, filename, offset):
         try:
