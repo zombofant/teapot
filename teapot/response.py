@@ -8,6 +8,8 @@ neccessary information to create a suitable response for the client.
 .. autoclass:: Response
    :members:
 
+.. autofunction:: make_redirect_response
+
 .. autofunction:: lookup_response_message
 
 .. automodule:: teapot.mime
@@ -27,6 +29,7 @@ from datetime import datetime, timedelta
 
 import teapot.accept
 import teapot.timeutils
+import teapot.routing
 import teapot.routing.info
 
 logger = logging.getLogger(__name__)
@@ -233,17 +236,8 @@ def make_redirect_response(
     import teapot.errors
 
     if teapot.routing.info.isroutable(routable_or_url):
-        route_context = teapot.routing.unroute(
-            routable_or_url,
-            *args,
-            **kwargs)
-        request = copy.copy(original_request)
-        request.path = route_context.path
-        request.post_data.clear()
-        request.post_data.update(route_context.post_data)
-        request.query_data.clear()
-        request.query_data.update(route_context.query_data)
-        url = request.reconstruct_url(relative=True)
+        url = teapot.routing.unroute_to_url(
+            original_request, routable_or_url, *args, **kwargs)
     else:
         try:
             relative = kwargs.pop("relative")

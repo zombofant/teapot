@@ -193,6 +193,16 @@ iterable which contains all the response metadata and contents.
 .. autoclass:: Router
    :members:
 
+Unrouting
+=========
+
+Unrouting can be performed with the following two functions to a different level
+of detail:
+
+.. autofunction:: unroute
+
+.. autofunction:: unroute_to_url
+
 Extension API
 =============
 
@@ -735,6 +745,25 @@ def unroute(routable, *args, template_request=None, **kwargs):
     request.kwargs = kwargs
     getrouteinfo(routable).unroute(request)
     return request
+
+def unroute_to_url(original_request, routable,
+                   *args, **kwargs):
+    """
+    Perform unrouting and return a relative (that is, without host, port and
+    scheme, but including the full path) URL which addresses the given
+    *routable* with remaining arguments.
+    """
+    route_context = teapot.routing.unroute(
+        routable,
+        *args,
+        **kwargs)
+    request = copy.copy(original_request)
+    request.path = route_context.path
+    request.post_data.clear()
+    request.post_data.update(route_context.post_data)
+    request.query_data.clear()
+    request.query_data.update(route_context.query_data)
+    return request.reconstruct_url(relative=True)
 
 class Router:
     """
