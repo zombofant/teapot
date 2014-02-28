@@ -353,7 +353,7 @@ class Context:
             else teapot.accept.all_languages()
 
         self.method = request_method
-        self._original_request = original_request
+        self.original_request = original_request
         self.path = path
         self._query_data = {} if query_data is None else query_data
         self._post_data = None
@@ -394,29 +394,25 @@ class Context:
         self._kwargs.update(value)
 
     @property
-    def original_request(self):
-        return self._original_request
-
-    @property
     def query_data(self):
         return self._query_data
 
     @property
     def post_data(self):
         if self._post_data is None:
-            if self._original_request is None:
+            if self.original_request is None:
                 self._post_data = {}
             else:
-                self._post_data = self._original_request.post_data
+                self._post_data = self.original_request.post_data
         return self._post_data
 
     @property
     def cookie_data(self):
         if self._cookie_data is None:
-            if self._original_request is None:
+            if self.original_request is None:
                 self._cookie_data = {}
             else:
-                self._cookie_data = self._original_request.cookie_data
+                self._cookie_data = self.original_request.cookie_data
         return self._cookie_data
 
     @property
@@ -730,17 +726,22 @@ def find_route(root, request):
 
     return True, candidate
 
-def unroute(routable, *args, template_request=None, **kwargs):
+def unroute(routable, *args,
+            _template_request=None,
+            _original_request=None,
+            **kwargs):
     """
     Un-route the given *routable* and return a Request which would
     point to the given *routable*, inside the request tree to which the
     given *routable* belongs..
     """
 
-    if template_request is None:
+    if _template_request is None:
         request = Context(path="")
     else:
-        request = Context.from_request(template_request)
+        request = Context.from_request(_template_request)
+    if _original_request is not None:
+        request.original_request = _original_request
     request.args = args
     request.kwargs = kwargs
     getrouteinfo(routable).unroute(request)
@@ -756,6 +757,7 @@ def unroute_to_url(original_request, routable,
     route_context = teapot.routing.unroute(
         routable,
         *args,
+        _original_request=original_request,
         **kwargs)
     request = copy.copy(original_request)
     request.path = route_context.path
