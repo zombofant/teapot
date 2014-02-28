@@ -808,6 +808,13 @@ class Router:
         raise teapot.errors.make_response_error(
             400, "cannot find accepted charset for response")
 
+    def post_response_cleanup(self, request):
+        """
+        After the result has been delivered to the web gateway, this function is
+        called. It is even called when an exception in any stage after the
+        execution of :meth:`pre_route_hook` happened.
+        """
+
     def pre_route_hook(self, request):
         """
         This is called before any routing takes place. It must modify the
@@ -898,16 +905,19 @@ class Router:
         """
         self.pre_route_hook(request)
 
-        success, data = find_route(self._root, request)
+        try:
+            success, data = find_route(self._root, request)
 
-        if not success:
-            if data is None:
-                return self.handle_not_found(request)
-            raise data
+            if not success:
+                if data is None:
+                    return self.handle_not_found(request)
+                raise data
 
-        request.current_routable = data.routable
-        result = data()
-        yield from self.wrap_result(request, result)
+            request.current_routable = data.routable
+            result = data()
+            yield from self.wrap_result(request, result)
+        finally:
+            self.post_response_cleanup(request)
 
     def route(self, *args, **kwargs):
         """
