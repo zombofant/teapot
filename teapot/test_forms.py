@@ -3,21 +3,21 @@ import unittest
 import teapot.forms
 
 class TestWebForm(unittest.TestCase):
+    class Form(teapot.forms.Form):
+        @teapot.forms.field
+        def test_int(self, value):
+            return int(value)
+
+        @teapot.forms.field
+        def test_int_with_default(self, value):
+            return int(value)
+
+        @test_int_with_default.default
+        def test_int_with_default(self):
+            return 10
+
     def test_validation(self):
-        class Form(teapot.forms.Form):
-            @teapot.forms.field
-            def test_int(self, value):
-                return int(value)
-
-            @teapot.forms.field
-            def test_int_with_default(self, value):
-                return int(value)
-
-            @test_int_with_default.default
-            def test_int_with_default(self):
-                return 10
-
-        instance = Form()
+        instance = self.Form()
         self.assertIsNone(instance.test_int)
         self.assertEqual(10, instance.test_int_with_default)
         instance.test_int = 20
@@ -34,3 +34,77 @@ class TestWebForm(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             instance.test_int_with_default = "foo"
+
+    def test_autovalidation(self):
+        post_data = {
+            "test_int": ["20"],
+            "test_int_with_default": ["30"]
+        }
+        instance = self.Form(post_data=post_data)
+
+        self.assertFalse(instance.errors)
+        self.assertEqual(20, instance.test_int)
+        self.assertEqual(30, instance.test_int_with_default)
+
+    def test_inheritance(self):
+        class InheritedForm(self.Form):
+            @teapot.forms.field
+            def foo(self, value):
+                return str(value)
+
+        post_data = {
+            "test_int": ["20"],
+            "test_int_with_default": ["30"],
+            "foo": ["40"]
+        }
+        instance = InheritedForm(post_data=post_data)
+
+        self.assertFalse(instance.errors)
+        self.assertEqual(20, instance.test_int)
+        self.assertEqual(30, instance.test_int_with_default)
+        self.assertEqual("40", instance.foo)
+
+
+    def test_rows(self):
+        class FormWithRows(self.Form):
+            class Row(teapot.forms.Row):
+                @classmethod
+                def with_foo(cls, foo):
+                    instance = cls()
+                    instance.foo = foo
+                    return instance
+
+                @teapot.forms.field
+                def foo(self, value):
+                    return str(value)
+
+                def __eq__(self, other):
+                    return self.foo == other.foo
+
+                def __ne__(self, other):
+                    return not (self == other)
+
+                def __repr__(self):
+                    return "<Row foo={!r}>".format(self.foo)
+
+                __hash__ = None
+
+            testrows = teapot.forms.rows(Row)
+
+        post_data = {
+            "test_int": ["20"],
+            "test_int_with_default": ["30"],
+            "testrows[0].foo": ["bar"],
+            "testrows[1].foo": ["baz"]
+        }
+
+        instance = FormWithRows(post_data=post_data)
+        self.assertFalse(instance.errors)
+        self.assertEqual(20, instance.test_int)
+        self.assertEqual(30, instance.test_int_with_default)
+        self.assertSequenceEqual(
+            instance.testrows,
+            [
+                FormWithRows.Row.with_foo("bar"),
+                FormWithRows.Row.with_foo("baz")
+            ])
