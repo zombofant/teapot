@@ -64,7 +64,6 @@ class TestWebForm(unittest.TestCase):
         self.assertEqual(30, instance.test_int_with_default)
         self.assertEqual("40", instance.foo)
 
-
     def test_rows(self):
         class FormWithRows(self.Form):
             class Row(teapot.forms.Row):
