@@ -77,6 +77,13 @@ class xml(metaclass=NamespaceMeta):
     xmlns = "http://www.w3.org/XML/1998/namespace"
     cache = {"id"}
 
+class xhtml_ns(metaclass=NamespaceMeta):
+    """
+    Defines the ``http://www.w3.org/1999/xhtml`` namespace.
+    """
+
+    xmlns = "http://www.w3.org/1999/xhtml"
+
 class shared_ns(metaclass=NamespaceMeta):
     """
     Defines the ``https://xmlns.zombofant.net/xsltea/processors`` namespace,
