@@ -23,11 +23,11 @@ class TestWebForm(unittest.TestCase):
         instance.test_int = 20
         self.assertEqual(20, instance.test_int)
 
-        with self.assertRaises(AttributeError):
-            del instance.test_int
+        del instance.test_int
+        self.assertIsNone(instance.test_int)
 
-        with self.assertRaises(AttributeError):
-            del instance.test_int_with_default
+        del instance.test_int_with_default
+        self.assertEqual(10, instance.test_int_with_default)
 
         with self.assertRaises(ValueError):
             instance.test_int = "foo"

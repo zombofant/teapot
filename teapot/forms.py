@@ -125,7 +125,10 @@ class field:
         instance.fields[self.name] = value
 
     def __delete__(self, instance):
-        raise AttributeError("deleting is not supported")
+        try:
+            del instance.fields[self.name]
+        except KeyError:
+            pass
 
     def load(self, instance, post_data):
         try:
@@ -245,6 +248,7 @@ class rows:
 class Form(metaclass=Meta):
     def __init__(self, *args, post_data=None, **kwargs):
         self.fields = {}
+        self.errors = {}
         super().__init__(*args, **kwargs)
         if post_data is not None:
             self.errors = self.fill_post_data(post_data)
