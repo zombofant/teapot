@@ -148,3 +148,11 @@ class TestFormProcessor(unittest.TestCase):
         tree = self._process_with_form(
             self.xmlsrc_if_has_error)
         self.assertIsNone(tree.getroot().text)
+
+        template = self._load_xml(self.xmlsrc_for_each_error)
+        form = Form()
+        tree = template.process({
+            "form": form
+        })
+
+        self.assertIsNone(tree.getroot().text)

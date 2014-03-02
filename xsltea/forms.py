@@ -117,7 +117,6 @@ class FormProcessor(TemplateProcessor):
             template, elem, filename, offset,
             condition_ast)
 
-
     def handle_for_each_error(self, template, elem, filename, offset):
         try:
             form = elem.get(self.xmlns.form, "default_form")
@@ -129,26 +128,45 @@ class FormProcessor(TemplateProcessor):
         form_ast = compile(form, filename, "eval", ast.PyCF_ONLY_AST).body
         self._safety_level.check_safety(form_ast)
 
-        iter_ast = ast.List(
-            [
-                ast.Subscript(
-                    ast.Attribute(
-                        form_ast,
-                        "errors",
+        errors_attr = ast.Attribute(
+            form_ast,
+            "errors",
+            ast.Load(),
+            lineno=elem.sourceline or 0,
+            col_offset=0)
+
+        descriptor_ast = self._get_descriptor_ast(
+            form_ast, field,
+            elem.sourceline)
+
+        iter_ast = ast.IfExp(
+            ast.Compare(
+                descriptor_ast,
+                [ast.In(lineno=elem.sourceline or 0,
+                        col_offset=0)],
+                [errors_attr],
+                lineno=elem.sourceline or 0,
+                col_offset=0),
+            ast.List(
+                [
+                    ast.Subscript(
+                        errors_attr,
+                        ast.Index(
+                            descriptor_ast,
+                            lineno=elem.sourceline or 0,
+                            col_offset=0),
                         ast.Load(),
                         lineno=elem.sourceline or 0,
-                        col_offset=0),
-                    ast.Index(
-                        self._get_descriptor_ast(
-                            form_ast, field,
-                            elem.sourceline),
-                        lineno=elem.sourceline or 0,
-                        col_offset=0),
-                    ast.Load(),
-                    lineno=elem.sourceline or 0,
-                    col_offset=0)
-            ],
-            ast.Load(),
+                        col_offset=0)
+                ],
+                ast.Load(),
+                lineno=elem.sourceline or 0,
+                col_offset=0),
+            ast.List(
+                [],
+                ast.Load(),
+                lineno=elem.sourceline or 0,
+                col_offset=0),
             lineno=elem.sourceline or 0,
             col_offset=0)
 
