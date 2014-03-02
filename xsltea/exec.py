@@ -134,17 +134,9 @@ if attrval is not None:
         elemcode.insert(0, yielder)
         return [], elemcode, []
 
-    def handle_exec_if(self, template, elem, filename, offset):
-        attrib = elem.attrib
-        try:
-            condition_code = attrib["condition"]
-        except KeyError:
-            raise ValueError("exec:if requires @condition")
-        condition_code = compile(condition_code,
-                                 filename,
-                                 "eval",
-                                 ast.PyCF_ONLY_AST).body
-
+    @classmethod
+    def create_if(cls, template, elem, filename, offset,
+                  condition_ast):
         childfun_name = "children{}".format(offset)
         precode = template.compose_childrenfun(elem, filename, childfun_name)
 
@@ -156,7 +148,7 @@ if _:
                            "exec",
                            ast.PyCF_ONLY_AST).body
 
-        elemcode[0].test = condition_code
+        elemcode[0].test = condition_ast
 
         if not precode:
             del elemcode[0].body[1]
@@ -173,3 +165,17 @@ if _:
             del elemcode[0]
 
         return precode, elemcode, []
+
+
+    def handle_exec_if(self, template, elem, filename, offset):
+        attrib = elem.attrib
+        try:
+            condition_code = attrib["condition"]
+        except KeyError:
+            raise ValueError("exec:if requires @condition")
+        condition_code = compile(condition_code,
+                                 filename,
+                                 "eval",
+                                 ast.PyCF_ONLY_AST).body
+        return self.create_if(template, elem, filename, offset,
+                              condition_code)

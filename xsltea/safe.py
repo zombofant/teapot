@@ -264,15 +264,9 @@ class ForeachProcessor(TemplateProcessor):
         self.elemhooks = {
             (str(self.xmlns), "for-each"): [self.handle_foreach]}
 
-    def handle_foreach(self, template, elem, filename, offset):
-        try:
-            from_ = elem.attrib[getattr(self.xmlns, "from")]
-            bind = elem.attrib[self.xmlns.bind]
-        except KeyError as err:
-            raise ValueError(
-                "missing required attribute on tea:for-each: @tea:{}".format(
-                    str(err).split("}", 1)[1]))
-
+    @classmethod
+    def create_foreach(cls, template, elem, filename, offset,
+                       bind_ast, iter_ast):
         childfun_name = "children{}".format(offset)
         precode = template.compose_childrenfun(elem, filename, childfun_name)
 
@@ -286,19 +280,6 @@ def _():
                        ast.PyCF_ONLY_AST).body[0].body
 
         loop = elemcode[0]
-
-        bind_ast = compile(bind,
-                           filename,
-                           "eval",
-                           ast.PyCF_ONLY_AST).body
-        self._prepare_bind_tree(bind_ast)
-
-        iter_ast = compile(from_,
-                           filename,
-                           "eval",
-                           ast.PyCF_ONLY_AST).body
-
-        self._safety_level.check_safety(iter_ast)
 
         loop.iter = iter_ast
         loop.target = bind_ast
@@ -321,6 +302,32 @@ def _():
         elemcode.extend(template.preserve_tail_code(elem, filename))
 
         return precode, elemcode, []
+
+    def handle_foreach(self, template, elem, filename, offset):
+        try:
+            from_ = elem.attrib[getattr(self.xmlns, "from")]
+            bind = elem.attrib[self.xmlns.bind]
+        except KeyError as err:
+            raise ValueError(
+                "missing required attribute on tea:for-each: @tea:{}".format(
+                    str(err).split("}", 1)[1]))
+
+        bind_ast = compile(bind,
+                           filename,
+                           "eval",
+                           ast.PyCF_ONLY_AST).body
+        self._prepare_bind_tree(bind_ast)
+
+        iter_ast = compile(from_,
+                           filename,
+                           "eval",
+                           ast.PyCF_ONLY_AST).body
+
+        self._safety_level.check_safety(iter_ast)
+
+        return self.create_foreach(
+            template, elem, filename, offset,
+            bind_ast, iter_ast)
 
     def _prepare_bind_tree(self, subtree):
         if isinstance(subtree, ast.Name):
