@@ -8,6 +8,8 @@ called.
 
 .. autoclass:: ForeachProcessor
 
+.. autoclass:: IncludeProcessor
+
 """
 import ast
 import functools
@@ -134,6 +136,25 @@ def _():
 
 
 class IncludeProcessor(TemplateProcessor):
+    """
+    The ``tea:include`` element processor provides safe inclusion of other
+    templates. The other template will be loaded as element tree and inserted as
+    if it was part of the current template.
+
+    The optional ``tea:xpath`` attribute allows to customize which parts of the
+    template are included. All nodes matching the given xpath expression will be
+    included in match-order at the point where the ``tea:include`` directive
+    was.
+
+    If the xpath expression requires additional namespaces, these can be set by
+    passing a python dictionary expression to ``tea:nsmap``. The dictionary must
+    be a literal expression.
+
+    ``tea:source`` must be set to an identifier identifying the template to
+    insert; the semantics of the identifier depend on the configured template
+    loader, usually it is a file name.
+    """
+
     xmlns = shared_ns
 
     def __init__(self, override_loader=None, **kwargs):
