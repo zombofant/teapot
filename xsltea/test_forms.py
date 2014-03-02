@@ -39,6 +39,24 @@ class TestFormProcessor(unittest.TestCase):
     form:field="field"
     form:form="arguments['form']" />"""
 
+    xmlsrc_if_has_error = """\
+<test
+    xmlns="http://www.w3.org/1999/xhtml"
+    xmlns:form="https://xmlns.zombofant.net/xsltea/form">
+    <form:if-has-error
+        form:field="field"
+        form:form="arguments['form']">foo</form:if-has-error>
+</test>"""
+
+    xmlsrc_for_each_error = """\
+<test
+    xmlns="http://www.w3.org/1999/xhtml"
+    xmlns:form="https://xmlns.zombofant.net/xsltea/form">
+    <form:for-each-error
+        form:field="field"
+        form:form="arguments['form']">foo</form:for-each-error>
+</test>"""
+
 
     def setUp(self):
         self._loader = xsltea.template.XMLTemplateLoader()
@@ -98,3 +116,35 @@ class TestFormProcessor(unittest.TestCase):
         self.assertEqual(
             "10",
             tree.getroot().text)
+
+    def test_if_has_error(self):
+        template = self._load_xml(self.xmlsrc_if_has_error)
+        form = Form()
+        form.errors[Form.field] = "test"
+        tree = template.process({
+            "form": form
+        })
+
+        self.assertEqual(
+            "foo",
+            tree.getroot().text)
+
+        tree = self._process_with_form(
+            self.xmlsrc_if_has_error)
+        self.assertIsNone(tree.getroot().text)
+
+    def test_for_each_error(self):
+        template = self._load_xml(self.xmlsrc_for_each_error)
+        form = Form()
+        form.errors[Form.field] = "test"
+        tree = template.process({
+            "form": form
+        })
+
+        self.assertEqual(
+            "foo",
+            tree.getroot().text)
+
+        tree = self._process_with_form(
+            self.xmlsrc_if_has_error)
+        self.assertIsNone(tree.getroot().text)

@@ -23,16 +23,22 @@ class form_ns(metaclass=NamespaceMeta):
 class FormProcessor(TemplateProcessor):
     xmlns = form_ns
 
-    def __init__(self, safety_level=xsltea.safe.SafetyLevel.conservative,
+    def __init__(self,
+                 errorclass=None,
+                 safety_level=xsltea.safe.SafetyLevel.conservative,
                  **kwargs):
         super().__init__(**kwargs)
         self._safety_level = safety_level
+        self._errorclass = errorclass
 
         self.attrhooks = {
             (str(self.xmlns), "field"): [self.handle_field],
-            (str(self.xmlns), "form"): [self.handle_form]
+            (str(self.xmlns), "form"): [self.handle_form],
         }
-        self.elemhooks = {}
+        self.elemhooks = {
+            (str(self.xmlns), "for-each-error"): [self.handle_for_each_error],
+            (str(self.xmlns), "if-has-error"): [self.handle_if_has_error]
+        }
 
         self._input_handlers = {
             "checkbox": self._input_box_handler,
@@ -62,12 +68,117 @@ class FormProcessor(TemplateProcessor):
             "number": self._input_text_handler,
         }
 
+    def _get_descriptor_ast(self, form_ast, fieldname, sourceline):
+        return ast.Attribute(
+            ast.Call(
+                ast.Name("type",
+                         ast.Load(),
+                         lineno=sourceline or 0,
+                         col_offset=0),
+                [
+                    form_ast
+                ],
+                [],
+                None,
+                None,
+                lineno=sourceline or 0,
+                col_offset=0),
+            fieldname,
+            ast.Load(),
+            lineno=sourceline or 0,
+            col_offset=0)
+
+    def handle_if_has_error(self, template, elem, filename, offset):
+        try:
+            form = elem.get(self.xmlns.form, "default_form")
+            field = elem.attrib[self.xmlns.field]
+        except KeyError as err:
+            raise ValueError("Missing required attribute @form:{} on "
+                             "form:for-each-error".format(err)) from None
+
+        form_ast = compile(form, filename, "eval", ast.PyCF_ONLY_AST).body
+        self._safety_level.check_safety(form_ast)
+
+        condition_ast = ast.Compare(
+            self._get_descriptor_ast(
+                form_ast, field,
+                elem.sourceline),
+            [ast.In()],
+            [ast.Attribute(
+                form_ast,
+                "errors",
+                ast.Load(),
+                lineno=elem.sourceline or 0,
+                col_offset=0)],
+            lineno=elem.sourceline or 0,
+            col_offset=0)
+
+        return xsltea.exec.ExecProcessor.create_if(
+            template, elem, filename, offset,
+            condition_ast)
+
+
+    def handle_for_each_error(self, template, elem, filename, offset):
+        try:
+            form = elem.get(self.xmlns.form, "default_form")
+            field = elem.attrib[self.xmlns.field]
+        except KeyError as err:
+            raise ValueError("Missing required attribute @form:{} on "
+                             "form:for-each-error".format(err)) from None
+
+        form_ast = compile(form, filename, "eval", ast.PyCF_ONLY_AST).body
+        self._safety_level.check_safety(form_ast)
+
+        iter_ast = ast.List(
+            [
+                ast.Subscript(
+                    ast.Attribute(
+                        form_ast,
+                        "errors",
+                        ast.Load(),
+                        lineno=elem.sourceline or 0,
+                        col_offset=0),
+                    ast.Index(
+                        self._get_descriptor_ast(
+                            form_ast, field,
+                            elem.sourceline),
+                        lineno=elem.sourceline or 0,
+                        col_offset=0),
+                    ast.Load(),
+                    lineno=elem.sourceline or 0,
+                    col_offset=0)
+            ],
+            ast.Load(),
+            lineno=elem.sourceline or 0,
+            col_offset=0)
+
+        bind_ast = ast.Name(
+            "error",
+            ast.Store(),
+            lineno=elem.sourceline or 0,
+            col_offset=0)
+
+        return xsltea.safe.ForeachProcessor.create_foreach(
+            template, elem, filename, offset,
+            bind_ast, iter_ast)
+
+
     def handle_form(self, template, elem, attrib, value, filename):
-        return [], [], None, None, []
+        form_ast = compile(value, filename, "eval", ast.PyCF_ONLY_AST).body
+        self._safety_level.check_safety(form_ast)
+
+        elemcode = compile("""\
+default_form = a""",
+                           filename,
+                           "exec",
+                           ast.PyCF_ONLY_AST).body
+        elemcode[0].value = form_ast
+
+        return [], elemcode, None, None, []
 
     def handle_field(self, template, elem, attrib, value, filename):
         try:
-            form = elem.get(self.xmlns.form, "form")
+            form = elem.get(self.xmlns.form, "default_form")
         except KeyError as err:
             raise ValueError(
                 "missing required attribute:"
@@ -82,6 +193,10 @@ class FormProcessor(TemplateProcessor):
             ast.Load(),
             lineno=elem.sourceline or 0,
             col_offset=0)
+
+        descriptor_ast = self._get_descriptor_ast(
+            form_ast, value,
+            elem.sourceline)
 
         if elem.tag == xhtml_ns.input:
             type_ = elem.get("type", "text")
@@ -109,15 +224,24 @@ class FormProcessor(TemplateProcessor):
 
         settercode = compile("""\
 elem.set("name", a)
-elem.set("value", str(b))""",
+tmp_value = b
+elem.set("value", str(tmp_value) if tmp_value is not None else "")
+if b in a.errors:
+    elem.set("class", {!r} + elem.get("class", ""))""".format(
+        self._errorclass),
                              filename,
                              "exec",
                              ast.PyCF_ONLY_AST).body
 
-        if valuecode:
-            settercode[1].value.args[1].args[0] = valuecode
+        if self._errorclass:
+            settercode[3].test.left = descriptor_ast
+            settercode[3].test.comparators[0].value = form_ast
         else:
-            del settercode[1]
+            del settercode[3]
+        if valuecode:
+            settercode[1].value = valuecode
+        else:
+            del settercode[1:3]
         if namecode:
             settercode[0].value.args[1] = namecode
         else:
