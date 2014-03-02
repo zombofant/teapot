@@ -230,8 +230,17 @@ class rows:
                 for (_, valuekey), value in iterable
             })
 
-        for sub_data in items:
-            self.__get__(instance, type(instance)).append(self.rowcls(post_data=sub_data))
+        rows = self.__get__(instance, type(instance))
+        rows.extend(
+            self.rowcls(post_data=sub_data)
+            for sub_data in items)
+
+        if any(bool(item.errors)
+               for item in rows):
+            raise ValidationError(
+                "One or more rows have errors",
+                self,
+                instance)
 
 class Form(metaclass=Meta):
     def __init__(self, *args, post_data=None, **kwargs):
