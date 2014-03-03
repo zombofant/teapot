@@ -265,17 +265,17 @@ class ForeachProcessor(TemplateProcessor):
             (str(self.xmlns), "for-each"): [self.handle_foreach]}
 
     @classmethod
-    def create_foreach(cls, template, elem, filename, offset,
+    def create_foreach(cls, template, elem, context, offset,
                        bind_ast, iter_ast):
         childfun_name = "children{}".format(offset)
-        precode = template.compose_childrenfun(elem, filename, childfun_name)
+        precode = template.compose_childrenfun(elem, context, childfun_name)
 
         elemcode = compile("""\
 def _():
     for _ in _:
         yield ''
         yield from children{}()""".format(offset),
-                       filename,
+                       context.filename,
                        "exec",
                        ast.PyCF_ONLY_AST).body[0].body
 
@@ -299,11 +299,11 @@ def _():
         if not loopbody:
             del elemcode[0]
 
-        elemcode.extend(template.preserve_tail_code(elem, filename))
+        elemcode.extend(template.preserve_tail_code(elem, context))
 
         return precode, elemcode, []
 
-    def handle_foreach(self, template, elem, filename, offset):
+    def handle_foreach(self, template, elem, context, offset):
         try:
             from_ = elem.attrib[getattr(self.xmlns, "from")]
             bind = elem.attrib[self.xmlns.bind]
@@ -313,20 +313,20 @@ def _():
                     str(err).split("}", 1)[1]))
 
         bind_ast = compile(bind,
-                           filename,
+                           context.filename,
                            "eval",
                            ast.PyCF_ONLY_AST).body
         self._prepare_bind_tree(bind_ast)
 
         iter_ast = compile(from_,
-                           filename,
+                           context.filename,
                            "eval",
                            ast.PyCF_ONLY_AST).body
 
         self._safety_level.check_safety(iter_ast)
 
         return self.create_foreach(
-            template, elem, filename, offset,
+            template, elem, context, offset,
             bind_ast, iter_ast)
 
     def _prepare_bind_tree(self, subtree):
@@ -372,7 +372,7 @@ class IncludeProcessor(TemplateProcessor):
             (str(self.xmlns), "include"): [self.handle_include]
         }
 
-    def handle_include(self, template, elem, filename, offset):
+    def handle_include(self, template, elem, context, offset):
         try:
             xpath = elem.get(self.xmlns.xpath, "/*")
             source = elem.attrib[self.xmlns.source]
@@ -399,7 +399,7 @@ class IncludeProcessor(TemplateProcessor):
         precode, elemcode, postcode = [], [], []
         for element in elements:
             elem_precode, elem_elemcode, elem_postcode = \
-                template.parse_subtree(element, filename, offset)
+                template.parse_subtree(element, context, offset)
 
             precode.extend(elem_precode)
             elemcode.extend(elem_elemcode)

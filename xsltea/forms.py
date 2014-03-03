@@ -88,7 +88,7 @@ class FormProcessor(TemplateProcessor):
             lineno=sourceline or 0,
             col_offset=0)
 
-    def handle_if_has_error(self, template, elem, filename, offset):
+    def handle_if_has_error(self, template, elem, context, offset):
         try:
             form = elem.get(self.xmlns.form, "default_form")
             field = elem.attrib[self.xmlns.field]
@@ -96,7 +96,7 @@ class FormProcessor(TemplateProcessor):
             raise ValueError("Missing required attribute @form:{} on "
                              "form:for-each-error".format(err)) from None
 
-        form_ast = compile(form, filename, "eval", ast.PyCF_ONLY_AST).body
+        form_ast = compile(form, context.filename, "eval", ast.PyCF_ONLY_AST).body
         self._safety_level.check_safety(form_ast)
 
         condition_ast = ast.Compare(
@@ -114,10 +114,10 @@ class FormProcessor(TemplateProcessor):
             col_offset=0)
 
         return xsltea.exec.ExecProcessor.create_if(
-            template, elem, filename, offset,
+            template, elem, context, offset,
             condition_ast)
 
-    def handle_for_each_error(self, template, elem, filename, offset):
+    def handle_for_each_error(self, template, elem, context, offset):
         try:
             form = elem.get(self.xmlns.form, "default_form")
             field = elem.attrib[self.xmlns.field]
@@ -125,7 +125,7 @@ class FormProcessor(TemplateProcessor):
             raise ValueError("Missing required attribute @form:{} on "
                              "form:for-each-error".format(err)) from None
 
-        form_ast = compile(form, filename, "eval", ast.PyCF_ONLY_AST).body
+        form_ast = compile(form, context.filename, "eval", ast.PyCF_ONLY_AST).body
         self._safety_level.check_safety(form_ast)
 
         errors_attr = ast.Attribute(
@@ -177,24 +177,27 @@ class FormProcessor(TemplateProcessor):
             col_offset=0)
 
         return xsltea.safe.ForeachProcessor.create_foreach(
-            template, elem, filename, offset,
+            template, elem, context, offset,
             bind_ast, iter_ast)
 
 
-    def handle_form(self, template, elem, attrib, value, filename):
-        form_ast = compile(value, filename, "eval", ast.PyCF_ONLY_AST).body
+    def handle_form(self, template, elem, attrib, value, context):
+        form_ast = compile(value,
+                           context.filename,
+                           "eval",
+                           ast.PyCF_ONLY_AST).body
         self._safety_level.check_safety(form_ast)
 
         elemcode = compile("""\
 default_form = a""",
-                           filename,
+                           context.filename,
                            "exec",
                            ast.PyCF_ONLY_AST).body
         elemcode[0].value = form_ast
 
         return [], elemcode, None, None, []
 
-    def handle_field(self, template, elem, attrib, value, filename):
+    def handle_field(self, template, elem, attrib, value, context):
         try:
             form = elem.get(self.xmlns.form, "default_form")
         except KeyError as err:
@@ -202,7 +205,7 @@ default_form = a""",
                 "missing required attribute:"
                 " @form:{}".format(err))
 
-        form_ast = compile(form, filename, "eval", ast.PyCF_ONLY_AST).body
+        form_ast = compile(form, context.filename, "eval", ast.PyCF_ONLY_AST).body
         self._safety_level.check_safety(form_ast)
 
         field_ast = ast.Attribute(
@@ -232,7 +235,7 @@ default_form = a""",
                 elem.tag))
 
         namecode, valuecode, elemcode = handler(
-            elem, form_ast, field_ast, filename)
+            elem, form_ast, field_ast, context)
         if namecode is None:
             namecode = ast.Str(value,
                                lineno=elem.sourceline or 0,
@@ -247,7 +250,7 @@ elem.set("value", str(tmp_value) if tmp_value is not None else "")
 if b in a.errors:
     elem.set("class", {!r} + elem.get("class", ""))""".format(
         self._errorclass),
-                             filename,
+                             context.filename,
                              "exec",
                              ast.PyCF_ONLY_AST).body
 
@@ -269,7 +272,7 @@ if b in a.errors:
 if not isinstance(form, template_storage[{!r}]):
     raise ValueError("Not a valid form object: {{}}".format(
         form))""".format(template.store(teapot.forms.Form)),
-                                  filename,
+                                  context.filename,
                                   "exec",
                                   ast.PyCF_ONLY_AST).body
 
@@ -280,11 +283,11 @@ if not isinstance(form, template_storage[{!r}]):
 
         return [], elemcode, None, None, []
 
-    def _input_box_handler(self, elem, form_ast, field_ast, filename):
+    def _input_box_handler(self, elem, form_ast, field_ast, context):
         valuecode = compile("""
 if a:
     elem.set("checked", "checked")""",
-                            filename,
+                            context.filename,
                             "exec",
                             ast.PyCF_ONLY_AST).body
 
@@ -292,15 +295,15 @@ if a:
 
         return None, False, valuecode
 
-    def _input_text_handler(self, elem, form_ast, field_ast, filename):
+    def _input_text_handler(self, elem, form_ast, field_ast, context):
         return None, None, []
 
-    def _input_datetime_handler(self, fmt, elem, form_ast, field_ast, filename):
+    def _input_datetime_handler(self, fmt, elem, form_ast, field_ast, context):
         def partcode(part, obj_ast):
             if "%" in part:
                 code = compile("""\
 a.strftime({!r})""".format(part),
-                               filename,
+                               context.filename,
                                "eval",
                                ast.PyCF_ONLY_AST).body
                 code.func = obj_ast
@@ -317,7 +320,7 @@ a.strftime({!r})""".format(part),
 
             secondscode = compile("""\
 "{:06.3f}".format(a.second + (a.microsecond / 1000000))""",
-                                  filename,
+                                  context.filename,
                                   "eval",
                                   ast.PyCF_ONLY_AST).body
             secondscode.args[0].left.value = field_ast
@@ -339,16 +342,16 @@ a.strftime({!r})""".format(part),
 
         return None, valuecode, []
 
-    def _textarea_handler(self, elem, form_ast, field_ast, filename):
+    def _textarea_handler(self, elem, form_ast, field_ast, context):
         elemcode = compile("""\
 elem.text = str(a)""",
-                           filename,
+                           context.filename,
                            "exec",
                            ast.PyCF_ONLY_AST).body
         elemcode[0].value.args[0] = field_ast
 
         return None, False, elemcode
 
-    def _select_handler(self, elem, form_ast, field_ast, filename):
+    def _select_handler(self, elem, form_ast, field_ast, context):
         logger.warn("select inputs are not entirely supported yet")
         return None, False, []

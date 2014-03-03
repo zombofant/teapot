@@ -48,6 +48,34 @@ class _TreeFormatter:
     def __str__(self):
         return str(etree.tostring(self._tree))
 
+class Context:
+    """
+    The context object is passed around to the template processing functions, to
+    have a forward-compatible storage of global evaluation parameters.
+
+    The different attributes are available for modification by the processing
+    functions if neccessary.
+
+    .. attribute:: filename
+
+       This is the file name of the template file currently being processed.
+
+    .. attribute:: attrhooks
+
+       A dictionary of attribute hooks, as described in :class:`Template` and
+       :class:`~xsltea.processor.TemplateProcessor`.
+
+    .. attribute:: elemhooks
+
+       A dictionary of element hooks, as described in :class:`Template` and
+       :class:`~xsltea.processor.TemplateProcessor`.
+
+    """
+
+    filename = None
+    attrhooks = None
+    elemhooks = None
+
 class Template:
     """
     This class implements a template, based on an lxml etree. For every element
@@ -143,19 +171,20 @@ class Template:
 
     def __init__(self, tree, filename, attrhooks, elemhooks, loader=None):
         super().__init__()
-        self._attrhooks = attrhooks
-        self._elemhooks = elemhooks
+
         self._storage = {}
         self._reverse_storage = {}
         self.loader = loader
-        self._process = self.parse_tree(tree, filename)
+        context = Context()
+        context.filename = filename
+        context.attrhooks = copy.deepcopy(attrhooks)
+        context.elemhooks = copy.deepcopy(elemhooks)
+        self._process = self.parse_tree(tree, context)
         self.tree = tree
-        del self._attrhooks
-        del self._elemhooks
         del self._reverse_storage
         del self._storage
 
-    def default_attrhandler(self, elem, key, value, filename):
+    def default_attrhandler(self, elem, key, value, context):
         precode = []
         elemcode = []
         keycode = ast.Str(key,
@@ -167,7 +196,7 @@ class Template:
         postcode = []
         return precode, elemcode, keycode, valuecode, postcode
 
-    def compose_attrdict(self, elem, filename):
+    def compose_attrdict(self, elem, context):
         """
         Create code which constructs the attributes for the given *elem*.
 
@@ -183,15 +212,15 @@ class Template:
         d.values = []
         for key, value in elem.attrib.items():
             try:
-                handlers = self.lookup_hook(self._attrhooks, key)
+                handlers = self.lookup_hook(context.attrhooks, key)
             except KeyError:
                 handlers = []
             for handler in handlers:
-                result = handler(self, elem, key, value, filename)
+                result = handler(self, elem, key, value, context)
                 if result:
                     break
             else:
-                result = self.default_attrhandler(elem, key, value, filename)
+                result = self.default_attrhandler(elem, key, value, context)
             attr_precode, attr_elemcode, \
             attr_keycode, attr_valuecode, \
             attr_postcode = result
@@ -206,7 +235,7 @@ class Template:
 
         return precode, elemcode, d, postcode
 
-    def compose_childrenfun(self, elem, filename, name):
+    def compose_childrenfun(self, elem, context, name):
         """
         Create *precode* declaring a function yielding all children of the given
         *elem* with the name *name*.
@@ -222,7 +251,7 @@ class Template:
         children_fun = compile("""\
 def {}():
     pass""".format(name),
-                               filename,
+                               context.filename,
                                "exec",
                                ast.PyCF_ONLY_AST).body[0]
         precode = []
@@ -230,7 +259,7 @@ def {}():
         postcode = []
         for i, child in enumerate(elem):
             child_precode, child_elemcode, child_postcode = \
-                self.parse_subtree(child, filename, i)
+                self.parse_subtree(child, context, i)
             precode.extend(child_precode)
             midcode.extend(child_elemcode)
             postcode.extend(child_postcode)
@@ -248,7 +277,7 @@ def {}():
         call.args[0].s = elem.tag
         call.keywords[0].value = attrdict
 
-    def default_subtree(self, elem, filename, offset=0):
+    def default_subtree(self, elem, context, offset=0):
         """
         Create code for the element and its children. This is the identity
         transform which creates code reflecting the element unchanged (but
@@ -258,14 +287,14 @@ def {}():
         """
 
         childfun_name = "children{}".format(offset)
-        precode = self.compose_childrenfun(elem, filename, childfun_name)
+        precode = self.compose_childrenfun(elem, context, childfun_name)
         elemcode = compile("""\
 elem = makeelement("", attrib={{}})
 elem.text = ""
 elem.tail = ""
 append_children(elem, {}())
 yield elem""".format(childfun_name),
-                           filename,
+                           context.filename,
                            "exec",
                            ast.PyCF_ONLY_AST).body
         postcode = []
@@ -285,7 +314,7 @@ yield elem""".format(childfun_name),
             del elemcode[1]
 
         attr_precode, attr_elemcode, attrdict, attr_postcode = \
-            self.compose_attrdict(elem, filename)
+            self.compose_attrdict(elem, context)
         self._patch_element_constructor(elemcode[0].value, elem, attrdict)
 
         if precode:
@@ -296,7 +325,7 @@ yield elem""".format(childfun_name),
         postcode.extend(attr_postcode)
         return precode, elemcode, postcode
 
-    def parse_subtree(self, elem, filename, offset=0):
+    def parse_subtree(self, elem, context, offset=0):
         """
         Parse the given subtree. Return a tuple ``(precode, elemcode,
         postcode)`` comprising the code neccessary. to generate that element and
@@ -304,22 +333,22 @@ yield elem""".format(childfun_name),
         """
 
         try:
-            handlers = self.lookup_hook(self._elemhooks, elem.tag)
+            handlers = self.lookup_hook(context.elemhooks, elem.tag)
         except KeyError:
             handlers = []
 
         for handler in handlers:
-            result = handler(self, elem, filename, offset)
+            result = handler(self, elem, context, offset)
             if result:
                 return result
 
-        return self.default_subtree(elem, filename, offset)
+        return self.default_subtree(elem, context, offset)
 
-    def parse_tree(self, tree, filename):
+    def parse_tree(self, tree, context):
         root = tree.getroot()
 
         childfun_name = "children"
-        precode = self.compose_childrenfun(root, filename, childfun_name)
+        precode = self.compose_childrenfun(root, context, childfun_name)
         if precode:
             precode[0].name = childfun_name
 
@@ -330,12 +359,12 @@ def root(append_children, template_storage, href, request, arguments):
     elem.text = ""
     append_children(elem, {}())
     return elem.getroottree()""".format(childfun_name),
-                          filename,
+                          context.filename,
                           "exec",
                           ast.PyCF_ONLY_AST)
         rootfun = rootmod.body[0]
         attr_precode, attr_elemcode, attrdict, attr_postcode = \
-            self.compose_attrdict(root, filename)
+            self.compose_attrdict(root, context)
         self._patch_element_constructor(rootfun.body[0].value, root, attrdict)
 
         if not precode:
@@ -353,7 +382,7 @@ def root(append_children, template_storage, href, request, arguments):
         rootfun.body[0:0] = precode + attr_precode
         rootfun.body.extend(attr_postcode)
 
-        code = compile(rootmod, filename, "exec")
+        code = compile(rootmod, context.filename, "exec")
         globals_dict = dict(globals())
         locals_dict = {}
         exec(code, globals_dict, locals_dict)
@@ -361,7 +390,7 @@ def root(append_children, template_storage, href, request, arguments):
                                  self.append_children,
                                  self._storage)
 
-    def preserve_tail_code(self, elem, filename):
+    def preserve_tail_code(self, elem, context):
         """
         Create *elemcode* for *elem* which yields the elements ``tail`` text, if
         any is present.
@@ -373,7 +402,7 @@ def root(append_children, template_storage, href, request, arguments):
             return []
 
         body = compile("""yield ''""",
-                filename,
+                context.filename,
                 "exec",
                 flags=ast.PyCF_ONLY_AST).body
         body[0].value.value = ast.Str(elem.tail,

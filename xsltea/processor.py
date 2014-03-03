@@ -31,7 +31,7 @@ class TemplateProcessor:
        The signature and semantics of the ``attribute_hook`` functions are as
        follows:
 
-       .. function:: attribute_hook(template, element, key, value, filename) ->
+       .. function:: attribute_hook(template, element, key, value, context) ->
                      (precode, elemcode, keycode, valuecode, postcode)
 
           The *template* is the template which is calling the hook. This is
@@ -43,8 +43,8 @@ class TemplateProcessor:
           etree notation) belongs. To save lookups, the *value* of the attribute
           is also included.
 
-          *filename* is the name of the template being processed. This should be
-          passed to any :func:`compile` calls being issued by the hook.
+          *context* is a :class:`xsltea.template.Context` object which provides
+          the processing context, including any hooks.
 
           The return value is a tuple of several items:
 
@@ -82,10 +82,12 @@ class TemplateProcessor:
           element to appear in the output tree, you must construct it in the
           *elemcode* and ``yield`` it from there.
 
-          *filename* is the name of the template being operated on. *offset* is
-          the sibling index of the element you are operating on. Use that as a
-          suffix for any names, except ``elem``, you create within any of the
-          code arrays.
+          *context* is a :class:`xsltea.template.Context` object which provides
+          the processing context, including any hooks.
+
+          *offset* is the sibling index of the element you are operating on. Use
+          that as a suffix for any names, except ``elem``, you create within any
+          of the code arrays.
 
           The return value is a tuple of several items:
           * *precode*: A list of AST statement objects (such as
