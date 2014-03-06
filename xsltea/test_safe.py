@@ -8,6 +8,64 @@ import xsltea.exec
 import xsltea.safe
 import xsltea.namespaces
 
+class TestSafetyLevel_conservative(unittest.TestCase):
+    sl = xsltea.safe.SafetyLevel.conservative
+
+    def test_name(self):
+        self.sl.check_code_safety("name")
+        with self.assertRaises(ValueError):
+            self.sl.check_code_safety("_name")
+
+    def test_subscript(self):
+        with self.assertRaises(ValueError):
+            self.sl.check_code_safety("name['name']")
+
+    def test_call(self):
+        with self.assertRaises(ValueError):
+            self.sl.check_code_safety("name(name)")
+
+    def test_list(self):
+        self.sl.check_code_safety("['1', name, 2]")
+
+    def test_tuple(self):
+        self.sl.check_code_safety("('1', name, 2)")
+
+    def test_dict(self):
+        self.sl.check_code_safety("{name: value, '1': 2}")
+
+class TestSafetyLevel_experimental(unittest.TestCase):
+    sl = xsltea.safe.SafetyLevel.experimental
+
+    def test_name(self):
+        self.sl.check_code_safety("name")
+        with self.assertRaises(ValueError):
+            self.sl.check_code_safety("_name")
+
+    def test_subscript(self):
+        self.sl.check_code_safety("name['name']")
+
+    def test_binop(self):
+        self.sl.check_code_safety("name + name")
+
+    def test_unaryop(self):
+        self.sl.check_code_safety("not name")
+
+    def test_ifexpr(self):
+        self.sl.check_code_safety("a if b else c")
+
+    def test_call(self):
+        with self.assertRaises(ValueError):
+            self.sl.check_code_safety("name(name)")
+
+    def test_list(self):
+        self.sl.check_code_safety("['1', name, 2]")
+
+    def test_tuple(self):
+        self.sl.check_code_safety("('1', name, 2)")
+
+    def test_dict(self):
+        self.sl.check_code_safety("{name: value, '1': 2}")
+
 class TestForeachProcessor(unittest.TestCase):
     xmlsrc_simple = """<?xml version="1.0" ?>
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"

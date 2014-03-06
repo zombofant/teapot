@@ -79,9 +79,9 @@ class ExecProcessor(TemplateProcessor):
             (str(self.xmlns), "if"): [self.handle_exec_if],
             (str(self.xmlns), "text"): [self.handle_exec_text]}
 
-    def handle_exec_any_attribute(self, template, elem, attrib, value, filename):
+    def handle_exec_any_attribute(self, template, elem, attrib, value, context):
         valuecode = compile(value,
-                            filename,
+                            context.filename,
                             "eval",
                             flags=ast.PyCF_ONLY_AST).body
 
@@ -103,7 +103,7 @@ class ExecProcessor(TemplateProcessor):
 attrval = ''
 if attrval is not None:
     elem.set('', str(attrval))""",
-                           filename,
+                           context.filename,
                            "exec",
                            ast.PyCF_ONLY_AST).body
 
@@ -112,51 +112,43 @@ if attrval is not None:
 
         return [], elemcode, None, None, []
 
-    def handle_exec_code(self, template, elem, filename, offset):
+    def handle_exec_code(self, template, elem, context, offset):
         precode = compile(elem.text,
-                          filename,
+                          context.filename,
                           "exec",
                           flags=ast.PyCF_ONLY_AST).body
-        elemcode = template.preserve_tail_code(elem, filename)
+        elemcode = template.preserve_tail_code(elem, context)
         return precode, elemcode, []
 
-    def handle_exec_text(self, template, elem, filename, offset):
+    def handle_exec_text(self, template, elem, context, offset):
         value = compile(elem.text,
-                        filename,
+                        context.filename,
                         "eval",
                         flags=ast.PyCF_ONLY_AST).body
         yielder = compile("yield str('')",
-                          filename,
+                          context.filename,
                           "exec",
                           flags=ast.PyCF_ONLY_AST).body[0]
         yielder.value.value.args[0] = value
-        elemcode = template.preserve_tail_code(elem, filename)
+        elemcode = template.preserve_tail_code(elem, context)
         elemcode.insert(0, yielder)
         return [], elemcode, []
 
-    def handle_exec_if(self, template, elem, filename, offset):
-        attrib = elem.attrib
-        try:
-            condition_code = attrib["condition"]
-        except KeyError:
-            raise ValueError("exec:if requires @condition")
-        condition_code = compile(condition_code,
-                                 filename,
-                                 "eval",
-                                 ast.PyCF_ONLY_AST).body
-
+    @classmethod
+    def create_if(cls, template, elem, context, offset,
+                  condition_ast):
         childfun_name = "children{}".format(offset)
-        precode = template.compose_childrenfun(elem, filename, childfun_name)
+        precode = template.compose_childrenfun(elem, context, childfun_name)
 
         elemcode = compile("""\
 if _:
     yield ''
     yield from children{}()""".format(offset),
-                           filename,
+                           context.filename,
                            "exec",
                            ast.PyCF_ONLY_AST).body
 
-        elemcode[0].test = condition_code
+        elemcode[0].test = condition_ast
 
         if not precode:
             del elemcode[0].body[1]
@@ -173,3 +165,17 @@ if _:
             del elemcode[0]
 
         return precode, elemcode, []
+
+
+    def handle_exec_if(self, template, elem, context, offset):
+        attrib = elem.attrib
+        try:
+            condition_code = attrib["condition"]
+        except KeyError:
+            raise ValueError("exec:if requires @condition")
+        condition_code = compile(condition_code,
+                                 context.filename,
+                                 "eval",
+                                 ast.PyCF_ONLY_AST).body
+        return self.create_if(template, elem, context, offset,
+                              condition_code)
