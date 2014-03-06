@@ -53,17 +53,22 @@ class Meta(type):
             if isinstance(value, (field, rows))
         ]
 
-        for name, descriptor in namespace.items():
-            if isinstance(descriptor, rows):
-                # fix rows names
-                descriptor.name = name
-
         for base in reversed(bases):
             if hasattr(base, "field_descriptors"):
                 field_descriptors[:0] = base.field_descriptors
 
         namespace["field_descriptors"] = field_descriptors
-        return super().__new__(mcls, name, bases, namespace)
+        cls = super().__new__(mcls, name, bases, namespace)
+
+        for name, descriptor in namespace.items():
+            if isinstance(descriptor, rows):
+                # fix rows names
+                if descriptor.rowcls is None:
+                    descriptor.rowcls = cls
+                descriptor.name = name
+
+        return cls
+
 
 class RowMeta(Meta):
     pass
