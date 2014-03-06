@@ -26,6 +26,31 @@ validated against and converted to integers on assignment. The second one,
 however, returns ``10`` when read before an assignment, while the first returns
 :data:`None`.
 
+Documentation for the different descriptors/decorators is also available:
+
+.. autoclass:: field
+   :members: key, load
+
+.. autoclass:: boolfield
+
+.. autoclass:: rows
+
+Also the base classes:
+
+.. autoclass:: Form
+
+.. autoclass:: Row
+
+The metaclasses:
+
+.. autoclass:: Meta
+
+.. autoclass:: RowMeta
+
+And last, but not least, the exception type:
+
+.. autoclass:: ValidationError
+
 """
 
 import abc
@@ -36,6 +61,25 @@ import operator
 import teapot.utils
 
 class ValidationError(ValueError):
+    """
+    A value error related to field validation. Indicates that the error *err*
+    caused the field *field* (which refers to the descriptor, i.e. the
+    :class:`rows` or :class:`field` instance) to fail validation on the given
+    *instance*.
+
+    On throwing a :class:`ValidationError` instance, it is recommended to give
+    the causing exception as context using the ``raise .. from ..`` syntax.
+
+    .. attribute:: field
+
+       The *field* passed to the constructor.
+
+    .. attribute:: instance
+
+       The *instance* passed to the constructor.
+
+    """
+
     def __init__(self, err, field, instance):
         super().__init__(
             "field validation failed for {} on {}: {}".format(
@@ -46,6 +90,14 @@ class ValidationError(ValueError):
         self.instance = instance
 
 class Meta(type):
+    """
+    A metaclass used to describe :class:`Form`. It takes care of collecting all
+    the field descriptors and aggregating them in a list, which is stored as
+    class attribute called :attr:`Form.field_descriptors`.
+
+    All forms should use this metaclass.
+    """
+
     def __new__(mcls, name, bases, namespace):
         field_descriptors = [
             value
@@ -69,9 +121,11 @@ class Meta(type):
 
         return cls
 
-
 class RowMeta(Meta):
-    pass
+    """
+    This metaclass has no further implementation, but is there for future
+    extension of the row classes, if neccessary.
+    """
 
 class field:
     """
@@ -136,9 +190,18 @@ class field:
             pass
 
     def key(self, instance):
+        """
+        Return the full name of the HTML form element in the context of a given
+        form (or row) *instance*.
+        """
         return instance.get_html_field_key() + self.name
 
     def load(self, instance, post_data):
+        """
+        Try to load the data for this field for the given *instance* from the
+        *post_data*. If loading fails, :class:`ValidationError` exceptions are
+        thrown.
+        """
         try:
             values = post_data.pop(self.name)
             value = values.pop()
@@ -159,6 +222,9 @@ class field:
         self.__set__(instance, value)
 
     def default(self, callable):
+        """
+        Set the constructor for the default value to *callable*.
+        """
         self.defaultcon = callable
         return self
 
@@ -166,7 +232,19 @@ class field:
         return "<field name={!r}>".format(self.name)
 
 class boolfield(field):
+    """
+    Due to the nature of HTML, it is required that boolean values, represented
+    by checkboxes, have special handling: Checkboxes do not generate any post
+    data if they are not checked.
+    """
+
     def load(self, instance, post_data):
+        """
+        Handle the special case of a checkbox field. That is, a missing key is
+        not a fatal condition, but is interpreted as :data:`False` value.
+
+        See :meth:`field.load` for more information.
+        """
         try:
             values = post_data.pop(self.name)
             value = values.pop()
@@ -186,6 +264,29 @@ class boolfield(field):
         self.__set__(instance, value)
 
 class RowList(teapot.utils.InstrumentedList):
+    """
+    A custom list implementation which sets and unsets the :attr:`parent`
+    attribute on all its children on insertion / removal. The attribute is set
+    to the list itself, so that one can retrace the full path up to the root
+    form for all list children.
+
+    Retrieving elements from the list through iteration or subscript
+    (e.g. ``l[x]``) makes the list mutate the elements insofar, as that an
+    :attr:`index` is set on them to the current index of the element in the
+    list. This is hacky, but required to track the index during form creation.
+
+    .. attribute:: instance
+
+       The :class:`Form` instance to which this list belongs
+
+    .. attribute:: field
+
+       The :class:`rows` field descriptor attached to the type of the
+       :attr:`instance` to which this list is associated.
+
+
+    """
+
     def __init__(self, field, instance):
         super().__init__()
         self.instance = instance
@@ -218,6 +319,16 @@ class RowList(teapot.utils.InstrumentedList):
             slice(None))
 
 class rows:
+    """
+    This is not a decorator, but a plain descriptor to be used to host a list of
+    elements in a :class:`Form`. The elements are instances of *rowcls*, or of
+    the form itself, if *rowcls* is passed as :data:`None`.
+
+    On loading the data from POST, elements are created as neccessary. It is
+    possible to add elements after loading elements from POST or after empty
+    construction and re-serialize the form to HTML without any issues.
+    """
+
     @staticmethod
     def _splitkey(name, key):
         key = key[len(name)+1:]
@@ -295,6 +406,27 @@ class rows:
                 instance)
 
 class Form(metaclass=Meta):
+    """
+    Base class for forms. Forms can either be default-constructed, that is,
+    without any extra arguments, or constructed from *post_data*, which must be
+    a dict ``{ name => [value] }``, that is, mapping the field names to a list
+    of values.
+
+    On non-empty construction, the dict is parsed for data and the
+    :attr:`errors` attribute is filled accordingly.
+
+    .. attribute:: fields
+
+       This is internal storage for the field descriptors to put their values
+       in. It is not supposed to be touched by applications.
+
+    .. attribute:: errors
+
+       Maps descriptors to a :class:`ValidationError` instance, if any, which
+       represents the error which occured while parsing the data from the
+       *post_data* dict.
+
+    """
     def __init__(self, *args, post_data=None, **kwargs):
         self.fields = {}
         self.errors = {}
@@ -303,6 +435,11 @@ class Form(metaclass=Meta):
             self.errors = self.fill_post_data(post_data)
 
     def get_html_field_key(self):
+        """
+        Return the empty string. Subclasses, such as rows, might need a
+        different implementation here. This is the prefix for all fields which
+        are described by this form.
+        """
         return ""
 
     def fill_post_data(self, post_data):
@@ -316,12 +453,36 @@ class Form(metaclass=Meta):
         return errors
 
 class Row(Form, metaclass=RowMeta):
+    """
+    This class should be used as baseclass for all rows in a form, but can also
+    be used as a baseclass for a normal form.
+
+    .. attribute:: parent
+
+       This is set by the :class:`RowList` upon insertion to the
+       :class:`RowList` instance itself, so that the form to which this row
+       belongs can be retrieved by accessing :attr:`RowList.instance`.
+
+    .. attribute:: index
+
+       The index of the row inside the :class:`RowList`. This attribute is only
+       set upon retrieval from the :class:`RowList` through iteration or direct
+       subscript access (i.e. ``l[x]``). After modification of the list, the
+       value of the attribute is not reliable anymore, until the object is
+       re-fetched from the list.
+
+    """
+
     def __init__(self, *args, **kwargs):
         self.parent = None
         self.index = None
         super().__init__(*args, **kwargs)
 
     def get_html_field_key(self):
+        """
+        If a :attr:`parent` is set, this returns the fully qualified name of the
+        field to which the row belongs. Otherwise, the empty string is returned.
+        """
         if self.parent is not None:
             return "{}[{}].".format(
                 self.parent.field.key(self.parent.instance),
