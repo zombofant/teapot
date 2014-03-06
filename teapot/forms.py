@@ -160,6 +160,26 @@ class field:
     def __str__(self):
         return "<field name={!r}>".format(self.name)
 
+class boolfield(field):
+    def load(self, instance, post_data):
+        try:
+            values = post_data.pop(self.name)
+            value = values.pop()
+            if len(values) > 0:
+                raise ValueError("too many values")
+
+        except ValueError as err:
+            return ValidationError(
+                "Unexpected amount of values (must be exactly 1)",
+                self,
+                instance)
+        except KeyError as err:
+            value = False
+        else:
+            value = True
+
+        self.__set__(instance, value)
+
 class RowList(teapot.utils.InstrumentedList):
     def __init__(self, field, instance):
         super().__init__()

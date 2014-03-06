@@ -16,6 +16,10 @@ class TestWebForm(unittest.TestCase):
         def test_int_with_default(self):
             return 10
 
+        @teapot.forms.boolfield
+        def boolfield(self, value):
+            return value
+
     def test_keys(self):
         form = self.Form()
         self.assertEqual("", form.key())
@@ -50,6 +54,26 @@ class TestWebForm(unittest.TestCase):
         self.assertFalse(instance.errors)
         self.assertEqual(20, instance.test_int)
         self.assertEqual(30, instance.test_int_with_default)
+
+    def test_boolfields(self):
+        post_data = {
+            "test_int": ["20"],
+            "test_int_with_default": ["30"]
+        }
+        instance = self.Form(post_data=post_data)
+
+        self.assertFalse(instance.errors)
+        self.assertFalse(instance.boolfield)
+
+        post_data = {
+            "test_int": ["20"],
+            "test_int_with_default": ["30"],
+            "boolfield": [1]
+        }
+        instance = self.Form(post_data=post_data)
+
+        self.assertFalse(instance.errors)
+        self.assertTrue(instance.boolfield)
 
     def test_inheritance(self):
         class InheritedForm(self.Form):
