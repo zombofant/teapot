@@ -194,3 +194,83 @@ class TestForeachProcessor(unittest.TestCase):
         self.assertSequenceEqual(
             foo_attrs,
             [str(i+j) for i, j in zip(range(3), range(4, 8))])
+
+class TestFunctionProcessor(unittest.TestCase):
+    xmlsrc_def_and_call = """\
+<test xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
+      xmlns:exec="https://xmlns.zombofant.net/xsltea/exec">
+  <def><tea:def tea:name="test">
+    <tea:arg name="a" />
+    <tea:arg name="b" />foo<a><exec:text>a</exec:text></a>
+    <b><exec:text>b</exec:text></b>
+  </tea:def>bar</def>
+  <eval><tea:call tea:name="test">
+    <tea:pass name="a">1</tea:pass>
+    <tea:pass name="b">2</tea:pass>
+  </tea:call></eval>
+</test>"""
+
+    xmlsrc_argument_variants = """\
+<test xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
+      xmlns:exec="https://xmlns.zombofant.net/xsltea/exec">
+  <def><tea:def tea:name="test">
+    <tea:arg name="a" default="'foo'" />
+    <tea:arg name="b" mode="lazy" default="arguments['passed']" />
+    <a><exec:text>a</exec:text></a>
+    <b><exec:text>b</exec:text></b>
+  </tea:def>bar</def>
+  <eval1><tea:call tea:name="test" /></eval1>
+  <eval2><tea:call tea:name="test">
+    <tea:pass name="a">1</tea:pass>
+  </tea:call></eval2>
+  <eval3><tea:call tea:name="test">
+    <tea:pass name="b">1</tea:pass>
+  </tea:call></eval3>
+</test>"""
+
+    def setUp(self):
+        self._loader = xsltea.template.XMLTemplateLoader()
+        self._loader.add_processor(xsltea.exec.ExecProcessor)
+        self._loader.add_processor(xsltea.safe.FunctionProcessor(
+            safety_level=xsltea.safe.SafetyLevel.experimental))
+
+    def _load_xml(self, xmlstr):
+        template = self._loader.load_template(xmlstr, "<string>")
+        return template
+
+    def test_def_and_call(self):
+        template = self._load_xml(self.xmlsrc_def_and_call)
+        tree = template.process({})
+        defelem = tree.getroot().find("def")
+        evalelem = tree.getroot().find("eval")
+        self.assertEqual(0, len(defelem))
+        self.assertEqual("bar", defelem.text)
+
+        self.assertEqual(2, len(evalelem))
+        self.assertEqual("foo", evalelem.text)
+        self.assertEqual("1", evalelem.find("a").text)
+        self.assertEqual("2", evalelem.find("b").text)
+
+    def test_argument_variants(self):
+        template = self._load_xml(self.xmlsrc_argument_variants)
+        tree = template.process({
+            "passed": "bar"
+        })
+        defelem = tree.getroot().find("def")
+        self.assertEqual(0, len(defelem))
+
+        evalelem1 = tree.getroot().find("eval1")
+        evalelem2 = tree.getroot().find("eval2")
+        evalelem3 = tree.getroot().find("eval3")
+
+        self.assertEqual(2, len(evalelem1))
+        self.assertEqual("foo", evalelem1.find("a").text)
+        self.assertEqual("bar", evalelem1.find("b").text)
+
+        self.assertEqual(2, len(evalelem2))
+        self.assertEqual("1", evalelem2.find("a").text)
+        self.assertEqual("bar", evalelem2.find("b").text)
+
+        self.assertEqual(2, len(evalelem3))
+        self.assertEqual("foo", evalelem3.find("a").text)
+        self.assertEqual("1", evalelem3.find("b").text)

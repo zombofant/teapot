@@ -21,11 +21,13 @@ import ast
 import collections
 import functools
 import logging
+import weakref
 
 import lxml.etree as etree
 
 import xsltea.errors
 import xsltea.exec
+import xsltea.template
 from .processor import TemplateProcessor
 from .namespaces import shared_ns
 
@@ -406,3 +408,354 @@ class IncludeProcessor(TemplateProcessor):
             postcode.extend(elem_postcode)
 
         return precode, elemcode, postcode
+
+
+class FunctionProcessor(TemplateProcessor):
+    """
+    The function processor allows to define functions inside templates. The
+    definition does not generate any elements (but preserves tail text). Upon
+    calling, the effect is similar to inserting the tree at the given position,
+    but slightly different. The tree is only compiled once, so that recursion is
+    possible without running into an infinite loop.
+
+    Defining a function is done using a ``tea:def`` element. The ``tea:def``
+    element may contain zero or more ``tea:arg`` elements, each declaring an
+    argument of the function. The ``@name`` attribute is required, it defines
+    the argument name. Argument names must not start with ``_`` and must be
+    valid python identifiers.
+
+    Arguments can be given a static (``mode="static"``, the default) or lazily
+    evaluated (``mode="lazy"``) default value. Static default values only allow
+    python literals, without any further expressions, because they are evaluated
+    at parse-time. Lazily evaluated values are evaluated in the context of the
+    *caller* right before calling. The evaluation is subject to the
+    *safety_level* of the processor.
+
+    Any elements and any text besides ``tea:arg`` elements are taken as body of
+    the function and will be replicated upon calling.
+
+    XML Syntax example::
+
+        <?xml version="1.0" ?>
+        …
+        <tea:def xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
+                 tea:name="foo">
+          <!-- declare required argument named `a` -->
+          <tea:arg name="a" />
+          <!-- declare argument named `b`, with default "foo" -->
+          <tea:arg mode="static" name="b" value="'foo' />
+          <!-- declare argument named `b`, with the default evaluated in
+               the scope of the *caller* -->
+          <tea:arg mode="lazy" name="b" value="arguments['some_arg']" />
+          <!-- function body ... -->
+        </tea:def>
+        …
+
+    To call a function, one uses an ``tea:call``. It must only contain
+    ``tea:pass`` elements, which define the arguments explicitly passed to the
+    function.
+
+    Each ``tea:pass`` element requires a ``name`` attribute, which refers to the
+    argument name to which the value shall be passed. The value is described by
+    the elements text, which is evaluated with the *safety_level* of the
+    processsor.
+
+    For more usage examples see the tests.
+    """
+
+    xmlns = shared_ns
+
+    staticmode = {
+        "static": True,
+        "lazy": False
+    }
+
+    template_libraries = weakref.WeakKeyDictionary()
+
+    prohibited_names = {
+        "makeelement",
+        "append_children",
+        "template_storage",
+        "href",
+        "request"
+    }
+
+    class Function:
+        implicit_arguments = [
+            "makeelement",
+            "template_storage",
+            "href",
+            "request"
+        ]
+
+        def __init__(self, name, body, arguments, safety_level, context):
+            static_defaults = {}
+            lazy_defaults = {}
+            argnames = set()
+            for name, (static, default) in arguments:
+                argnames.add(name)
+                if default:
+                    default = default[0]
+                    if static:
+                        default = ast.literal_eval(default)
+                        static_defaults[name] = default
+                    else:
+                        default = compile(
+                            default,
+                            context.filename,
+                            "eval",
+                            ast.PyCF_ONLY_AST).body
+                        safety_level.check_safety(default)
+                        lazy_defaults[name] = default
+
+            self.name = name
+            self.arguments = frozenset(argnames)
+            self.static_defaults = static_defaults
+            self.lazy_defaults = lazy_defaults
+
+            def_ast = compile("""\
+def func(append_children, makeelement, template_storage, href, request, {}):
+    pass""".format(
+        ", ".join(self.arguments)),
+                              context.filename,
+                              "exec",
+                              ast.PyCF_ONLY_AST)
+            def_ast.body[0].body[:] = body
+
+            globals_dict = dict(globals())
+            locals_dict = {}
+
+            def_code = compile(def_ast, context.filename, "exec")
+            exec(def_code, globals_dict, locals_dict)
+            self._func = functools.partial(
+                locals_dict["func"],
+                xsltea.template.Template.append_children)
+
+        def compose_call(self, template, argumentmap, context, sourceline):
+            arguments = {}
+            arguments.update({
+                k: compile(
+                    repr(v),
+                    context.filename,
+                    "eval",
+                    ast.PyCF_ONLY_AST).body
+                for k, v in self.static_defaults.items()})
+            arguments.update(self.lazy_defaults)
+            arguments.update(argumentmap)
+
+            missing_arguments = self.arguments - set(arguments.keys())
+            if missing_arguments:
+                raise ValueError(
+                    "Missing arguments to {}: {}".format(
+                        self.name,
+                        ", ".join(missing_arguments)))
+
+            argscode = ast.Dict([], [], lineno=sourceline, col_offset=0)
+            for name, value_ast in arguments.items():
+                argscode.keys.append(ast.Str(
+                    name,
+                    lineno=sourceline,
+                    col_offset=0))
+                argscode.values.append(value_ast)
+
+            # yield from self(**arguments)
+            return [ast.Expr(
+                ast.YieldFrom(
+                    ast.Call(
+                        ast.Subscript(
+                            ast.Name(
+                                "template_storage",
+                                ast.Load(),
+                                lineno=sourceline,
+                                col_offset=0),
+                            ast.Index(
+                                ast.Str(
+                                    template.store(self),
+                                    lineno=sourceline,
+                                    col_offset=0),
+                                lineno=sourceline,
+                                col_offset=0),
+                            ast.Load(),
+                            lineno=sourceline,
+                            col_offset=0),
+                        [
+                            ast.Name(
+                                argname,
+                                ast.Load(),
+                                lineno=sourceline,
+                                col_offset=0)
+                            for argname in self.implicit_arguments
+                        ],
+                        [],
+                        None,
+                        argscode,
+                        lineno=sourceline,
+                        col_offset=0),
+                    lineno=sourceline,
+                    col_offset=0),
+                lineno=sourceline,
+                col_offset=0)]
+
+        def __call__(self, *args, **kwargs):
+            return self._func(*args, **kwargs)
+
+    def __init__(self, safety_level=SafetyLevel.conservative, **kwargs):
+        super().__init__(**kwargs)
+        self._safety_level = safety_level
+        self.attrhooks = {}
+        self.elemhooks = {
+            (str(self.xmlns), "def"): [self.handle_def],
+            (str(self.xmlns), "call"): [self.handle_call],
+            (str(self.xmlns), "arg"): [
+                functools.partial(
+                    self.handle_use_outside_def_or_call,
+                    "tea:def")
+            ],
+            (str(self.xmlns), "pass"): [
+                functools.partial(
+                    self.handle_use_outside_def_or_call,
+                    "tea:call")
+            ],
+        }
+
+    def handle_use_outside_def_or_call(self, legitimate,
+                                       template, elem, context, offset):
+        raise ValueError("tea:{} was used outside {}".format(
+            elem.tag.split("}", 1)[1],
+            legitimate))
+
+    def swallow_elem(self, template, elem, context, offset):
+        return [], template.preserve_tail_code(elem, context), []
+
+    def _check_no_children(self, elem, name):
+        if len(elem):
+            raise ValueError("No children allowed for {}".format(
+                name))
+
+    def handle_def(self, template, elem, context, offset):
+        try:
+            name = elem.attrib[self.xmlns.name]
+        except KeyError as err:
+            raise ValueError("Missing required attribute on tea:def:"
+                             " @tea:{}".format(str(err).split("}")[1]))
+
+        library = self.template_libraries.setdefault(template, {})
+
+        arguments = {}
+        for argumentelem in elem.findall(self.xmlns.arg):
+            self._check_no_children(argumentelem, "tea:arg")
+            if argumentelem.text or len(argumentelem):
+                raise ValueError("tea:arg must be empty")
+
+            try:
+                argname = argumentelem.attrib["name"]
+            except KeyError as err:
+                raise ValueError("Missing required attribute on tea:arg: "
+                                 "@{}".format(str(err)))
+
+            if argname in arguments:
+                raise ValueError("Duplicate tea:arg element for argument"
+                                 " {}".format(argname))
+
+            if argname in self.prohibited_names:
+                raise ValueError("Argument name not allowed: {}".format(
+                    argname))
+
+            if not argname.isidentifier() or argname.startswith("_"):
+                raise ValueError("{} is not a valid argument name".format(
+                    argname))
+
+            try:
+                static = self.staticmode[argumentelem.get("mode", "static")]
+            except KeyError as err:
+                raise ValueError("Invalid value for tea:arg/@mode: {}".format(
+                    err))
+            try:
+                default = argumentelem.attrib["default"]
+            except KeyError as err:
+                arguments[argname] = (static, ())
+            else:
+                arguments[argname] = (static, (default,))
+
+
+        context.elemhooks[(str(self.xmlns), "arg")].insert(
+            0,
+            self.swallow_elem)
+        try:
+            body = template.build_childrenfun_body(elem, context)
+        finally:
+            context.elemhooks[(str(self.xmlns), "arg")].pop(0)
+
+        func = self.Function(
+            name,
+            body,
+            arguments.items(),
+            self._safety_level,
+            context)
+
+        library[name] = func
+
+        return [], template.preserve_tail_code(elem, context), []
+
+    def handle_call(self, template, elem, context, offset):
+        try:
+            name = elem.attrib[self.xmlns.name]
+            source = elem.get(self.xmlns.src)
+        except KeyError as err:
+            raise ValueError("Missing required attribute on tea:call:"
+                             " @tea:{}".format(str(err).split("}")[1]))
+
+        if source is not None:
+            source_template = loader.get_template(source)
+        else:
+            source_template = template
+
+        library = self.template_libraries.setdefault(source_template, {})
+
+        try:
+            func = library[name]
+        except KeyError as err:
+            if source is not None:
+                raise ValueError("Function {} is not defined in {}".format(
+                    str(err), source))
+            else:
+                raise ValueError("Function {} is not defined in this"
+                                 " template".format(str(err)))
+
+        arguments = {}
+        for child in elem:
+            if child.tag and child.tag != getattr(self.xmlns, "pass"):
+                raise ValueError("Unexpected child {} to"
+                                 " tea:call".format(elem.tag))
+            if not child.tag:
+                continue
+
+            try:
+                name = child.attrib["name"]
+            except KeyError as err:
+                raise ValueError(
+                    "Missing required attribute on tea:pass: @{}".format(
+                        str(err)))
+
+            if name in self.prohibited_names:
+                raise ValueError("Argument name not allowed: {}".format(
+                    argname))
+
+            if not child.text:
+                raise ValueError("Text of tea:pass must be non-empty and a valid"
+                                 " expression")
+
+            value_ast = compile(child.text,
+                                context.filename,
+                                "eval",
+                                ast.PyCF_ONLY_AST).body
+            self._safety_level.check_safety(value_ast)
+            arguments[name] = value_ast
+
+        elemcode = func.compose_call(template,
+                                     arguments,
+                                     context,
+                                     elem.sourceline or 0)
+        elemcode.extend(template.preserve_tail_code(elem, context))
+
+        return [], elemcode, []

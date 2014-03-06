@@ -255,6 +255,27 @@ class Template:
 
         return precode, elemcode, d, postcode
 
+    def build_childrenfun_body(self, elem, context):
+        """
+        Create and return a list of ast nodes which resemble the body of the
+        children function (see :meth:`compose_childrenfun`) for the given *elem*.
+        """
+        precode = []
+        midcode = []
+        postcode = []
+        for i, child in enumerate(elem):
+            child_precode, child_elemcode, child_postcode = \
+                self.parse_subtree(child, context, i)
+            precode.extend(child_precode)
+            midcode.extend(child_elemcode)
+            postcode.extend(child_postcode)
+
+        body = precode
+        body.extend(midcode)
+        body.extend(postcode)
+
+        return body
+
     def compose_childrenfun(self, elem, context, name):
         """
         Create *precode* declaring a function yielding all children of the given
@@ -274,19 +295,8 @@ def {}():
                                context.filename,
                                "exec",
                                ast.PyCF_ONLY_AST).body[0]
-        precode = []
-        midcode = []
-        postcode = []
-        for i, child in enumerate(elem):
-            child_precode, child_elemcode, child_postcode = \
-                self.parse_subtree(child, context, i)
-            precode.extend(child_precode)
-            midcode.extend(child_elemcode)
-            postcode.extend(child_postcode)
-
-        children_fun.body[:] = precode
-        children_fun.body.extend(midcode)
-        children_fun.body.extend(postcode)
+        children_fun.body[:] = self.build_childrenfun_body(
+            elem, context)
 
         if not children_fun.body:
             return []
