@@ -35,6 +35,7 @@ class FormProcessor(TemplateProcessor):
         self.attrhooks = {
             (str(self.xmlns), "field"): [self.handle_field],
             (str(self.xmlns), "form"): [self.handle_form],
+            (str(self.xmlns), "for-field"): [self.handle_for_field],
         }
         self.elemhooks = {
             (str(self.xmlns), "for-each-error"): [self.handle_for_each_error],
@@ -86,6 +87,23 @@ class FormProcessor(TemplateProcessor):
                 col_offset=0),
             fieldname,
             ast.Load(),
+            lineno=sourceline or 0,
+            col_offset=0)
+
+    def _get_id_ast(self, form_ast, descriptor_ast, sourceline):
+        return ast.Call(
+            ast.Attribute(
+                descriptor_ast,
+                "key",
+                ast.Load(),
+                lineno=sourceline or 0,
+                col_offset=0),
+            [
+                form_ast
+            ],
+            [],
+            None,
+            None,
             lineno=sourceline or 0,
             col_offset=0)
 
@@ -198,9 +216,30 @@ default_form = a""",
 
         return [], elemcode, None, None, []
 
+    def handle_for_field(self, template, elem, attrib, value, context):
+        try:
+            form = elem.get(self.xmlns.form, "default_form")
+        except KeyError as err:
+            raise ValueError(
+                "missing required attribute:"
+                " @form:{}".format(err))
+        form_ast = compile(form, context.filename, "eval", ast.PyCF_ONLY_AST).body
+        self._safety_level.check_safety(form_ast)
+
+        descriptor_ast = self._get_descriptor_ast(form_ast, value,
+                                                  elem.sourceline)
+
+        id_ast = self._get_id_ast(form_ast, descriptor_ast,
+                                  elem.sourceline)
+
+        return [], [], ast.Str("for",
+                               lineno=elem.sourceline or 0,
+                               col_offset=0), id_ast, []
+
     def handle_field(self, template, elem, attrib, value, context):
         try:
             form = elem.get(self.xmlns.form, "default_form")
+            no_id = getattr(self.xmlns, "no-id") in elem.attrib
         except KeyError as err:
             raise ValueError(
                 "missing required attribute:"
@@ -238,21 +277,8 @@ default_form = a""",
         namecode, valuecode, elemcode = handler(
             elem, form_ast, field_ast, context)
         if namecode is None:
-            namecode = ast.Call(
-                ast.Attribute(
-                    descriptor_ast,
-                    "key",
-                    ast.Load(),
-                    lineno=elem.sourceline or 0,
-                    col_offset=0),
-                [
-                    form_ast
-                ],
-                [],
-                None,
-                None,
-                lineno=elem.sourceline or 0,
-                col_offset=0)
+            namecode = self._get_id_ast(form_ast, descriptor_ast,
+                                        elem.sourceline or 0)
         if valuecode is None:
             valuecode = field_ast
 
@@ -290,6 +316,14 @@ if not isinstance(_form, template_storage[{!r}]):
 
         elemcode[:0] = validation_code
         elemcode.extend(settercode)
+
+        if not no_id:
+            idcode = compile("""\
+elem.set("id", elem.get("name"))""",
+                             context.filename,
+                             "exec",
+                             ast.PyCF_ONLY_AST).body
+            elemcode.extend(idcode)
 
         return [], elemcode, None, None, []
 
