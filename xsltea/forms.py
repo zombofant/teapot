@@ -11,6 +11,7 @@ import logging
 import teapot.forms
 
 import xsltea.safe
+import xsltea.template
 
 from .processor import TemplateProcessor
 from .namespaces import NamespaceMeta, xhtml_ns
@@ -256,39 +257,36 @@ default_form = a""",
             valuecode = field_ast
 
         settercode = compile("""\
-elem.set("name", a)
-tmp_value = b
+elem.set("name", _name)
+tmp_value = _value
 elem.set("value", str(tmp_value) if tmp_value is not None else "")
-if b in a.errors:
-    elem.set("class", {!r} + elem.get("class", ""))""".format(
-        self._errorclass),
+if _descriptor in _form.errors:
+    elem.set("class", _errorclass + elem.get("class", ""))""",
                              context.filename,
                              "exec",
-                             ast.PyCF_ONLY_AST).body
+                             ast.PyCF_ONLY_AST)
 
-        if self._errorclass:
-            settercode[3].test.left = descriptor_ast
-            settercode[3].test.comparators[0].value = form_ast
-        else:
-            del settercode[3]
-        if valuecode:
-            settercode[1].value = valuecode
-        else:
+        settercode = xsltea.template.replace_ast_names(settercode, {
+            "_name": namecode,
+            "_value": valuecode,
+            "_form": form_ast,
+            "_descriptor": descriptor_ast,
+            "_errorclass": ("" if self._errorclass is None
+                            else (self._errorclass + " "))}).body
+
+        if valuecode is False:
             del settercode[1:3]
-        if namecode:
-            settercode[0].value.args[1] = namecode
-        else:
-            del settercode[0]
 
         validation_code = compile("""\
-if not isinstance(form, template_storage[{!r}]):
+if not isinstance(_form, template_storage[{!r}]):
     raise ValueError("Not a valid form object: {{}}".format(
         form))""".format(template.store(teapot.forms.Form)),
                                   context.filename,
                                   "exec",
-                                  ast.PyCF_ONLY_AST).body
+                                  ast.PyCF_ONLY_AST)
 
-        validation_code[0].test.operand.args[0] = form_ast
+        validation_code = xsltea.template.replace_ast_names(validation_code, {
+            "_form": form_ast}).body
 
         elemcode[:0] = validation_code
         elemcode.extend(settercode)
