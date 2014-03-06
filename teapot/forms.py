@@ -130,6 +130,9 @@ class field:
         except KeyError:
             pass
 
+    def key(self, instance):
+        return instance.key() + self.name
+
     def load(self, instance, post_data):
         try:
             values = post_data.pop(self.name)
@@ -171,6 +174,24 @@ class RowList(teapot.utils.InstrumentedList):
     def _release_item(self, item):
         item.parent = None
 
+    def _map_index(self, sequence, slice):
+        for i, item in zip(range(*slice.indices(len(self))), sequence):
+            item.index = i
+            yield item
+
+    def __getitem__(self, index):
+        item_s = super().__getitem__(index)
+        if isinstance(index, slice):
+            return list(self._map_index(item_s, index))
+        else:
+            item_s.index = index
+            return item_s
+
+    def __iter__(self):
+        return self._map_index(
+            super().__iter__(),
+            slice(None))
+
 class rows:
     @staticmethod
     def _splitkey(name, key):
@@ -210,6 +231,9 @@ class rows:
 
     def __delete__(self, instance):
         raise AttributeError("deleting a rows instance is not supported")
+
+    def key(self, instance):
+        return instance.key() + self.name
 
     def load(self, instance, post_data):
         prefix = self.name + "["
@@ -253,6 +277,9 @@ class Form(metaclass=Meta):
         if post_data is not None:
             self.errors = self.fill_post_data(post_data)
 
+    def key(self):
+        return ""
+
     def fill_post_data(self, post_data):
         errors = {}
         for descriptor in self.field_descriptors:
@@ -266,4 +293,13 @@ class Form(metaclass=Meta):
 class Row(Form, metaclass=RowMeta):
     def __init__(self, *args, **kwargs):
         self.parent = None
+        self.index = None
         super().__init__(*args, **kwargs)
+
+    def key(self):
+        if self.parent is not None:
+            return "{}[{}].".format(
+                self.parent.field.key(self.parent.instance),
+                "" if self.index is None else self.index)
+        else:
+            return ""

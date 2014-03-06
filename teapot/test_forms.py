@@ -16,6 +16,11 @@ class TestWebForm(unittest.TestCase):
         def test_int_with_default(self):
             return 10
 
+    def test_keys(self):
+        form = self.Form()
+        self.assertEqual("", form.key())
+        self.assertEqual("test_int", self.Form.test_int.key(form))
+
     def test_validation(self):
         instance = self.Form()
         self.assertIsNone(instance.test_int)
@@ -107,3 +112,45 @@ class TestWebForm(unittest.TestCase):
                 FormWithRows.Row.with_foo("bar"),
                 FormWithRows.Row.with_foo("baz")
             ])
+
+    def test_row_keys(self):
+        class FormWithRows(teapot.forms.Form):
+            class Row(teapot.forms.Row):
+                @classmethod
+                def with_foo(cls, foo):
+                    instance = cls()
+                    instance.foo = foo
+                    return instance
+
+                @teapot.forms.field
+                def foo(self, value):
+                    return str(value)
+
+                def __eq__(self, other):
+                    return self.foo == other.foo
+
+                def __ne__(self, other):
+                    return not (self == other)
+
+                def __repr__(self):
+                    return "<Row foo={!r}>".format(self.foo)
+
+                __hash__ = None
+
+            testrows = teapot.forms.rows(Row)
+
+        instance = FormWithRows()
+        instance.testrows.append(instance.Row())
+        instance.testrows.append(instance.Row())
+        instance.testrows.append(instance.Row())
+        instance.testrows.append(instance.Row())
+
+        self.assertEqual(
+            "",
+            instance.key())
+        self.assertEqual(
+            "testrows[0].",
+            instance.testrows[0].key())
+        self.assertEqual(
+            "testrows[0].foo",
+            FormWithRows.Row.foo.key(instance.testrows[0]))

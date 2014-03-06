@@ -237,9 +237,21 @@ default_form = a""",
         namecode, valuecode, elemcode = handler(
             elem, form_ast, field_ast, context)
         if namecode is None:
-            namecode = ast.Str(value,
-                               lineno=elem.sourceline or 0,
-                               col_offset=0)
+            namecode = ast.Call(
+                ast.Attribute(
+                    descriptor_ast,
+                    "key",
+                    ast.Load(),
+                    lineno=elem.sourceline or 0,
+                    col_offset=0),
+                [
+                    form_ast
+                ],
+                [],
+                None,
+                None,
+                lineno=elem.sourceline or 0,
+                col_offset=0)
         if valuecode is None:
             valuecode = field_ast
 
