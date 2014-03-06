@@ -22,7 +22,7 @@ class TestWebForm(unittest.TestCase):
 
     def test_keys(self):
         form = self.Form()
-        self.assertEqual("", form.key())
+        self.assertEqual("", form.get_html_field_key())
         self.assertEqual("test_int", self.Form.test_int.key(form))
 
     def test_validation(self):
@@ -171,10 +171,10 @@ class TestWebForm(unittest.TestCase):
 
         self.assertEqual(
             "",
-            instance.key())
+            instance.get_html_field_key())
         self.assertEqual(
             "testrows[0].",
-            instance.testrows[0].key())
+            instance.testrows[0].get_html_field_key())
         self.assertEqual(
             "testrows[0].foo",
             FormWithRows.Row.foo.key(instance.testrows[0]))

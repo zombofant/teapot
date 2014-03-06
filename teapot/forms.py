@@ -131,7 +131,7 @@ class field:
             pass
 
     def key(self, instance):
-        return instance.key() + self.name
+        return instance.get_html_field_key() + self.name
 
     def load(self, instance, post_data):
         try:
@@ -253,7 +253,7 @@ class rows:
         raise AttributeError("deleting a rows instance is not supported")
 
     def key(self, instance):
-        return instance.key() + self.name
+        return instance.get_html_field_key() + self.name
 
     def load(self, instance, post_data):
         prefix = self.name + "["
@@ -297,7 +297,7 @@ class Form(metaclass=Meta):
         if post_data is not None:
             self.errors = self.fill_post_data(post_data)
 
-    def key(self):
+    def get_html_field_key(self):
         return ""
 
     def fill_post_data(self, post_data):
@@ -316,7 +316,7 @@ class Row(Form, metaclass=RowMeta):
         self.index = None
         super().__init__(*args, **kwargs)
 
-    def key(self):
+    def get_html_field_key(self):
         if self.parent is not None:
             return "{}[{}].".format(
                 self.parent.field.key(self.parent.instance),
