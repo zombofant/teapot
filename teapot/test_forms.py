@@ -178,3 +178,44 @@ class TestWebForm(unittest.TestCase):
         self.assertEqual(
             "testrows[0].foo",
             FormWithRows.Row.foo.key(instance.testrows[0]))
+
+    def test_action_resolution(self):
+        class FormWithRows(teapot.forms.Form):
+            class Row(teapot.forms.Row):
+                @classmethod
+                def with_foo(cls, foo):
+                    instance = cls()
+                    instance.foo = foo
+                    return instance
+
+                @teapot.forms.field
+                def foo(self, value):
+                    return str(value)
+
+                def __eq__(self, other):
+                    return self.foo == other.foo
+
+                def __ne__(self, other):
+                    return not (self == other)
+
+                def __repr__(self):
+                    return "<Row foo={!r}>".format(self.foo)
+
+                __hash__ = None
+
+            testrows = teapot.forms.rows(Row)
+
+        instance = FormWithRows()
+        instance.testrows.append(instance.Row())
+        instance.testrows.append(instance.Row())
+        instance.testrows.append(instance.Row())
+        instance.testrows.append(instance.Row())
+
+        self.assertEqual(
+            (instance.testrows[2], "test"),
+            instance.find_action_by_key("testrows[2].test"))
+
+        self.assertEqual(
+            (instance.testrows[1], "test"),
+            instance.find_action({
+                "action:testrows[1].test": []}))

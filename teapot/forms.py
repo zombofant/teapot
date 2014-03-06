@@ -60,6 +60,18 @@ import operator
 
 import teapot.utils
 
+ACTION_PREFIX = "action:"
+
+def parse_key(key):
+    parts = key.split(".")
+    for i, part in enumerate(list(parts)):
+        name, bracket, subscript = part.partition("[")
+        if bracket is not None and subscript.endswith("]"):
+            parts[i] = (name, int(subscript[:-1]))
+        else:
+            parts[i] = (name, )
+    return parts
+
 class ValidationError(ValueError):
     """
     A value error related to field validation. Indicates that the error *err*
@@ -105,11 +117,18 @@ class Meta(type):
             if isinstance(value, (field, rows))
         ]
 
+        action_descriptors = [
+            action_descriptor
+            for action_descriptor in namespace.values()
+            if isinstance(action_descriptor, action)
+        ]
+
         for base in reversed(bases):
             if hasattr(base, "field_descriptors"):
                 field_descriptors[:0] = base.field_descriptors
 
         namespace["field_descriptors"] = field_descriptors
+        namespace["action_descriptors"] = action_descriptors
         cls = super().__new__(mcls, name, bases, namespace)
 
         for name, descriptor in namespace.items():
@@ -451,6 +470,41 @@ class Form(metaclass=Meta):
                 errors[descriptor] = err
 
         return errors
+
+    def find_action_by_key(self, key):
+        try:
+            path = parse_key(key)
+        except ValueError:
+            return None
+
+        node = self
+        for item in path[:-1]:
+            name = item[0]
+            try:
+                node = getattr(node, name)
+            except AttributeError:
+                return None
+
+            for subscript in item[1:]:
+                try:
+                    node = node[subscript]
+                except (IndexError, KeyError):
+                    return None
+
+        return node, path[-1][0]
+
+    def find_action(self, post_data):
+        possible_actions = [
+            key for key in post_data.keys()
+            if key.startswith(ACTION_PREFIX)]
+        if not possible_actions:
+            return None
+
+        action = possible_actions[0]
+        del possible_actions
+
+        action = action[len(ACTION_PREFIX):]
+        return self.find_action_by_key(action)
 
 class Row(Form, metaclass=RowMeta):
     """
