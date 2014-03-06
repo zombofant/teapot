@@ -488,7 +488,7 @@ class FunctionProcessor(TemplateProcessor):
             "request"
         ]
 
-        def __init__(self, name, body, arguments, safety_level, context):
+        def __init__(self, name, arguments, safety_level, context):
             static_defaults = {}
             lazy_defaults = {}
             argnames = set()
@@ -513,13 +513,16 @@ class FunctionProcessor(TemplateProcessor):
             self.static_defaults = static_defaults
             self.lazy_defaults = lazy_defaults
 
-            def_ast = compile("""\
+            self._prototype = compile("""\
 def func(append_children, makeelement, template_storage, href, request, {}):
     pass""".format(
         ", ".join(self.arguments)),
                               context.filename,
                               "exec",
                               ast.PyCF_ONLY_AST)
+
+        def finalize_body(self, body, context):
+            def_ast = self._prototype
             def_ast.body[0].body[:] = body
 
             globals_dict = dict(globals())
@@ -530,6 +533,7 @@ def func(append_children, makeelement, template_storage, href, request, {}):
             self._func = functools.partial(
                 locals_dict["func"],
                 xsltea.template.Template.append_children)
+
 
         def compose_call(self, template, argumentmap, context, sourceline):
             arguments = {}
@@ -677,23 +681,27 @@ def func(append_children, makeelement, template_storage, href, request, {}):
             else:
                 arguments[argname] = (static, (default,))
 
-
-        context.elemhooks[(str(self.xmlns), "arg")].insert(
-            0,
-            self.swallow_elem)
-        try:
-            body = template.build_childrenfun_body(elem, context)
-        finally:
-            context.elemhooks[(str(self.xmlns), "arg")].pop(0)
-
         func = self.Function(
             name,
-            body,
             arguments.items(),
             self._safety_level,
             context)
-
         library[name] = func
+
+        try:
+
+            context.elemhooks[(str(self.xmlns), "arg")].insert(
+                0,
+                self.swallow_elem)
+            try:
+                body = template.build_childrenfun_body(elem, context)
+            finally:
+                context.elemhooks[(str(self.xmlns), "arg")].pop(0)
+        except:
+            del library[name]
+            raise
+
+        func.finalize_body(body, context)
 
         return [], template.preserve_tail_code(elem, context), []
 
