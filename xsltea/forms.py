@@ -36,6 +36,7 @@ class FormProcessor(TemplateProcessor):
             (str(self.xmlns), "field"): [self.handle_field],
             (str(self.xmlns), "form"): [self.handle_form],
             (str(self.xmlns), "for-field"): [self.handle_for_field],
+            (str(self.xmlns), "action"): [self.handle_action],
         }
         self.elemhooks = {
             (str(self.xmlns), "for-each-error"): [self.handle_for_each_error],
@@ -235,6 +236,53 @@ default_form = a""",
         return [], [], ast.Str("for",
                                lineno=elem.sourceline or 0,
                                col_offset=0), id_ast, []
+
+    def handle_action(self, template, elem, attrib, value, context):
+        try:
+            form = elem.get(self.xmlns.form, "default_form")
+        except KeyError as err:
+            raise ValueError(
+                "missing required attribute:"
+                " @form:{}".format(err))
+        form_ast = compile(form, context.filename, "eval", ast.PyCF_ONLY_AST).body
+        self._safety_level.check_safety(form_ast)
+
+        name_ast = ast.Str("name",
+                           lineno=elem.sourceline or 0,
+                           col_offset=0)
+
+        value_ast = ast.BinOp(
+            ast.BinOp(
+                ast.Str(teapot.forms.ACTION_PREFIX,
+                        lineno=elem.sourceline or 0,
+                        col_offset=0),
+                ast.Add(lineno=elem.sourceline or 0,
+                        col_offset=0),
+                ast.Call(
+                    ast.Attribute(
+                        form_ast,
+                        "get_html_field_key",
+                        ast.Load(),
+                        lineno=elem.sourceline or 0,
+                        col_offset=0),
+                    [],
+                    [],
+                    None,
+                    None,
+                    lineno=elem.sourceline or 0,
+                    col_offset=0),
+                lineno=elem.sourceline or 0,
+                col_offset=0),
+            ast.Add(lineno=elem.sourceline or 0,
+                    col_offset=0),
+            ast.Str(value,
+                    lineno=elem.sourceline or 0,
+                    col_offset=0),
+            lineno=elem.sourceline or 0,
+            col_offset=0)
+
+        return [], [], name_ast, value_ast, []
+
 
     def handle_field(self, template, elem, attrib, value, context):
         try:

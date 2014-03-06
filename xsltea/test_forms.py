@@ -57,6 +57,22 @@ class TestFormProcessor(unittest.TestCase):
         form:form="arguments['form']">foo</form:for-each-error>
 </test>"""
 
+    xmlsrc_for_field = """\
+<test
+    xmlns="http://www.w3.org/1999/xhtml"
+    xmlns:form="https://xmlns.zombofant.net/xsltea/form">
+    <label form:for-field="field" form:form="arguments['form']" />
+</test>"""
+
+    xmlsrc_action = """\
+<test
+    xmlns="http://www.w3.org/1999/xhtml"
+    xmlns:form="https://xmlns.zombofant.net/xsltea/form">
+    <input type="submit"
+           form:form="arguments['form']"
+           form:action="update" />
+</test>"""
+
 
     def setUp(self):
         self._loader = xsltea.template.XMLTemplateLoader()
@@ -156,3 +172,15 @@ class TestFormProcessor(unittest.TestCase):
         })
 
         self.assertIsNone(tree.getroot().text)
+
+    def test_for_field(self):
+        tree = self._process_with_form(self.xmlsrc_for_field)
+        self.assertEqual(
+            "field",
+            tree.getroot().find(xhtml_ns.label).get("for"))
+
+    def test_action(self):
+        tree = self._process_with_form(self.xmlsrc_action)
+        self.assertEqual(
+            "action:update",
+            tree.getroot().find(xhtml_ns.input).get("name"))

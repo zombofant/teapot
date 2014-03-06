@@ -117,18 +117,11 @@ class Meta(type):
             if isinstance(value, (field, rows))
         ]
 
-        action_descriptors = [
-            action_descriptor
-            for action_descriptor in namespace.values()
-            if isinstance(action_descriptor, action)
-        ]
-
         for base in reversed(bases):
             if hasattr(base, "field_descriptors"):
                 field_descriptors[:0] = base.field_descriptors
 
         namespace["field_descriptors"] = field_descriptors
-        namespace["action_descriptors"] = action_descriptors
         cls = super().__new__(mcls, name, bases, namespace)
 
         for name, descriptor in namespace.items():
