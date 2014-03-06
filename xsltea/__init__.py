@@ -40,7 +40,8 @@ from .template import Template, XMLTemplateLoader
 from .errors import TemplateEvaluationError
 from .exec import ExecProcessor
 from .forms import FormProcessor
-from .safe import ForeachProcessor, IncludeProcessor, SafetyLevel
+from .safe import ForeachProcessor, IncludeProcessor, SafetyLevel, \
+    FunctionProcessor
 from .pipeline import Pipeline, XHTMLPipeline, XMLPipeline, TransformLoader
 
 def make_pipeline(
