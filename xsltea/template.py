@@ -36,6 +36,26 @@ xml_parser = etree.XMLParser(ns_clean=True,
 
 logger = logging.getLogger(__name__)
 
+class ReplaceAstNames(ast.NodeTransformer):
+    def __init__(self, nodemap):
+        self._nodemap = nodemap
+
+    def visit_Name(self, node):
+        try:
+            replacement = self._nodemap[node.id]
+        except KeyError:
+            return node
+
+        if isinstance(replacement, str):
+            replacement = \
+                ast.Str(replacement,
+                        lineno=node.lineno,
+                        col_offset=node.col_offset)
+        return replacement
+
+def replace_ast_names(node, nodemap):
+    return ReplaceAstNames(nodemap).visit(node)
+
 class _TreeFormatter:
     """
     Private helper class to lazily format a *tree* for passing to logging
@@ -273,10 +293,6 @@ def {}():
 
         return [children_fun]
 
-    def _patch_element_constructor(self, call, elem, attrdict):
-        call.args[0].s = elem.tag
-        call.keywords[0].value = attrdict
-
     def default_subtree(self, elem, context, offset=0):
         """
         Create code for the element and its children. This is the identity
@@ -289,11 +305,11 @@ def {}():
         childfun_name = "children{}".format(offset)
         precode = self.compose_childrenfun(elem, context, childfun_name)
         elemcode = compile("""\
-elem = makeelement("", attrib={{}})
-elem.text = ""
-elem.tail = ""
-append_children(elem, {}())
-yield elem""".format(childfun_name),
+elem = makeelement(_a, attrib=_b)
+elem.text = _c
+elem.tail = _d
+append_children(elem, _e())
+yield elem""",
                            context.filename,
                            "exec",
                            ast.PyCF_ONLY_AST).body
@@ -303,19 +319,26 @@ yield elem""".format(childfun_name),
             # remove children statement
             del elemcode[3]
 
-        if elem.tail:
-            elemcode[2].value.s = elem.tail
-        else:
+        if not elem.tail:
             del elemcode[2]
 
-        if elem.text:
-            elemcode[1].value.s = elem.text
-        else:
+        if not elem.text:
             del elemcode[1]
 
         attr_precode, attr_elemcode, attrdict, attr_postcode = \
             self.compose_attrdict(elem, context)
-        self._patch_element_constructor(elemcode[0].value, elem, attrdict)
+        for item in elemcode:
+            replace_ast_names(item, {
+                "_a": elem.tag,
+                "_b": attrdict,
+                "_c": elem.text,
+                "_d": elem.tail,
+                "_e": ast.Name(
+                    childfun_name,
+                    ast.Load(),
+                    lineno=elem.sourceline or 0,
+                    col_offset=0)
+                })
 
         if precode:
             elemcode[-2:-2] = attr_elemcode
@@ -354,10 +377,10 @@ yield elem""".format(childfun_name),
 
         rootmod = compile("""\
 def root(append_children, template_storage, href, request, arguments):
-    elem = etree.Element("", attrib={{}})
+    elem = etree.Element(_a, attrib=_b)
     makeelement = elem.makeelement
-    elem.text = ""
-    append_children(elem, {}())
+    elem.text = _c
+    append_children(elem, _d())
     return elem.getroottree()""".format(childfun_name),
                           context.filename,
                           "exec",
@@ -365,14 +388,22 @@ def root(append_children, template_storage, href, request, arguments):
         rootfun = rootmod.body[0]
         attr_precode, attr_elemcode, attrdict, attr_postcode = \
             self.compose_attrdict(root, context)
-        self._patch_element_constructor(rootfun.body[0].value, root, attrdict)
+
+        replace_ast_names(rootfun, {
+            "_a": root.tag,
+            "_b": attrdict,
+            "_c": root.text,
+            "_d": ast.Name(
+                childfun_name,
+                ast.Load(),
+                lineno=root.sourceline or 0,
+                col_offset=0)
+            })
 
         if not precode:
             del rootfun.body[3]
 
-        if root.text:
-            rootfun.body[2].value.s = root.text
-        else:
+        if not root.text:
             del rootfun.body[2]
 
         if precode:
