@@ -24,5 +24,6 @@ class SessionMixin:
         request.dbsession = self._sessionmaker()
 
     def post_response_cleanup(self, request):
+        request.dbsession.close()
         del request.dbsession
         super().post_response_cleanup(request)
