@@ -269,6 +269,25 @@ class ForeachProcessor(TemplateProcessor):
     @classmethod
     def create_foreach(cls, template, elem, context, offset,
                        bind_ast, iter_ast):
+        """
+        Create *precode*, *elemcode* and *postcode* for a for-loop as for
+        example created by tea:for-each.
+
+        Besides the usual hook arguments, it requires AST nodes which provide
+        (a) the iterable over which to iterate and (b) the tuple of names or the
+        name to bind each iteration turns result to (that is, the part which
+        usually is between the ``for`` and the ``in`` in python), passed as
+        arguments to *iter_ast* and *bind_ast*.
+
+        It is expected that both ASTs have already been checked for safety by
+        the caller. The *bind_ast* must be in :class:`ast.Save` context.
+
+        The loops body is created from the children of *elem*, just like with
+        ``tea:for-each``.
+
+        Returns a tuple of lists which contain the *precode*, *elemcode* and
+        *postcode*.
+        """
         childfun_name = "children{}".format(offset)
         precode = template.compose_childrenfun(elem, context, childfun_name)
 
