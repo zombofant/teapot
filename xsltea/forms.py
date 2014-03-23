@@ -167,18 +167,12 @@ class FormProcessor(TemplateProcessor):
                 [errors_attr],
                 lineno=elem.sourceline or 0,
                 col_offset=0),
-            ast.List(
-                [
-                    ast.Subscript(
-                        errors_attr,
-                        ast.Index(
-                            descriptor_ast,
-                            lineno=elem.sourceline or 0,
-                            col_offset=0),
-                        ast.Load(),
-                        lineno=elem.sourceline or 0,
-                        col_offset=0)
-                ],
+            ast.Subscript(
+                errors_attr,
+                ast.Index(
+                    descriptor_ast,
+                    lineno=elem.sourceline or 0,
+                    col_offset=0),
                 ast.Load(),
                 lineno=elem.sourceline or 0,
                 col_offset=0),

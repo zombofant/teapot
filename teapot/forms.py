@@ -101,6 +101,9 @@ class ValidationError(ValueError):
         self.field = field
         self.instance = instance
 
+    def register(self):
+        self.instance.add_error(self.field, self)
+
 class Meta(type):
     """
     A metaclass used to describe :class:`Form`. It takes care of collecting all
@@ -424,6 +427,12 @@ class Form(metaclass=Meta):
     a dict ``{ name => [value] }``, that is, mapping the field names to a list
     of values.
 
+    Instead of or in addition to *post_data*, *request* can be given. If
+    *request* is given instead of *post_data*, the POST data is retrieved from
+    the *request* object. If the *request* object is given, :meth:`postvalidate`
+    is called with the *request* as argument after the POST data has been
+    loaded, and before the error dict is cleaned up.
+
     On non-empty construction, the dict is parsed for data and the
     :attr:`errors` attribute is filled accordingly.
 
@@ -439,12 +448,23 @@ class Form(metaclass=Meta):
        *post_data* dict.
 
     """
-    def __init__(self, *args, post_data=None, **kwargs):
+    def __init__(self, *args, request=None, post_data=None, **kwargs):
         self.fields = {}
         self.errors = {}
         super().__init__(*args, **kwargs)
+        post_data = post_data or (
+            request.post_data if request is not None else None)
         if post_data is not None:
             self.errors = self.fill_post_data(post_data)
+        if request is not None:
+            self.postvalidate(request)
+        for k in list(self.errors.keys()):
+            if not self.errors[k]:
+                # remove empty error lists
+                del self.errors[k]
+
+    def add_error(self, field, exc):
+        self.errors.setdefault(field, []).append(exc)
 
     def get_html_field_key(self):
         """
@@ -460,7 +480,7 @@ class Form(metaclass=Meta):
             try:
                 descriptor.load(self, post_data)
             except ValidationError as err:
-                errors[descriptor] = err
+                err.register()
 
         return errors
 
@@ -498,6 +518,17 @@ class Form(metaclass=Meta):
 
         action = action[len(ACTION_PREFIX):]
         return self.find_action_by_key(action)
+
+    def postvalidate(self, request):
+        """
+        This method is called from within the constructor if the optional
+        *request* keyword argument has been passed, after all POST data has been
+        loaded.
+
+        Note that this method is always called, even if errors occured during
+        validation. As errors are cumulative, this allows to display full error
+        messages right from the beginning.
+        """
 
 class Row(Form, metaclass=RowMeta):
     """

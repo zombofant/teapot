@@ -152,7 +152,7 @@ class TestFormProcessor(unittest.TestCase):
     def test_for_each_error(self):
         template = self._load_xml(self.xmlsrc_for_each_error)
         form = Form()
-        form.errors[Form.field] = "test"
+        form.errors[Form.field] = ["test"]
         tree = template.process({
             "form": form
         })
