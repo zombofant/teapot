@@ -415,7 +415,7 @@ a.strftime({!r})""".format(part),
                                context.filename,
                                "eval",
                                ast.PyCF_ONLY_AST).body
-                code.func = obj_ast
+                code.func.value = obj_ast
                 return code
             else:
                 return ast.Str(part,
@@ -437,10 +437,14 @@ a.strftime({!r})""".format(part),
 
             valuecode = ast.BinOp(
                 precode,
-                "+",
+                ast.Add(
+                    lineno=elem.sourceline or 0,
+                    col_offset=0),
                 ast.BinOp(
                     secondscode,
-                    "+",
+                    ast.Add(
+                        lineno=elem.sourceline or 0,
+                        col_offset=0),
                     postcode,
                     lineno=elem.sourceline or 0,
                     col_offset=0),
