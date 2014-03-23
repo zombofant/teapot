@@ -157,23 +157,55 @@ class Pipeline:
 
         yield handler.send(tree)
 
-    def _decorated(self, __arguments, __callable, __template_name, __request,
-                   *args, **kwargs):
-        template = self.loader.get_template(__template_name)
-        template_args = dict(__arguments)
-        decorated_iter = iter(__callable(*args, **kwargs))
+    def _decorated_process(self,
+                           arguments,
+                           template,
+                           request,
+                           decorated_iter):
+        template_args = dict(arguments)
         response = next(decorated_iter)
 
-        transform_iter = iter(self.apply_transforms(__request))
+        transform_iter = iter(self.apply_transforms(request))
         content_type = next(transform_iter)
         response.content_type = content_type
         yield response
 
         user_template_args, user_transform_args = next(decorated_iter)
         template_args.update(user_template_args)
-        tree = template.process(template_args, request=__request)
+        tree = template.process(template_args, request=request)
 
         yield transform_iter.send((tree, user_transform_args))
+
+    def _decorated(self, __arguments, __callable, __template_name, __request,
+                   *args, **kwargs):
+        template = self.loader.get_template(__template_name)
+        return self._decorated_process(
+            __arguments,
+            template,
+            __request,
+            iter(__callable(*args, **kwargs)))
+
+    def _decorated_variable_template(self, __arguments, __callable, __request,
+                                     *args, **kwargs):
+        decorated_iter = iter(__callable(*args, **kwargs))
+        template_name = next(decorated_iter)
+        template = self.loader.get_template(template_name)
+
+        return self._decorated_process(
+            __arguments,
+            template,
+            __request,
+            decorated_iter)
+
+    def _post_process_decorated(self, decorated, callable):
+        decorated.__name__ = callable.__name__
+        decorated.__annotations__.update(callable.__annotations__)
+        decorated = teapot.routing.make_routable([])(decorated)
+        info = teapot.getrouteinfo(decorated)
+        info.selectors.append(
+            teapot.routing.selectors.content_type(
+                *self.output_types.keys()))
+        return decorated
 
     def with_template(self, template_name, arguments=None):
         if arguments is None:
@@ -189,15 +221,25 @@ class Pipeline:
                           _Pipeline__xsltea_request_object: teapot.request.Request,
                           **kwargs):
                 return decorated_delegate(__xsltea_request_object, *args, **kwargs)
+            return self._post_process_decorated(decorated, callable)
+        return decorator
 
-            decorated.__name__ = callable.__name__
-            decorated.__annotations__.update(callable.__annotations__)
-            decorated = teapot.routing.make_routable([])(decorated)
-            info = teapot.getrouteinfo(decorated)
-            info.selectors.append(
-                teapot.routing.selectors.content_type(
-                    *self.output_types.keys()))
-            return decorated
+    def with_variable_template(self, arguments=None):
+        if arguments is None:
+            arguments = {}
+
+        def decorator(callable):
+            decorated_delegate = functools.partial(
+                self._decorated_variable_template,
+                arguments,
+                callable)
+
+            def decorated(*args,
+                          _Pipeline__xsltea_request_object: teapot.request.Request,
+                          **kwargs):
+                return decorated_delegate(__xsltea_request_object,
+                                          *args, **kwargs)
+            return self._post_process_decorated(decorated, callable)
         return decorator
 
 class XMLPipeline(Pipeline):
