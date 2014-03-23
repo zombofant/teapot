@@ -273,6 +273,15 @@ class Template:
         body.extend(midcode)
         body.extend(postcode)
 
+        body.append(ast.Return(
+            ast.List(
+                [],
+                ast.Load(),
+                lineno=elem.sourceline or 0,
+                col_offset=0),
+            lineno=elem.sourceline or 0,
+            col_offset=0))
+
         return body
 
     def compose_childrenfun(self, elem, context, name):
