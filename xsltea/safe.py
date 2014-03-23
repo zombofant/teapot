@@ -483,7 +483,6 @@ class FunctionProcessor(TemplateProcessor):
     class Function:
         implicit_arguments = [
             "makeelement",
-            "template_storage",
             "href",
             "request"
         ]
@@ -492,21 +491,23 @@ class FunctionProcessor(TemplateProcessor):
             static_defaults = {}
             lazy_defaults = {}
             argnames = set()
-            for name, (static, default) in arguments:
-                argnames.add(name)
-                if default:
-                    default = default[0]
-                    if static:
-                        default = ast.literal_eval(default)
-                        static_defaults[name] = default
-                    else:
-                        default = compile(
-                            default,
-                            context.filename,
-                            "eval",
-                            ast.PyCF_ONLY_AST).body
-                        safety_level.check_safety(default)
-                        lazy_defaults[name] = default
+            for argname, (static, default) in arguments:
+                argnames.add(argname)
+                print(argname, static, default)
+                if not default:
+                    continue
+                default = default[0]
+                if static:
+                    default = ast.literal_eval(default)
+                    static_defaults[argname] = default
+                else:
+                    default = compile(
+                        default,
+                        context.filename,
+                        "eval",
+                        ast.PyCF_ONLY_AST).body
+                    safety_level.check_safety(default)
+                    lazy_defaults[argname] = default
 
             self.name = name
             self.arguments = frozenset(argnames)
@@ -514,14 +515,14 @@ class FunctionProcessor(TemplateProcessor):
             self.lazy_defaults = lazy_defaults
 
             self._prototype = compile("""\
-def func(append_children, makeelement, template_storage, href, request, {}):
+def func(append_children, template_storage, makeelement, href, request, {}):
     pass""".format(
         ", ".join(self.arguments)),
                               context.filename,
                               "exec",
                               ast.PyCF_ONLY_AST)
 
-        def finalize_body(self, body, context):
+        def finalize_body(self, template, body, context):
             def_ast = self._prototype
             def_ast.body[0].body[:] = body
 
@@ -532,7 +533,8 @@ def func(append_children, makeelement, template_storage, href, request, {}):
             exec(def_code, globals_dict, locals_dict)
             self._func = functools.partial(
                 locals_dict["func"],
-                xsltea.template.Template.append_children)
+                xsltea.template.Template.append_children,
+                template.storage)
 
 
         def compose_call(self, template, argumentmap, context, sourceline):
@@ -603,9 +605,13 @@ def func(append_children, makeelement, template_storage, href, request, {}):
         def __call__(self, *args, **kwargs):
             return self._func(*args, **kwargs)
 
-    def __init__(self, safety_level=SafetyLevel.conservative, **kwargs):
+    def __init__(self,
+                 safety_level=SafetyLevel.conservative,
+                 override_loader=None,
+                 **kwargs):
         super().__init__(**kwargs)
         self._safety_level = safety_level
+        self._override_loader = override_loader
         self.attrhooks = {}
         self.elemhooks = {
             (str(self.xmlns), "def"): [self.handle_def],
@@ -651,8 +657,10 @@ def func(append_children, makeelement, template_storage, href, request, {}):
             if argumentelem.text or len(argumentelem):
                 raise ValueError("tea:arg must be empty")
 
+            attrib = dict(argumentelem.attrib)
+
             try:
-                argname = argumentelem.attrib["name"]
+                argname = attrib.pop("name")
             except KeyError as err:
                 raise ValueError("Missing required attribute on tea:arg: "
                                  "@{}".format(str(err)))
@@ -670,16 +678,20 @@ def func(append_children, makeelement, template_storage, href, request, {}):
                     argname))
 
             try:
-                static = self.staticmode[argumentelem.get("mode", "static")]
+                static = self.staticmode[attrib.pop("mode", "static")]
             except KeyError as err:
                 raise ValueError("Invalid value for tea:arg/@mode: {}".format(
                     err))
             try:
-                default = argumentelem.attrib["default"]
+                default = attrib.pop("default")
             except KeyError as err:
                 arguments[argname] = (static, ())
             else:
                 arguments[argname] = (static, (default,))
+
+            if attrib:
+                raise ValueError("Unsupported attributes on tea:arg: {}".format(
+                    ", ".join(attrib.keys())))
 
         func = self.Function(
             name,
@@ -701,7 +713,7 @@ def func(append_children, makeelement, template_storage, href, request, {}):
             del library[name]
             raise
 
-        func.finalize_body(body, context)
+        func.finalize_body(template, body, context)
 
         return [], template.preserve_tail_code(elem, context), []
 
@@ -714,6 +726,13 @@ def func(append_children, makeelement, template_storage, href, request, {}):
                              " @tea:{}".format(str(err).split("}")[1]))
 
         if source is not None:
+            loader = self._override_loader
+            if loader is None:
+                if not hasattr(template, "loader"):
+                    raise ValueError("Cannot call function from other template:"
+                                     " no loader specified for current template"
+                                     " and no override present")
+                loader = template.loader
             source_template = loader.get_template(source)
         else:
             source_template = template

@@ -192,7 +192,7 @@ class Template:
     def __init__(self, tree, filename, attrhooks, elemhooks, loader=None):
         super().__init__()
 
-        self._storage = {}
+        self.storage = {}
         self._reverse_storage = {}
         self.loader = loader
         context = Context()
@@ -202,7 +202,6 @@ class Template:
         self._process = self.parse_tree(tree, context)
         self.tree = tree
         del self._reverse_storage
-        del self._storage
 
     def default_attrhandler(self, elem, key, value, context):
         precode = []
@@ -429,7 +428,7 @@ def root(append_children, template_storage, href, request, arguments):
         exec(code, globals_dict, locals_dict)
         return functools.partial(locals_dict["root"],
                                  self.append_children,
-                                 self._storage)
+                                 self.storage)
 
     def preserve_tail_code(self, elem, context):
         """
@@ -488,11 +487,11 @@ def root(append_children, template_storage, href, request, arguments):
         while True:
             identifier = binascii.b2a_hex(
                 random.getrandbits(8*12).to_bytes(12, "little")).decode()
-            if identifier not in self._storage:
+            if identifier not in self.storage:
                 break
 
         self._reverse_storage[obj_key] = identifier
-        self._storage[identifier] = obj
+        self.storage[identifier] = obj
 
         return identifier
 
