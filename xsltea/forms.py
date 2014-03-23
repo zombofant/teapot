@@ -45,7 +45,7 @@ class FormProcessor(TemplateProcessor):
 
         self._input_handlers = {
             "checkbox": self._input_box_handler,
-            "radio": self._input_box_handler,
+            "radio": self._input_radiobox_handler,
             "hidden": self._input_text_handler,
             "text": self._input_text_handler,
             "search": self._input_text_handler,
@@ -378,6 +378,29 @@ if a:
                             ast.PyCF_ONLY_AST).body
 
         valuecode[0].test = field_ast
+
+        return None, False, valuecode
+
+    def _input_radiobox_handler(self, elem, form_ast, field_ast, context):
+        cmpvalue = elem.get("value")
+        if not cmpvalue:
+            return None, False, []
+
+        cmpcode = compile(cmpvalue, context.filename, "eval",
+                          ast.PyCF_ONLY_AST).body
+        self._safety_level.check_safety(cmpcode)
+
+        valuecode = compile("""
+if a == b:
+    elem.set("checked", "checked")""",
+                            context.filename,
+                            "exec",
+                            ast.PyCF_ONLY_AST)
+
+        valuecode = xsltea.template.replace_ast_names(valuecode, {
+            "a": field_ast,
+            "b": cmpcode
+            }).body
 
         return None, False, valuecode
 

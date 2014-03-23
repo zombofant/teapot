@@ -33,6 +33,20 @@ class TestFormProcessor(unittest.TestCase):
     form:form="arguments['form']"
     type="checkbox" />"""
 
+    xmlsrc_radio_inputs = """<test
+    xmlns="http://www.w3.org/1999/xhtml"
+    xmlns:form="https://xmlns.zombofant.net/xsltea/form"
+    form:form="arguments['form']">
+    <input type="radio"
+           form:field="field"
+           value="1" />
+    <input type="radio"
+           form:field="field"
+           value="2" />
+    <input type="radio"
+           form:field="field" />
+</test>"""
+
     xmlsrc_textarea_inputs = """<textarea
     xmlns="http://www.w3.org/1999/xhtml"
     xmlns:form="https://xmlns.zombofant.net/xsltea/form"
@@ -121,6 +135,18 @@ class TestFormProcessor(unittest.TestCase):
             tree.getroot().get("name"))
         self.assertIsNone(
             tree.getroot().get("checked"))
+
+    def test_radio_inputs(self):
+        tree = self._process_with_form(
+            self.xmlsrc_radio_inputs,
+            value=1)
+        inputs = tree.getroot().findall(xhtml_ns.input)
+        self.assertIsNotNone(
+            inputs[0].get("checked"))
+        self.assertIsNone(
+            inputs[1].get("checked"))
+        self.assertIsNone(
+            inputs[2].get("checked"))
 
     def test_textarea_inputs(self):
         tree = self._process_with_form(
