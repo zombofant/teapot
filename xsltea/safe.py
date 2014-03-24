@@ -512,7 +512,6 @@ class FunctionProcessor(TemplateProcessor):
             argnames = set()
             for argname, (static, default) in arguments:
                 argnames.add(argname)
-                print(argname, static, default)
                 if not default:
                     continue
                 default = default[0]
