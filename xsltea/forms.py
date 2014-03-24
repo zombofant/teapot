@@ -419,7 +419,7 @@ if a == b:
             "b": cmpcode
             }).body
 
-        return None, False, valuecode
+        return None, cmpcode, valuecode
 
     def _input_text_handler(self, elem, form_ast, field_ast, context):
         return None, None, []

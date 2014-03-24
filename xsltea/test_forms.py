@@ -143,6 +143,9 @@ class TestFormProcessor(unittest.TestCase):
         inputs = tree.getroot().findall(xhtml_ns.input)
         self.assertIsNotNone(
             inputs[0].get("checked"))
+        self.assertEqual(
+            "1",
+            inputs[0].get("value"))
         self.assertIsNone(
             inputs[1].get("checked"))
         self.assertIsNone(
