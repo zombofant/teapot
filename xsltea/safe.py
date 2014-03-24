@@ -805,3 +805,46 @@ def func(append_children, template_storage, makeelement, href, request, {}):
         elemcode.extend(template.preserve_tail_code(elem, context))
 
         return [], elemcode, []
+
+class GlobalsProcessor(TemplateProcessor):
+    """
+    """
+
+    def __init__(self,
+                 safety_level=SafetyLevel.conservative,
+                 override_loader=None,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.attrhooks = {}
+        self.elemhooks = {}
+        self.names = {}
+
+    def global_precode(self, template):
+        for name, value in self.names.items():
+            key = template.store(value)
+            yield ast.Assign(
+                [
+                    ast.Name(
+                        name,
+                        ast.Store(),
+                        lineno=0,
+                        col_offset=0)
+                ],
+                ast.Subscript(
+                    ast.Name(
+                        "template_storage",
+                        ast.Load(),
+                        lineno=0,
+                        col_offset=0),
+                    ast.Index(
+                        ast.Str(
+                            key,
+                            lineno=0,
+                            col_offset=0),
+                        lineno=0,
+                        col_offset=0),
+                    ast.Load(),
+                    lineno=0,
+                    col_offset=0),
+                lineno=0,
+                col_offset=0)

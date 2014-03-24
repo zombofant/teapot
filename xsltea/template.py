@@ -15,6 +15,7 @@ import ast
 import binascii
 import copy
 import functools
+import itertools
 import logging
 import random
 
@@ -189,7 +190,10 @@ class Template:
 
     from_buffer = from_string
 
-    def __init__(self, tree, filename, attrhooks, elemhooks, loader=None):
+    def __init__(self, tree, filename, attrhooks, elemhooks,
+                 loader=None,
+                 global_precode=[],
+                 global_postcode=[]):
         super().__init__()
 
         self.storage = {}
@@ -199,7 +203,10 @@ class Template:
         context.filename = filename
         context.attrhooks = copy.deepcopy(attrhooks)
         context.elemhooks = copy.deepcopy(elemhooks)
-        self._process = self.parse_tree(tree, context)
+        self._process = self.parse_tree(
+            tree, context,
+            global_precode,
+            global_postcode)
         self.tree = tree
         del self._reverse_storage
 
@@ -385,8 +392,13 @@ yield elem""",
 
         return self.default_subtree(elem, context, offset)
 
-    def parse_tree(self, tree, context):
+    def parse_tree(self, tree, context, global_precode, global_postcode):
         root = tree.getroot()
+
+        global_precode = list(itertools.chain(
+            *(precode_func(self) for precode_func in global_precode)))
+        global_postcode = list(itertools.chain(
+            *(postcode_func(self) for postcode_func in global_postcode)))
 
         childfun_name = "children"
         precode = self.compose_childrenfun(root, context, childfun_name)
@@ -428,8 +440,9 @@ def root(append_children, template_storage, href, request, arguments):
             rootfun.body[-2:-2] = attr_elemcode
         else:
             rootfun.body[-1:-1] = attr_elemcode
-        rootfun.body[0:0] = precode + attr_precode
+        rootfun.body[0:0] = global_precode + precode + attr_precode
         rootfun.body.extend(attr_postcode)
+        rootfun.body.extend(global_postcode)
 
         code = compile(rootmod, context.filename, "exec")
         globals_dict = dict(globals())
@@ -525,6 +538,8 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         self._parser = self._resolver._parser
         self._attrhooks = None
         self._elemhooks = None
+        self._global_postcode = None
+        self._global_precode = None
         self._processors = []
 
     @abc.abstractmethod
@@ -540,14 +555,22 @@ class TemplateLoader(metaclass=abc.ABCMeta):
             return
         attrhooks = {}
         elemhooks = {}
+        global_precode = []
+        global_postcode = []
         for processor in self._processors:
             for selector, hooks in processor.attrhooks.items():
                 attrhooks.setdefault(selector, []).extend(hooks)
             for selector, hooks in processor.elemhooks.items():
                 elemhooks.setdefault(selector, []).extend(hooks)
+            global_precode.append(processor.global_precode)
+            global_postcode.append(processor.global_postcode)
+
+        global_postcode.reverse()
 
         self._attrhooks = attrhooks
         self._elemhooks = elemhooks
+        self._global_precode = global_precode
+        self._global_postcode = global_postcode
 
     def load_template(self, buf, name):
         """
@@ -562,7 +585,9 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         self._update_hooks()
         tree = self._load_template_etree(buf, name)
         template = Template(tree, name, self._attrhooks, self._elemhooks,
-                            loader=self)
+                            loader=self,
+                            global_precode=self._global_precode,
+                            global_postcode=self._global_postcode)
         return template
 
     def add_processor(self, processor):

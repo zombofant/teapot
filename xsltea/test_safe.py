@@ -274,3 +274,30 @@ class TestFunctionProcessor(unittest.TestCase):
         self.assertEqual(2, len(evalelem3))
         self.assertEqual("foo", evalelem3.find("a").text)
         self.assertEqual("1", evalelem3.find("b").text)
+
+class TestGlobalsProcessor(unittest.TestCase):
+    xmlsrc_simple = """<?xml version="1.0"?>
+<test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec">
+  <exec:text>test</exec:text>
+</test>"""
+
+    def setUp(self):
+        self._processor = xsltea.safe.GlobalsProcessor()
+        self._loader = xsltea.template.XMLTemplateLoader()
+        self._loader.add_processor(xsltea.exec.ExecProcessor)
+        self._loader.add_processor(self._processor)
+
+    def _load_xml(self, xmlstr, **names):
+        self._processor.names.update(names)
+        template = self._loader.load_template(xmlstr, "<string>")
+        return template
+
+    def test_simple(self):
+        template = self._load_xml(
+            self.xmlsrc_simple,
+            test="foobar")
+
+        tree = template.process({})
+        self.assertEqual(
+            "foobar",
+            tree.getroot().text)

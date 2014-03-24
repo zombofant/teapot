@@ -112,12 +112,22 @@ class TemplateProcessor:
           is evaluated. It is recommended to use that function instead of
           ``etree.Element`` to create elements.
 
-    .. note::
-       This class does in fact nothing. It had historical purpose though and it
-       is thought that there might be future uses for having a common baseclass
-       for all template processors.
 
-       Please note that while inheriting from :class:`TemplateProcessor` is
-       optional, using the metaclass :class:`ProcessorMeta` is required!
 
     """
+
+    def global_postcode(self, template):
+        """
+        This function is called by the template and it is expected to supply an
+        iterable of AST elements, which are supposed to be placed at the end of
+        the document code.
+        """
+        return []
+
+    def global_precode(self, template):
+        """
+        This function is called by the template and it is expected to supply an
+        iterable of AST elements, which are supposed to be placed after the
+        bootstrap and before any element code in the document code.
+        """
+        return []
