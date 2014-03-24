@@ -48,6 +48,10 @@ class TestExecProcessor(unittest.TestCase):
 <test xmlns:exec="{}"><a><exec:if condition="arguments['a']"><exec:text>42</exec:text></exec:if><exec:if condition="not arguments['a']"><exec:text>23</exec:text></exec:if></a></test>""".format(
         xsltea.exec.ExecProcessor.xmlns)
 
+    xmlsrc_exec_if_without_children = """<?xml version="1.0" ?>
+<test xmlns:exec="{}"><a><exec:if condition="arguments['a']"><exec:code>foo = arguments['a']</exec:code></exec:if></a></test>""".format(
+        xsltea.exec.ExecProcessor.xmlns)
+
     def setUp(self):
         self._loader = xsltea.template.XMLTemplateLoader()
         self._loader.add_processor(xsltea.exec.ExecProcessor)
@@ -119,3 +123,8 @@ class TestExecProcessor(unittest.TestCase):
         self.assertEqual(tree.find("a").text, "42")
         tree = template.process({"a": False})
         self.assertEqual(tree.find("a").text, "23")
+
+    def test_exec_if_without_children(self):
+        template = self._load_xml(self.xmlsrc_exec_if_without_children)
+        tree = template.process({"a": True})
+        self.assertEqual(0, len(tree.find("a")))
