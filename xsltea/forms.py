@@ -281,7 +281,7 @@ default_form = a""",
     def handle_field(self, template, elem, attrib, value, context):
         try:
             form = elem.get(self.xmlns.form, "default_form")
-            no_id = getattr(self.xmlns, "no-id") in elem.attrib
+            id = elem.get(getattr(self.xmlns, "id"))
             mode = elem.get(self.xmlns.mode)
         except KeyError as err:
             raise ValueError(
@@ -365,7 +365,18 @@ if not isinstance(_form, template_storage[{!r}]):
         elemcode[:0] = validation_code
         elemcode.extend(settercode)
 
-        if not no_id:
+        if id is not None:
+            if id:
+                idcode = compile("""\
+elem.set("id", _id)""",
+                             context.filename,
+                             "exec",
+                             ast.PyCF_ONLY_AST)
+                elemcode.extend(xsltea.template.replace_ast_names(idcode, {
+                    "_id": ast.Str(id,
+                                   lineno=elem.sourceline or 0,
+                                   col_offset=0)}).body)
+        else:
             idcode = compile("""\
 elem.set("id", elem.get("name"))""",
                              context.filename,
