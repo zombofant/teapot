@@ -92,14 +92,16 @@ class ValidationError(ValueError):
 
     """
 
-    def __init__(self, err, field, instance):
+    def __init__(self, err, field, instance, original_value=None):
         super().__init__(
             "field validation failed for {} on {}: {}".format(
                 field,
                 instance,
                 err))
+        self.err = err
         self.field = field
         self.instance = instance
+        self.original_value = original_value
 
     def register(self):
         self.instance.add_error(self.field, self)
