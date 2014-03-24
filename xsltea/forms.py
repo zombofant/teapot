@@ -282,6 +282,7 @@ default_form = a""",
         try:
             form = elem.get(self.xmlns.form, "default_form")
             no_id = getattr(self.xmlns, "no-id") in elem.attrib
+            mode = elem.get(self.xmlns.mode)
         except KeyError as err:
             raise ValueError(
                 "missing required attribute:"
@@ -301,8 +302,8 @@ default_form = a""",
             form_ast, value,
             elem.sourceline)
 
-        if elem.tag == xhtml_ns.input:
-            type_ = elem.get("type", "text")
+        if elem.tag == xhtml_ns.input or mode is not None:
+            type_ = mode or elem.get("type", "text")
             try:
                 handler = self._input_handlers[type_]
             except KeyError as err:
