@@ -326,11 +326,16 @@ default_form = a""",
             valuecode = field_ast
 
         settercode = compile("""\
+_form = __form
+_descriptor = __descriptor
 elem.set("name", _name)
-tmp_value = _value
-elem.set("value", str(tmp_value) if tmp_value is not None else "")
+tmp_value = None
 if _descriptor in _form.errors:
-    elem.set("class", _errorclass + elem.get("class", ""))""",
+    tmp_value = _form.errors[_descriptor][0].original_value
+    elem.set("class", _errorclass + elem.get("class", ""))
+if tmp_value is None:
+    tmp_value = _value
+elem.set("value", str(tmp_value) if tmp_value is not None else "")""",
                              context.filename,
                              "exec",
                              ast.PyCF_ONLY_AST)
@@ -338,13 +343,13 @@ if _descriptor in _form.errors:
         settercode = xsltea.template.replace_ast_names(settercode, {
             "_name": namecode,
             "_value": valuecode,
-            "_form": form_ast,
-            "_descriptor": descriptor_ast,
+            "__form": form_ast,
+            "__descriptor": descriptor_ast,
             "_errorclass": ("" if self._errorclass is None
                             else (self._errorclass + " "))}).body
 
         if valuecode is False:
-            del settercode[1:3]
+            del settercode[-2:-1]
 
         validation_code = compile("""\
 if not isinstance(_form, template_storage[{!r}]):
