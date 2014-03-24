@@ -194,7 +194,8 @@ class field:
         except ValidationError as err:
             raise
         except (ValueError, TypeError) as err:
-            raise ValidationError(err, self, instance) from err
+            raise ValidationError(err, self, instance,
+                                  original_value=value) from err
 
         instance.fields[self.name] = value
 
@@ -242,6 +243,12 @@ class field:
         """
         self.defaultcon = callable
         return self
+
+    def postvalidate(self, instance, request):
+        """
+        Run post-validation using the given *request* for the given
+        *instance*. This is a noop by default.
+        """
 
     def __str__(self):
         return "<field name={!r}>".format(self.name)
@@ -413,12 +420,20 @@ class rows:
             self.rowcls(post_data=sub_data)
             for sub_data in items)
 
+    def postvalidate(self, instance, request):
+        """
+        Run post-validation on all rows.
+        """
+        rows = self.__get__(instance, type(instance))
+        for row in rows:
+            row.postvalidate(request)
+
         if any(bool(item.errors)
                for item in rows):
-            raise ValidationError(
+            ValidationError(
                 "One or more rows have errors",
                 self,
-                instance)
+                instance).register()
 
 class Form(metaclass=Meta):
     """
@@ -455,7 +470,7 @@ class Form(metaclass=Meta):
         post_data = post_data or (
             request.post_data if request is not None else None)
         if post_data is not None:
-            self.errors = self.fill_post_data(post_data)
+            self.fill_post_data(post_data)
         if request is not None:
             self.postvalidate(request)
         for k in list(self.errors.keys()):
@@ -475,14 +490,11 @@ class Form(metaclass=Meta):
         return ""
 
     def fill_post_data(self, post_data):
-        errors = {}
         for descriptor in self.field_descriptors:
             try:
                 descriptor.load(self, post_data)
             except ValidationError as err:
                 err.register()
-
-        return errors
 
     def find_action_by_key(self, key):
         try:
@@ -528,7 +540,13 @@ class Form(metaclass=Meta):
         Note that this method is always called, even if errors occured during
         validation. As errors are cumulative, this allows to display full error
         messages right from the beginning.
+
+        By default, this method only calls the postvalidators of any nested
+        forms (that is, rows).
         """
+
+        for field in self.field_descriptors:
+            field.postvalidate(self, request)
 
 class Row(Form, metaclass=RowMeta):
     """
