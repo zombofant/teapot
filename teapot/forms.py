@@ -41,6 +41,8 @@ Also the base classes:
 
 .. autoclass:: Row
 
+.. autoclass:: abstract_rows
+
 The metaclasses:
 
 .. autoclass:: Meta
@@ -342,15 +344,20 @@ class RowList(teapot.utils.InstrumentedList):
             super().__iter__(),
             slice(None))
 
-class rows:
+class abstract_rows(metaclass=abc.ABCMeta):
     """
-    This is not a decorator, but a plain descriptor to be used to host a list of
-    elements in a :class:`Form`. The elements are instances of *rowcls*, or of
-    the form itself, if *rowcls* is passed as :data:`None`.
+    This is an abstract base class for descriptors which allow forms to contain
+    fields which consist of multiple rows.
+
+    The class of each row is defined by the :meth:`get_row_instance` method,
+    which must be implemented by subclasses.
 
     On loading the data from POST, elements are created as neccessary. It is
     possible to add elements after loading elements from POST or after empty
     construction and re-serialize the form to HTML without any issues.
+
+    The most common subclass is :class:`rows`, which implements rows of a static
+    subclass.
     """
 
     @staticmethod
@@ -369,10 +376,8 @@ class rows:
 
         return index, field
 
-    def __init__(self,
-                 rowcls):
+    def __init__(self):
         super().__init__()
-        self.rowcls = rowcls
         self.name = None
 
     def __get__(self, instance, cls):
@@ -391,6 +396,12 @@ class rows:
 
     def __delete__(self, instance):
         raise AttributeError("deleting a rows instance is not supported")
+
+    @abc.abstractmethod
+    def get_row_instance(self, post_data):
+        """
+        Return a row instance suitable to hold the given *post_data*.
+        """
 
     def key(self, instance):
         return instance.get_html_field_key() + self.name
@@ -418,9 +429,10 @@ class rows:
             })
 
         rows = self.__get__(instance, type(instance))
-        rows.extend(
-            self.rowcls(post_data=sub_data)
-            for sub_data in items)
+        instances = (self.get_row_instance(post_data=sub_data)
+                     for sub_data in items)
+        rows.extend(filter(lambda x: x is not None,
+                           instances))
 
     def postvalidate(self, instance, request):
         """
@@ -436,6 +448,20 @@ class rows:
                 "One or more rows have errors",
                 self,
                 instance).register()
+
+class rows(abstract_rows):
+    """
+    This is not a decorator, but a plain descriptor to be used to host a list of
+    elements in a :class:`Form`. The elements are instances of *rowcls*, or of
+    the form itself, if *rowcls* is passed as :data:`None`.
+    """
+
+    def __init__(self, rowcls):
+        super().__init__()
+        self.rowcls = rowcls
+
+    def get_row_instance(self, post_data):
+        return self.rowcls(post_data=post_data)
 
 class Form(metaclass=Meta):
     """
