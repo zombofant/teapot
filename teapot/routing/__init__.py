@@ -765,7 +765,10 @@ def unroute_to_url(original_request, routable,
     request.post_data.update(route_context.post_data)
     request.query_data.clear()
     request.query_data.update(route_context.query_data)
-    return request.reconstruct_url(relative=True)
+    try:
+        return request.reconstruct_url(relative=True)
+    except ValueError as err:
+        raise ValueError("Failed to unroute routable: {}".format(routable)) from err
 
 class Router:
     """
