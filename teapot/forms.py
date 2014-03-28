@@ -57,6 +57,7 @@ And last, but not least, the exception type:
 
 import abc
 import collections
+import copy
 import itertools
 import operator
 
@@ -104,6 +105,12 @@ class ValidationError(ValueError):
         self.field = field
         self.instance = instance
         self.original_value = original_value
+
+    def __deepcopy__(self, d):
+        result = copy.copy(self)
+        result.err = copy.deepcopy(self.err, d)
+        result.instance = copy.deepcopy(self.instance, d)
+        return result
 
     def register(self):
         self.instance.add_error(self.field, self)
@@ -490,7 +497,12 @@ class Form(metaclass=Meta):
        represents the error which occured while parsing the data from the
        *post_data* dict.
 
+    Forms support copying and deep-copying through the standard python
+    :mod:`copy` module. By default, only the field values (and thus, the rows in
+    any multi-row fields) and the errors are deep-copied. If you need to
+    deepcopy more fields, override the ``__deepcopy__`` method.
     """
+
     def __init__(self, *args, request=None, post_data=None, **kwargs):
         self.fields = {}
         self.errors = {}
@@ -505,6 +517,12 @@ class Form(metaclass=Meta):
             if not self.errors[k]:
                 # remove empty error lists
                 del self.errors[k]
+
+    def __deepcopy__(self, d):
+        result = copy.copy(self)
+        result.fields = copy.deepcopy(self.fields, d)
+        result.errors = copy.deepcopy(self.errors, d)
+        return result
 
     def add_error(self, field, exc):
         self.errors.setdefault(field, []).append(exc)
