@@ -199,6 +199,7 @@ class Pipeline:
 
     def _post_process_decorated(self, decorated, callable):
         decorated.__name__ = callable.__name__
+        decorated.__qualname__ = callable.__qualname__
         decorated.__annotations__.update(callable.__annotations__)
         decorated = teapot.routing.make_routable([])(decorated)
         info = teapot.getrouteinfo(decorated)
