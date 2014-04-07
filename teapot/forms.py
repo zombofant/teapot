@@ -128,7 +128,7 @@ class Meta(type):
         field_descriptors = [
             value
             for value in namespace.values()
-            if isinstance(value, (field, rows))
+            if isinstance(value, (field, abstract_rows))
         ]
 
         for base in reversed(bases):
@@ -139,9 +139,9 @@ class Meta(type):
         cls = super().__new__(mcls, name, bases, namespace)
 
         for name, descriptor in namespace.items():
-            if isinstance(descriptor, rows):
+            if isinstance(descriptor, abstract_rows):
                 # fix rows names
-                if descriptor.rowcls is None:
+                if hasattr(descriptor, "rowcls") and descriptor.rowcls is None:
                     descriptor.rowcls = cls
                 descriptor.name = name
 
