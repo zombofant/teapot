@@ -140,7 +140,7 @@ class FormProcessor(TemplateProcessor):
     def handle_for_each_error(self, template, elem, context, offset):
         try:
             form = elem.get(self.xmlns.form, "default_form")
-            field = elem.attrib[self.xmlns.field]
+            field = elem.get(self.xmlns.field, None)
         except KeyError as err:
             raise ValueError("Missing required attribute @form:{} on "
                              "form:for-each-error".format(err)) from None
@@ -155,9 +155,16 @@ class FormProcessor(TemplateProcessor):
             lineno=elem.sourceline or 0,
             col_offset=0)
 
-        descriptor_ast = self._get_descriptor_ast(
-            form_ast, field,
-            elem.sourceline)
+        if field is not None and field != "None":
+            descriptor_ast = self._get_descriptor_ast(
+                form_ast, field,
+                elem.sourceline)
+        else:
+            descriptor_ast = ast.Name(
+                "None",
+                ast.Load(),
+                lineno=elem.sourceline or 0,
+                col_offset=0)
 
         iter_ast = ast.IfExp(
             ast.Compare(
