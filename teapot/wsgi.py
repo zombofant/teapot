@@ -35,9 +35,11 @@ class Application:
 
     def __init__(self,
                  router,
-                 force_slash_root=True):
+                 force_slash_root=True,
+                 script_name_prefix=None):
         self._router = router
         self._force_slash_root = force_slash_root
+        self._script_name_prefix = script_name_prefix or ""
 
     def decode_string(self, s):
         if isinstance(s, str):
@@ -183,7 +185,7 @@ class Application:
                         for k, v in environ.items()
                         if k.startswith("HTTP_")
                     ),
-                    environ.get("SCRIPT_NAME"),
+                    self._script_name_prefix + environ.get("SCRIPT_NAME"),
                     environ.get("SERVER_PORT"))
 
                 result = iter(self._router.route_request(request))
