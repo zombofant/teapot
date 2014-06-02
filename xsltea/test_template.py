@@ -1,3 +1,4 @@
+import ast
 import unittest
 
 import lxml.etree as etree
@@ -23,6 +24,26 @@ class StoringProcessor(xsltea.processor.TemplateProcessor):
         self.elemhooks = {
             (str(self.xmlns), "foo"): [self.handle_elem]
         }
+        self.globalhooks = [self.global_code]
+
+    def global_code(self, template, tree, context):
+        precode = [
+            ast.Assign(
+                [
+                    ast.Name(
+                        "global_foo",
+                        ast.Store(),
+                        lineno=0,
+                        col_offset=0)
+                ],
+                ast.Str(
+                    "test",
+                    lineno=0,
+                    col_offset=0),
+                lineno=0,
+                col_offset=0)
+            ]
+        return precode, []
 
     def handle_elem(self, template, elem, filename, offset):
         faketree = etree.Element(xsltea.exec.ExecProcessor.xmlns.text)
@@ -51,6 +72,8 @@ class TestTemplate(unittest.TestCase):
     xmlsrc_href = """<test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"><a><exec:text>href('/foo/bar')</exec:text></a><b><exec:text>href('foo/bar')</exec:text></b></test>"""
 
     xmlsrc_storage = """<test xmlns:storage="uri:local:testing"><storage:foo /></test>"""
+
+    xmlsrc_globalhook = """<test xmlns:storage="uri:local:testing" xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"><exec:text>global_foo</exec:text></test>"""
 
     def test_identity(self):
         tree = etree.fromstring(self.xmlsrc_identity,
@@ -89,6 +112,16 @@ class TestTemplate(unittest.TestCase):
         self.assertEqual(
             tree.xpath("/test").pop().text,
             str(l))
+
+    def test_globalhook(self):
+        loader = xsltea.template.XMLTemplateLoader()
+        loader.add_processor(xsltea.exec.ExecProcessor())
+        loader.add_processor(StoringProcessor())
+        template = loader.load_template(self.xmlsrc_globalhook, "<string>")
+        tree = template.process({})
+        self.assertEqual(
+            tree.xpath("/test").pop().text,
+            "test")
 
 class TestTemplateLoader(unittest.TestCase):
     def setUp(self):

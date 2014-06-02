@@ -191,6 +191,7 @@ class Template:
     from_buffer = from_string
 
     def __init__(self, tree, filename, attrhooks, elemhooks,
+                 globalhooks=[],
                  loader=None,
                  global_precode=[],
                  global_postcode=[]):
@@ -203,6 +204,7 @@ class Template:
         context.filename = filename
         context.attrhooks = copy.deepcopy(attrhooks)
         context.elemhooks = copy.deepcopy(elemhooks)
+        context.globalhooks = copy.copy(globalhooks)
         self._process = self.parse_tree(
             tree, context,
             global_precode,
@@ -400,6 +402,11 @@ yield elem""",
         global_postcode = list(itertools.chain(
             *(postcode_func(self) for postcode_func in global_postcode)))
 
+        for hook in context.globalhooks:
+            precode, postcode = hook(self, root, context)
+            global_precode.extend(precode)
+            global_postcode[0:0] = postcode
+
         childfun_name = "children"
         precode = self.compose_childrenfun(root, context, childfun_name)
         if precode:
@@ -555,6 +562,7 @@ class TemplateLoader(metaclass=abc.ABCMeta):
             return
         attrhooks = {}
         elemhooks = {}
+        globalhooks = []
         global_precode = []
         global_postcode = []
         for processor in self._processors:
@@ -562,6 +570,7 @@ class TemplateLoader(metaclass=abc.ABCMeta):
                 attrhooks.setdefault(selector, []).extend(hooks)
             for selector, hooks in processor.elemhooks.items():
                 elemhooks.setdefault(selector, []).extend(hooks)
+            globalhooks.extend(processor.globalhooks)
             global_precode.append(processor.global_precode)
             global_postcode.append(processor.global_postcode)
 
@@ -569,6 +578,7 @@ class TemplateLoader(metaclass=abc.ABCMeta):
 
         self._attrhooks = attrhooks
         self._elemhooks = elemhooks
+        self._globalhooks = globalhooks
         self._global_precode = global_precode
         self._global_postcode = global_postcode
 
@@ -584,7 +594,11 @@ class TemplateLoader(metaclass=abc.ABCMeta):
         """
         self._update_hooks()
         tree = self._load_template_etree(buf, name)
-        template = Template(tree, name, self._attrhooks, self._elemhooks,
+        template = Template(tree,
+                            name,
+                            self._attrhooks,
+                            self._elemhooks,
+                            globalhooks=self._globalhooks,
                             loader=self,
                             global_precode=self._global_precode,
                             global_postcode=self._global_postcode)

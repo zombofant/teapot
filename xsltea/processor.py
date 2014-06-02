@@ -112,9 +112,29 @@ class TemplateProcessor:
           is evaluated. It is recommended to use that function instead of
           ``etree.Element`` to create elements.
 
+    .. attribute:: globalhooks
 
+       A list containing callables which are called once at the start of the
+       template compilation, before any other hooks are called.
+
+       .. function global_hook(template, tree, context) -> (precode, postcode)
+
+          The *template* is the template calling the hook. *tree* is the
+          complete tree, which might be mutated by this hook.
+
+          *context* is a :class:`xsltea.template.Context` object which provides
+          the processing context.
+
+          The return value is analogous to the previous values, except that no
+          *elemcode* return value can be provided.
 
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.elemhooks = {}
+        self.attrhooks = {}
+        self.globalhooks = []
 
     def global_postcode(self, template):
         """
