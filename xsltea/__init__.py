@@ -41,7 +41,7 @@ from .errors import TemplateEvaluationError
 from .exec import ExecProcessor
 from .forms import FormProcessor
 from .safe import ForeachProcessor, IncludeProcessor, SafetyLevel, \
-    FunctionProcessor
+    FunctionProcessor, BranchingProcessor
 from .pipeline import Pipeline, XHTMLPipeline, XMLPipeline, TransformLoader
 
 def make_pipeline(
