@@ -55,7 +55,7 @@ import ast
 import functools
 import logging
 
-from .namespaces import NamespaceMeta, xml
+from .namespaces import NamespaceMeta, xml, shared_ns
 from .processor import TemplateProcessor
 from .utils import *
 from .errors import TemplateEvaluationError
@@ -73,10 +73,11 @@ class ExecProcessor(TemplateProcessor):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.attrhooks = {
+            (str(shared_ns), "if", str(self.xmlns), "eval"): [self.cond_code],
+            (str(shared_ns), "switch", str(self.xmlns), "eval"): [self.cond_code],
             (str(self.xmlns), None): [self.handle_exec_any_attribute]}
         self.elemhooks = {
             (str(self.xmlns), "code"): [self.handle_exec_code],
-            (str(self.xmlns), "if"): [self.handle_exec_if],
             (str(self.xmlns), "text"): [self.handle_exec_text]}
 
     def handle_exec_any_attribute(self, template, elem, attrib, value, context):
@@ -134,48 +135,9 @@ if attrval is not None:
         elemcode.insert(0, yielder)
         return [], elemcode, []
 
-    @classmethod
-    def create_if(cls, template, elem, context, offset,
-                  condition_ast):
-        childfun_name = "children{}".format(offset)
-        precode = template.compose_childrenfun(elem, context, childfun_name)
-
-        elemcode = compile("""\
-if _:
-    yield ''
-    yield from children{}()""".format(offset),
-                           context.filename,
-                           "exec",
-                           ast.PyCF_ONLY_AST).body
-
-        elemcode[0].test = condition_ast
-
-        if not precode:
-            del elemcode[0].body[1]
-
-        if elem.text:
-            elemcode[0].body[0].value.value = ast.Str(
-                elem.text,
-                lineno=elem.sourceline or 0,
-                col_offset=0)
-        else:
-            del elemcode[0].body[0]
-
-        if not elemcode[0].body:
-            del elemcode[0]
-
-        return precode, elemcode, []
-
-
-    def handle_exec_if(self, template, elem, context, offset):
-        attrib = elem.attrib
-        try:
-            condition_code = attrib["condition"]
-        except KeyError:
-            raise ValueError("exec:if requires @condition")
-        condition_code = compile(condition_code,
-                                 context.filename,
-                                 "eval",
-                                 ast.PyCF_ONLY_AST).body
-        return self.create_if(template, elem, context, offset,
-                              condition_code)
+    def cond_code(self, template, elem, key, value, context):
+        valuecode = compile(value,
+                            context.filename,
+                            "eval",
+                            flags=ast.PyCF_ONLY_AST).body
+        return [], [], None, valuecode, []

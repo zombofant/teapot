@@ -228,6 +228,257 @@ class _Unsafe(SafetyLevel):
 SafetyLevel.unsafe = _Unsafe()
 del _Unsafe
 
+class BranchingProcessor(TemplateProcessor):
+    """
+    The processor for ``tea:if`` and ``tea:switch``/``tea:case``/``tea:default``
+    xml elements provides a branching implemtation for control flow elements.
+
+    On its own, it is pretty useless. Other processors must provide attribute
+    hooks matching attributes on ``tea:if`` and ``tea:case`` (see
+    :attr:`xsltea.processor.attrhooks` for details) to actually provide
+    conditions to check against.
+    """
+
+    xmlns = shared_ns
+    namespaces = {"tea": str(xmlns)}
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.attrhooks = {}
+        self.elemhooks = {
+            (str(self.xmlns), "switch"): [self.handle_switch],
+            (str(self.xmlns), "if"): [self.handle_if]
+        }
+
+    @classmethod
+    def lookup_hooks(cls, context, elemtag, attrtag):
+        elemns, elemname = xsltea.template.split_tag(elemtag)
+        attrns, attrname = xsltea.template.split_tag(attrtag)
+        try:
+            return context.attrhooks[elemns,
+                                     elemname,
+                                     attrns,
+                                     attrname]
+        except KeyError:
+            pass
+
+        try:
+            return context.attrhooks[elemns,
+                                     elemname,
+                                     attrns,
+                                     None]
+        except KeyError:
+            pass
+
+        return []
+
+    @classmethod
+    def compose_condition(cls, template, elem, context, offset):
+        precode, elemcode, postcode = [], [], []
+        conditions = []
+        for key, value in elem.attrib.items():
+            handlers = cls.lookup_hooks(context, elem.tag, key)
+            for handler in handlers:
+                result = handler(template, elem, key, value, context)
+                if result:
+                    break
+            else:
+                logger.warn("Unhandled attribute on {}: {}".format(
+                    elem, key))
+                print(context.attrhooks)
+                continue
+
+            attr_precode, attr_elemcode, attr_keycode, attr_valuecode, \
+                attr_postcode = result
+
+            if attr_keycode is not None:
+                logger.warn("Attribute handler returned keycode for "
+                            "conditional attribute")
+
+            if not attr_valuecode or hasattr(attr_valuecode, "__iter__"):
+                raise ValueError("Condition {} returned invalid valuecode:"
+                                 " {}".format(key, attr_valuecode))
+
+            precode.extend(attr_precode)
+            elemcode.extend(attr_elemcode)
+            conditions.append(attr_valuecode)
+            postcode.extend(attr_postcode)
+
+        if not conditions:
+            raise ValueError("Conditional element without conditions")
+
+        conditioncode = functools.reduce(
+            lambda prev, curr: ast.BinOp(
+                prev,
+                ast.And(),
+                curr,
+                lineno=elem.sourceline or 0,
+                col_offset=0),
+            conditions[1:],
+            conditions[0])
+
+        return precode, elemcode, conditioncode, postcode
+
+    @classmethod
+    def create_forward(cls, body, elem, childfun_name):
+        if elem.text:
+            body.append(
+                ast.Expr(
+                    ast.Yield(
+                        ast.Str(
+                            elem.text,
+                            lineno=elem.sourceline or 0,
+                            col_offset=0),
+                        lineno=elem.sourceline or 0,
+                        col_offset=0),
+                    lineno=elem.sourceline or 0,
+                    col_offset=0)
+            )
+
+        if childfun_name:
+            body.append(
+                ast.Expr(
+                    ast.YieldFrom(
+                        ast.Call(
+                            ast.Name(
+                                childfun_name,
+                                ast.Load(),
+                                lineno=elem.sourceline or 0,
+                                col_offset=0),
+                            [],
+                            [],
+                            None,
+                            None,
+                            lineno=elem.sourceline or 0,
+                            col_offset=0),
+                        lineno=elem.sourceline or 0,
+                        col_offset=0),
+                    lineno=elem.sourceline or 0,
+                    col_offset=0)
+            )
+
+    @classmethod
+    def create_conditional(cls, template, elem, context, offset):
+        precode, elemcode, conditioncode, postcode = cls.compose_condition(
+            template, elem, context, offset)
+
+        childfun_name = "children{}".format(offset)
+        # prepend childfun to existing precode
+        childfun_code = template.compose_childrenfun(
+            elem,
+            context,
+            childfun_name)
+        if childfun_code:
+            precode[:0] = childfun_code
+
+        body = []
+        cls.create_forward(body,
+                           elem,
+                           childfun_name if childfun_code else "")
+
+        print(conditioncode)
+        print(body)
+
+        if body:
+            elemcode.insert(
+                0,
+                ast.If(
+                    conditioncode,
+                    body,
+                    [],
+                    lineno=elem.sourceline or 0,
+                    col_offset=0))
+
+
+        return precode, elemcode, postcode
+
+    def handle_if(self, template, elem, context, offset):
+        print("composing if")
+        return self.create_conditional(template, elem, context, offset)
+
+    def handle_switch(self, template, elem, context, offset):
+        case_tag = self.xmlns.case
+        default_tag = self.xmlns.default
+
+        children = iter(elem)
+        branches = []
+        default = None
+        for child in children:
+            if default is not None:
+                raise ValueError("tea:switch contains elements after tea:default")
+            if child.tag != case_tag:
+                if child.tag == default_tag:
+                    default = child
+                raise ValueError("Unknown element in tea:switch: {}".format(
+                    child.tag))
+
+            branches.append(child)
+
+        precode = []
+        elemcode = []
+        postcode = []
+
+        branch_code = []
+
+        for i, branch in enumerate(branches):
+            cond_precode, cond_elemcode, cond_code, cond_postcode = \
+                self.compose_condition(template, branch, context, offset)
+
+            precode.extend(cond_precode)
+            elemcode.extend(cond_elemcode)
+            postcode[:0] = cond_postcode
+
+            childfun_name = "children{}_{}".format(offset, i)
+            branch_code.append((
+                # condition code
+                cond_code,
+                # child
+                branch,
+                # childfun_name,
+                childfun_name,
+                # childcode
+                template.compose_childrenfun(
+                    branch,
+                    context,
+                    childfun_name)))
+
+        if default is not None:
+            childfun_name = "children{}_default".format(offset)
+            branch_code.append((
+                None,
+                default,
+                childfun_name,
+                template.compose_childrenfun(
+                    default,
+                    context,
+                    childfun_name)))
+
+        elemcode = []
+        else_branch = elemcode
+        for condition_code, child, childfun_name, childfun in branch_code:
+            if condition_code is not None:
+                if_branch = []
+                new_else_branch = []
+                else_branch.append(
+                    ast.If(
+                        condition_code,
+                        if_branch,
+                        new_else_branch,
+                        lineno=child.sourceline or 0,
+                        col_offset=0))
+                else_branch = new_else_branch
+            else:
+                if_branch = else_branch
+
+            self.create_forward(
+                if_branch,
+                elem,
+                childfun_name if childfun else "")
+
+        return precode, elemcode, postcode
+
+
+
 class ForeachProcessor(TemplateProcessor):
     """
     The processor for the ``tea:for-each`` xml element provides a safe for-each

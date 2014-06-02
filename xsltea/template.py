@@ -57,6 +57,21 @@ class ReplaceAstNames(ast.NodeTransformer):
 def replace_ast_names(node, nodemap):
     return ReplaceAstNames(nodemap).visit(node)
 
+def split_tag(tag):
+    """
+    Split an ElementTree *tag* into its namespace and localname part, and return
+    them as tuple of ``(ns, localname)``.
+    """
+    try:
+        ns, name = tag.split("}", 1)
+        ns = ns[1:]
+    except ValueError:
+        name = tag
+        ns = None
+
+    return ns, name
+
+
 class _TreeFormatter:
     """
     Private helper class to lazily format a *tree* for passing to logging
@@ -167,17 +182,54 @@ class Template:
 
     @staticmethod
     def lookup_hook(hookmap, tag):
-        try:
-            ns, name = tag.split("}", 1)
-            ns = ns[1:]
-        except ValueError:
-            name = tag
-            ns = None
+        ns, name = split_tag(tag)
 
         try:
             return hookmap[(ns, name)]
         except KeyError:
             return hookmap[(ns, None)]
+
+    @staticmethod
+    def lookup_attrhook(hookmap, elemtag, attrtag):
+        attrns, attrname = split_tag(attrtag)
+        elemns, elemname = split_tag(elemtag)
+
+        try:
+            return hookmap[(elemns, elemname, attrns, attrname)]
+        except KeyError:
+            pass
+
+        try:
+            return hookmap[(elemns, elemname, attrns, None)]
+        except KeyError:
+            pass
+
+        try:
+            return hookmap[(elemns, None, attrns, attrname)]
+        except KeyError:
+            pass
+
+        try:
+            return hookmap[(elemns, None, attrns, None)]
+        except KeyError:
+            pass
+
+        try:
+            return hookmap[(None, None, attrns, attrname)]
+        except KeyError:
+            pass
+
+        try:
+            return hookmap[(None, None, attrns, None)]
+        except KeyError:
+            pass
+
+        try:
+            return hookmap[(attrns, attrname)]
+        except KeyError:
+            pass
+
+        return hookmap[(attrns, None)]
 
     @classmethod
     def from_string(cls, buf, filename, attrhooks={}, elemhooks={}):
@@ -240,7 +292,7 @@ class Template:
         d.values = []
         for key, value in elem.attrib.items():
             try:
-                handlers = self.lookup_hook(context.attrhooks, key)
+                handlers = self.lookup_attrhook(context.attrhooks, elem.tag, key)
             except KeyError:
                 handlers = []
             for handler in handlers:

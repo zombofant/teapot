@@ -56,10 +56,11 @@ class TestFormProcessor(unittest.TestCase):
     xmlsrc_if_has_error = """\
 <test
     xmlns="http://www.w3.org/1999/xhtml"
-    xmlns:form="https://xmlns.zombofant.net/xsltea/form">
-    <form:if-has-error
-        form:field="field"
-        form:form="arguments['form']">foo</form:if-has-error>
+    xmlns:form="https://xmlns.zombofant.net/xsltea/form"
+    xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
+    xmlns:tea="https://xmlns.zombofant.net/xsltea/processors">
+    <exec:code>default_form = arguments["form"]</exec:code>
+    <tea:if form:field-error="field">foo</tea:if>
 </test>"""
 
     xmlsrc_for_each_error = """\
@@ -90,8 +91,11 @@ class TestFormProcessor(unittest.TestCase):
 
     def setUp(self):
         self._loader = xsltea.template.XMLTemplateLoader()
-        self._loader.add_processor(xsltea.forms.FormProcessor(
-            safety_level=xsltea.safe.SafetyLevel.unsafe))
+        self._loader.add_processor(
+            xsltea.forms.FormProcessor(
+                safety_level=xsltea.safe.SafetyLevel.unsafe))
+        self._loader.add_processor(xsltea.exec.ExecProcessor())
+        self._loader.add_processor(xsltea.safe.BranchingProcessor())
 
     def _load_xml(self, xmlstr):
         template = self._loader.load_template(xmlstr, "<string>")

@@ -5,7 +5,9 @@ import lxml.etree as etree
 
 import xsltea
 import xsltea.exec
+import xsltea.safe
 import xsltea.template
+import xsltea.namespaces
 
 class TestExecProcessor(unittest.TestCase):
     xmlsrc_eval_attrib = """<?xml version="1.0" ?>
@@ -45,16 +47,19 @@ class TestExecProcessor(unittest.TestCase):
         xsltea.exec.ExecProcessor.xmlns)
 
     xmlsrc_exec_if = """<?xml version="1.0" ?>
-<test xmlns:exec="{}"><a><exec:if condition="arguments['a']"><exec:text>42</exec:text></exec:if><exec:if condition="not arguments['a']"><exec:text>23</exec:text></exec:if></a></test>""".format(
-        xsltea.exec.ExecProcessor.xmlns)
+<test xmlns:exec="{}" xmlns:tea="{}"><a><tea:if exec:eval="arguments['a']"><exec:text>42</exec:text></tea:if><tea:if exec:eval="not arguments['a']"><exec:text>23</exec:text></tea:if></a></test>""".format(
+        xsltea.exec.ExecProcessor.xmlns,
+        xsltea.namespaces.shared_ns)
 
     xmlsrc_exec_if_without_children = """<?xml version="1.0" ?>
-<test xmlns:exec="{}"><a><exec:if condition="arguments['a']"><exec:code>foo = arguments['a']</exec:code></exec:if></a></test>""".format(
-        xsltea.exec.ExecProcessor.xmlns)
+<test xmlns:exec="{}" xmlns:tea="{}"><a><tea:if exec:eval="arguments['a']"><exec:code>foo = arguments['a']</exec:code></tea:if></a></test>""".format(
+        xsltea.exec.ExecProcessor.xmlns,
+        xsltea.namespaces.shared_ns)
 
     def setUp(self):
         self._loader = xsltea.template.XMLTemplateLoader()
         self._loader.add_processor(xsltea.exec.ExecProcessor)
+        self._loader.add_processor(xsltea.safe.BranchingProcessor)
 
     def _load_xml(self, xmlstr):
         template = self._loader.load_template(xmlstr, "<string>")

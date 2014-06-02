@@ -23,10 +23,18 @@ class TemplateProcessor:
     .. attribute:: attrhooks
 
        A dictionary containing entries of the structure
-       ``(xmlns, name): [attribute_hook]``. The ``xmlns`` must be a string
-       refering to an XML namespace (or :data:`None`, to match on namespaceless
-       attributes). `name` must be a string refering to the attributes local
-       name or :data:`None` to match all attributes in the namespace.
+       ``(elemns, elemname, xmlns, name): [attribute_hook]``. The ``xmlns`` must
+       be a string refering to an XML namespace (or :data:`None`, to match on
+       namespaceless attributes). `name` must be a string refering to the
+       attributes local name or :data:`None` to match all attributes in the
+       namespace.
+
+       *elemns* and *elemname* are the namespace and the local name of the
+       element at which the attribute appears. Putting these two in front of the
+       tuple is entirely optional: they can be set to :data:`None` or omitted
+       (so that the key is a 2-tuple instead of a 4-tuple). It is also valid to
+       set only *elemname* to :data:`None`, to match all elements in a given
+       namespace.
 
        The signature and semantics of the ``attribute_hook`` functions are as
        follows:
@@ -63,6 +71,28 @@ class TemplateProcessor:
             the attribute using *keycode* and *valuecode* might be faster.
           * *postcode*: This code is appended to the end of the function
             describing the element (and all of its siblings.
+
+          .. note::
+
+             Attributes on ``tea:if`` and ``tea:case`` elements have special
+             semantics. The *keycode* is ignored and the *valuecode* must not be
+             :data:`None`. A warning is emitted if *keycode* is not
+             :data:`None`.
+
+             The code provided in *valuecode* is used as branching condition in
+             the respective element. If multiple conditions are present, they
+             will be concatenated with an ``and`` operator, but the order of
+             execution is unspecified (thus, having side effects in the
+             conditions invokes kind of undefined behaviour, as short-circuiting
+             may take place; this might be fixed in a future version, but due to
+             the way ElementTree attribute access works, it is unclear whether
+             this will be possible).
+
+             To maintain backwards compatibility, hooks will only be called for
+             ``tea:if`` and ``tea:case`` if they are explicitly specified for
+             those using the 4-tuple key in the :attr:`attrhooks` dict. Other
+             attributes on ``tea:if`` and ``tea:case`` raise warnings and are
+             ignored.
 
     .. attribute:: elemhooks
 

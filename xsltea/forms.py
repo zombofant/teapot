@@ -14,7 +14,7 @@ import xsltea.safe
 import xsltea.template
 
 from .processor import TemplateProcessor
-from .namespaces import NamespaceMeta, xhtml_ns
+from .namespaces import NamespaceMeta, xhtml_ns, shared_ns
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +37,13 @@ class FormProcessor(TemplateProcessor):
             (str(self.xmlns), "form"): [self.handle_form],
             (str(self.xmlns), "for-field"): [self.handle_for_field],
             (str(self.xmlns), "action"): [self.handle_action],
+            (str(shared_ns), "if", str(self.xmlns), "field-error"): [
+                self.cond_field_error],
+            (str(shared_ns), "case", str(self.xmlns), "field-error"): [
+                self.cond_field_error],
         }
         self.elemhooks = {
             (str(self.xmlns), "for-each-error"): [self.handle_for_each_error],
-            (str(self.xmlns), "if-has-error"): [self.handle_if_has_error]
         }
 
         self._input_handlers = {
@@ -108,15 +111,11 @@ class FormProcessor(TemplateProcessor):
             lineno=sourceline or 0,
             col_offset=0)
 
-    def handle_if_has_error(self, template, elem, context, offset):
-        try:
-            form = elem.get(self.xmlns.form, "default_form")
-            field = elem.attrib[self.xmlns.field]
-        except KeyError as err:
-            raise ValueError("Missing required attribute @form:{} on "
-                             "form:for-each-error".format(err)) from None
-
-        form_ast = compile(form, context.filename, "eval", ast.PyCF_ONLY_AST).body
+    def cond_field_error(self, template, elem, key, field, context):
+        form_ast = compile("default_form",
+                           context.filename,
+                           "eval",
+                           ast.PyCF_ONLY_AST).body
         self._safety_level.check_safety(form_ast)
 
         condition_ast = ast.Compare(
@@ -133,9 +132,7 @@ class FormProcessor(TemplateProcessor):
             lineno=elem.sourceline or 0,
             col_offset=0)
 
-        return xsltea.exec.ExecProcessor.create_if(
-            template, elem, context, offset,
-            condition_ast)
+        return [], [], None, condition_ast, []
 
     def handle_for_each_error(self, template, elem, context, offset):
         try:
