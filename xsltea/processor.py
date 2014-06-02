@@ -73,7 +73,7 @@ class TemplateProcessor:
 
        The ``element_hook`` functions semantics are as follows:
 
-       .. function:: element_hook(template, elemement, filename, offset) ->
+       .. function:: element_hook(template, element, context, offset) ->
                      (precode, elemcode, postcode)
 
           The *template* is the template which is calling the hook.
