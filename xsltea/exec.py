@@ -74,7 +74,7 @@ class ExecProcessor(TemplateProcessor):
         super().__init__(**kwargs)
         self.attrhooks = {
             (str(shared_ns), "if", str(self.xmlns), "eval"): [self.cond_code],
-            (str(shared_ns), "switch", str(self.xmlns), "eval"): [self.cond_code],
+            (str(shared_ns), "case", str(self.xmlns), "eval"): [self.cond_code],
             (str(self.xmlns), None): [self.handle_exec_any_attribute]}
         self.elemhooks = {
             (str(self.xmlns), "code"): [self.handle_exec_code],

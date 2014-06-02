@@ -285,7 +285,6 @@ class BranchingProcessor(TemplateProcessor):
             else:
                 logger.warn("Unhandled attribute on {}: {}".format(
                     elem, key))
-                print(context.attrhooks)
                 continue
 
             attr_precode, attr_elemcode, attr_keycode, attr_valuecode, \
@@ -376,9 +375,6 @@ class BranchingProcessor(TemplateProcessor):
                            elem,
                            childfun_name if childfun_code else "")
 
-        print(conditioncode)
-        print(body)
-
         if body:
             elemcode.insert(
                 0,
@@ -393,7 +389,6 @@ class BranchingProcessor(TemplateProcessor):
         return precode, elemcode, postcode
 
     def handle_if(self, template, elem, context, offset):
-        print("composing if")
         return self.create_conditional(template, elem, context, offset)
 
     def handle_switch(self, template, elem, context, offset):
@@ -409,6 +404,7 @@ class BranchingProcessor(TemplateProcessor):
             if child.tag != case_tag:
                 if child.tag == default_tag:
                     default = child
+                    continue
                 raise ValueError("Unknown element in tea:switch: {}".format(
                     child.tag))
 
@@ -474,6 +470,8 @@ class BranchingProcessor(TemplateProcessor):
                 if_branch,
                 elem,
                 childfun_name if childfun else "")
+
+            precode.extend(childfun)
 
         return precode, elemcode, postcode
 

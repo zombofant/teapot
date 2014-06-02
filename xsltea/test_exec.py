@@ -56,6 +56,11 @@ class TestExecProcessor(unittest.TestCase):
         xsltea.exec.ExecProcessor.xmlns,
         xsltea.namespaces.shared_ns)
 
+    xmlsrc_exec_switch = """<?xml version="1.0" ?>
+<test xmlns:exec="{}" xmlns:tea="{}"><a><tea:switch><tea:case exec:eval="arguments['a']"><exec:text>42</exec:text></tea:case><tea:default><exec:text>23</exec:text></tea:default></tea:switch></a></test>""".format(
+        xsltea.exec.ExecProcessor.xmlns,
+        xsltea.namespaces.shared_ns)
+
     def setUp(self):
         self._loader = xsltea.template.XMLTemplateLoader()
         self._loader.add_processor(xsltea.exec.ExecProcessor)
@@ -133,3 +138,10 @@ class TestExecProcessor(unittest.TestCase):
         template = self._load_xml(self.xmlsrc_exec_if_without_children)
         tree = template.process({"a": True})
         self.assertEqual(0, len(tree.find("a")))
+
+    def test_exec_switch(self):
+        template = self._load_xml(self.xmlsrc_exec_switch)
+        tree = template.process({"a": True})
+        self.assertEqual(tree.find("a").text, "42")
+        tree = template.process({"a": False})
+        self.assertEqual(tree.find("a").text, "23")
