@@ -690,9 +690,11 @@ def find_route(root, request):
          for content_type in candidate.content_types)))
 
     content_type_candidates = request.accept_content.get_candidates(
-        [teapot.accept.AcceptPreference(content_type, q=1.0)
-         for content_type in unique_content_types
-         if content_type is not None],
+        [
+            teapot.accept.AcceptPreference(content_type, q=1.0)
+            for content_type in unique_content_types
+            if content_type is not None
+        ],
         match_wildcard=True)
 
     candidate = None
@@ -710,6 +712,8 @@ def find_route(root, request):
 
         # FIXME: language selection
         best_match = content_type_candidates.pop()[1]
+
+    best_match = None if best_match is None else best_match.value
 
     if candidate is None:
         # we will find a match here

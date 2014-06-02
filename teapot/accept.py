@@ -388,25 +388,26 @@ class PreferenceList(list):
                 sortkey = rempref.match(ownpref, allow_wildcard=match_wildcard)
                 penalty, keys, q = sortkey
                 if q > 0.:
-                    value = str(ownpref)
+                    value = ownpref
                     sortkey = penalty, keys, q, ownpref.q, -i
                 elif include_non_matching and rempref.precedence == 0:
                     # we must not add values with precedence != 0
-                    value = str(rempref)
+                    value = rempref
                     sortkey = rempref.precedence, 0, rempref.q, 0, -i
                 else:
                     continue
+
                 try:
-                    oldkey = candidates[value]
+                    oldkey, _ = candidates[str(value)]
                     if oldkey < sortkey:
-                        candidates[value] = sortkey
+                        candidates[str(value)] = sortkey, value
                 except KeyError:
-                    candidates[value] = sortkey
+                    candidates[str(value)] = sortkey, value
 
         candidates = sorted(
-            ((q, pref) for pref, q in candidates.items()),
+            candidates.values(),
             key=operator.itemgetter(0))
-        candidates = [(q, pref) for (prec, keys, q, q2, index), pref in candidates]
+        candidates = [(q, pref) for (_, _, q, _, _), pref in candidates]
         return candidates
 
     def get_quality(self, preference, match_wildcard=True):
