@@ -36,6 +36,23 @@ import itertools
 import codecs
 from fnmatch import fnmatch
 
+def parse_locale(localestr):
+    if not isinstance(localestr, str):
+        return tuple(localestr)
+
+    localestr = localestr.lower()
+
+    if "_" in localestr:
+        lang, _, variant = localestr.partition("_")
+    else:
+        lang, _, variant = localestr.partition("-")
+
+    variant, _, encoding = variant.partition(".")
+    if not variant:
+        variant = None
+
+    return lang, variant
+
 @functools.total_ordering
 class Preference(object):
     """
@@ -281,7 +298,8 @@ class LanguagePreference(Preference):
         else:
             q = 1
 
-        lang, _, sublang = header.partition("-")
+        lang, sublang = parse_locale(header)
+
         if sublang:
             parameters = {"sub": sublang.strip()}
             header = lang
