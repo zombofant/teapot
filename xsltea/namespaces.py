@@ -84,6 +84,20 @@ class xhtml_ns(metaclass=NamespaceMeta):
 
     xmlns = "http://www.w3.org/1999/xhtml"
 
+class xlink_ns(metaclass=NamespaceMeta):
+    """
+    Defines the ``http://www.w3.org/1999/xlink`` namespace.
+    """
+
+    xmlns = "http://www.w3.org/1999/xlink"
+
+class svg_ns(metaclass=NamespaceMeta):
+    """
+    Defines the ``http://www.w3.org/2000/svg`` namespace.
+    """
+
+    xmlns = "http://www.w3.org/2000/svg"
+
 class shared_ns(metaclass=NamespaceMeta):
     """
     Defines the ``https://xmlns.zombofant.net/xsltea/processors`` namespace,
