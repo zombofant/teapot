@@ -357,9 +357,7 @@ class XHTMLPipeline(XMLPipeline):
         </xsl:copy>
     </xsl:template>
 
-    <xsl:template match="@*" />
-
-    <xsl:template match="@*[namespace-uri() = '']">
+    <xsl:template match="@*">
         <xsl:copy />
     </xsl:template>
 
