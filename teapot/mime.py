@@ -11,6 +11,18 @@ import copy
 import codecs
 import itertools
 
+def normalize_charset(charset):
+    """
+    Normalize the given *charset* using the python codec database. The charset
+    ``binary`` is treated specially and returnet verbatim.
+    """
+
+    if charset == "binary":
+        return charset
+
+    codec = codecs.lookup(charset)
+    return codec.name
+
 class Type:
     """
     This is a immutable class which represents a MIME type. Through
@@ -46,8 +58,7 @@ class Type:
         self.__parameters = dict(custom_parameters)
         charset = charset or custom_parameters.get("charset", None)
         if charset is not None:
-            codec = codecs.lookup(charset)
-            charset = codec.name
+            charset = normalize_charset(charset)
 
         if charset is None:
             try:
