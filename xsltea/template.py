@@ -71,6 +71,8 @@ def split_tag(tag):
 
     return ns, name
 
+class Namespace:
+    pass
 
 class _TreeFormatter:
     """
@@ -383,48 +385,22 @@ def {}():
 
         childfun_name = "children{}".format(offset)
         precode = self.compose_childrenfun(elem, context, childfun_name)
-        elemcode = compile("""\
-elem = makeelement(_a, attrib=_b)
-elem.text = _c
-elem.tail = _d
-append_children(elem, _e())
-yield elem""",
-                           context.filename,
-                           "exec",
-                           ast.PyCF_ONLY_AST).body
-        postcode = []
-
-        if not precode:
-            # remove children statement
-            del elemcode[3]
-
-        if not elem.tail:
-            del elemcode[2]
-
-        if not elem.text:
-            del elemcode[1]
-
         attr_precode, attr_elemcode, attrdict, attr_postcode = \
             self.compose_attrdict(elem, context)
-        for item in elemcode:
-            replace_ast_names(item, {
-                "_a": elem.tag,
-                "_b": attrdict,
-                "_c": elem.text,
-                "_d": elem.tail,
-                "_e": ast.Name(
-                    childfun_name,
-                    ast.Load(),
-                    lineno=elem.sourceline or 0,
-                    col_offset=0)
-                })
 
-        if precode:
-            elemcode[-2:-2] = attr_elemcode
-        else:
-            elemcode[-1:-1] = attr_elemcode
+        elemcode = self.ast_makeelement_and_setup(
+            elem.tag,
+            elem.sourceline or 0,
+            attrdict=attrdict,
+            text=elem.text,
+            tail=elem.tail,
+            childfun=childfun_name if precode else None)
+        elemcode.extend(attr_elemcode)
+        elemcode.append(
+            self.ast_yield("elem", elem.sourceline or 0))
+
         precode.extend(attr_precode)
-        postcode.extend(attr_postcode)
+        postcode = attr_postcode
         return precode, elemcode, postcode
 
     def parse_subtree(self, elem, context, offset=0):
@@ -460,56 +436,142 @@ yield elem""",
             global_postcode[0:0] = postcode
 
         childfun_name = "children"
-        precode = self.compose_childrenfun(root, context, childfun_name)
-        if precode:
-            precode[0].name = childfun_name
-
-        rootmod = compile("""\
-def root(append_children, template_storage, href, request, arguments):
-    elem = etree.Element(_a, attrib=_b)
-    makeelement = elem.makeelement
-    elem.text = _c
-    append_children(elem, _d())
-    return elem.getroottree()""".format(childfun_name),
-                          context.filename,
-                          "exec",
-                          ast.PyCF_ONLY_AST)
-        rootfun = rootmod.body[0]
+        childfun = self.compose_childrenfun(root, context, childfun_name)
         attr_precode, attr_elemcode, attrdict, attr_postcode = \
             self.compose_attrdict(root, context)
 
-        replace_ast_names(rootfun, {
-            "_a": root.tag,
-            "_b": attrdict,
-            "_c": root.text,
-            "_d": ast.Name(
-                childfun_name,
-                ast.Load(),
-                lineno=root.sourceline or 0,
+        rootfun_body = []
+        rootfun = ast.FunctionDef(
+            "root",
+            ast.arguments(
+                [
+                    ast.arg("utils", None),
+                    ast.arg("context", None),
+                    ast.arg("arguments", None)
+                ],
+                None,
+                None,
+                [],
+                None,
+                None,
+                [],
+                []),
+            rootfun_body,
+            [],
+            None,
+            lineno=0,
+            col_offset=0)
+
+        rootfun_body[:0] = global_precode + attr_precode + childfun
+
+        rootfun_body.extend([
+            ast.Assign(
+                [
+                    ast.Name(
+                        "elem",
+                        ast.Store(),
+                        lineno=0,
+                        col_offset=0),
+                ],
+                ast.Call(
+                    ast.Attribute(
+                        ast.Name(
+                            "etree",
+                            ast.Load(),
+                            lineno=0,
+                            col_offset=0),
+                        "Element",
+                        ast.Load(),
+                        lineno=0,
+                        col_offset=0),
+                    [
+                        ast.Str(
+                            root.tag,
+                            lineno=0,
+                            col_offset=0),
+                        attrdict
+                    ],
+                    [],
+                    None,
+                    None,
+                    lineno=0,
+                    col_offset=0),
+                lineno=0,
+                col_offset=0),
+            ast.Assign(
+                [
+                    self.ast_get_from_object("makeelement", "context",
+                                             0,
+                                             ast.Store())
+                ],
+                ast.Attribute(
+                    ast.Name(
+                        "elem",
+                        ast.Load(),
+                        lineno=0,
+                        col_offset=0),
+                    "makeelement",
+                    ast.Load(),
+                    lineno=0,
+                    col_offset=0),
+                lineno=0,
                 col_offset=0)
-            })
+        ])
 
-        if not precode:
-            del rootfun.body[3]
+        if root.text:
+            rootfun_body.append(
+                self.ast_set_text(
+                    "elem",
+                    root.text,
+                    root.sourceline or 0))
 
-        if not root.text:
-            del rootfun.body[2]
+        rootfun_body.extend(attr_elemcode)
 
-        if precode:
-            rootfun.body[-2:-2] = attr_elemcode
-        else:
-            rootfun.body[-1:-1] = attr_elemcode
-        rootfun.body[0:0] = global_precode + precode + attr_precode
-        rootfun.body.extend(attr_postcode)
-        rootfun.body.extend(global_postcode)
+        if childfun:
+            rootfun_body.append(
+                self.ast_append_children(
+                    "elem",
+                    childfun_name,
+                    root.sourceline or 0))
+
+        rootfun_body.extend(attr_postcode)
+        rootfun_body.extend(global_postcode)
+
+        rootfun_body.append(
+            ast.Return(
+                ast.Call(
+                    ast.Attribute(
+                        ast.Name(
+                            "elem",
+                            ast.Load(),
+                            lineno=0,
+                            col_offset=0),
+                        "getroottree",
+                        ast.Load(),
+                        lineno=0,
+                        col_offset=0),
+                    [], [],
+                    None, None,
+                    lineno=0,
+                    col_offset=0),
+                lineno=0,
+                col_offset=0))
+
+
+        rootmod = ast.Module([rootfun])
+        # print(ast.dump(rootmod))
 
         code = compile(rootmod, context.filename, "exec")
         globals_dict = dict(globals())
         locals_dict = {}
         exec(code, globals_dict, locals_dict)
+
+        utils = Namespace()
+        utils.append_children = self.append_children
+        utils.storage = self.storage
+
         return functools.partial(locals_dict["root"],
-                                 self.append_children,
-                                 self.storage)
+                                 utils)
 
     def preserve_tail_code(self, elem, context):
         """
@@ -545,9 +607,10 @@ def root(append_children, template_storage, href, request, arguments):
         original exception being attached as context.
         """
         try:
-            return self._process(functools.partial(self.href, request),
-                                 request,
-                                 arguments)
+            context = Namespace()
+            context.request = request
+            context.href = functools.partial(self.href, request)
+            return self._process(context, arguments)
         except Exception as err:
             raise TemplateEvaluationError(
                 "template evaluation failed") from err
@@ -575,6 +638,376 @@ def root(append_children, template_storage, href, request, arguments):
         self.storage[identifier] = obj
 
         return identifier
+
+    # AST code generation helpers, which may need Template state in the future
+
+    def ast_append_children(self, elem, childfun, sourceline):
+        """
+        Return an AST statement which appends the children provided by
+        *childfun* to the element referred to by *elem*.
+
+        The AST is tagged to belong to the given *sourceline*.
+
+        If any of *elem* or *childfun* is a string, it is converted to an
+        :class:`ast.Name` with load semantics.
+        """
+
+        elem = self.ast_or_name(elem, sourceline)
+        childfun = self.ast_or_name(childfun, sourceline)
+
+        return ast.Expr(
+            ast.Call(
+                self.ast_get_util("append_children", sourceline),
+                [
+                    elem,
+                    ast.Call(
+                        childfun,
+                        [], [],
+                        None, None,
+                        lineno=sourceline,
+                        col_offset=0)
+                ],
+                [],
+                None,
+                None,
+                lineno=sourceline,
+                col_offset=0),
+            lineno=sourceline,
+            col_offset=0)
+
+    def ast_get_elem_attr(self, key, sourceline, varname="elem"):
+        """
+        Return an AST expression which evaluates to the value of the XML
+        attribute *key* on the element referred to by *varname*.
+
+        The AST is tagged to belong to the given *sourceline*.
+
+        If *varname* is a string, it is converted to an :class:`ast.Name` with
+        load semantics. If *key* is a string, it is wrapped in an
+        :class:`ast.Str`.
+        """
+
+        return ast.Call(
+            self.ast_get_from_object(
+                "get",
+                self.ast_or_name(varname, sourceline),
+                sourceline),
+            [
+                self.ast_or_str(key, sourceline),
+            ],
+            [],
+            None,
+            None,
+            lineno=sourceline,
+            col_offset=0)
+
+    def ast_get_from_object(self, attrname, objname, sourceline, ctx=None):
+        """
+        Return an AST expression which evaluates to the value of the attribute
+        *attrname* on the object referred to by *objname*, which can be used in
+        the given *ctx* (defaulting to a :class:`ast.Load` context).
+
+        The AST is tagged to belong to the given *sourceline*.
+
+        If *objname* is a string, it is converted to an :class:`ast.Name` with
+        load semantics.
+        """
+
+        ctx = ctx or ast.Load()
+        return ast.Attribute(
+            self.ast_or_name(objname, sourceline),
+            attrname,
+            ctx,
+            lineno=sourceline,
+            col_offset=0)
+
+    def ast_get_util(self, utilname, sourceline, ctx=None):
+        """
+        Return an AST expression providing access to the attribute *utilname* on
+        the `utils` object in the given *ctx* (defaulting to a :class:`ast.Load`
+        context).
+
+        The AST is tagged to belong to the given *sourceline*.
+        """
+
+        return self.ast_get_from_object(utilname, "utils", sourceline, ctx=ctx)
+
+    def ast_get_stored(self, key, sourceline):
+        """
+        Return an AST expression which evaluates to the stored object with the
+        given *key* (as returned by :meth:`store`). The object can be used in
+        :class:`ast.Load` contexts.
+
+        The AST is tagged to belong to the given *sourceline*.
+        """
+
+        return ast.Subscript(
+            self.ast_get_from_object(
+                "storage",
+                "utils",
+                sourceline),
+            ast.Index(
+                ast.Str(
+                    key,
+                    lineno=sourceline,
+                    col_offset=0),
+                lineno=sourceline,
+                col_offset=0),
+            ast.Load(),
+            lineno=sourceline,
+            col_offset=0)
+
+    def ast_href(self, sourceline):
+        """
+        Return an AST expression which evaluates to the :meth:`href` method,
+        partially specialized using the current request (so that it takes only
+        one argument, the object to be converted into an URL).
+
+        The AST is tagged to belong to the given *sourceline*.
+        """
+
+        return self.ast_get_from_object("href", "context", sourceline)
+
+    def ast_makeelement(self, tag, sourceline, attrdict=None, nsdict=None):
+        """
+        Return an AST expression which evaluates to a newly created
+        :class:`lxml.etree.Element`. The element will have the given *tag*, and
+        if given attributes from *attrdict* and it will be using the namespace
+        map provided in *nsdict*. For details see the documentation of the
+        ``makeelement`` function from :mod:`lxml.etree`.
+
+        The AST is tagged to belong to the given *sourceline*.
+
+        If *tag* is a string, it is wrapped into an :class:`ast.Str`.
+        """
+
+        tag = self.ast_or_str(tag, sourceline)
+
+        args = [
+            tag
+        ]
+        if attrdict is not None:
+            args.append(attrdict)
+        if nsdict is not None:
+            if attrdict is None:
+                args.append(
+                    ast.Dict([], [],
+                             lineno=sourceline,
+                             col_offset=0))
+            args.append(nsdict)
+
+        return ast.Call(
+            self.ast_get_from_object("makeelement", "context", sourceline),
+            args,
+            [],
+            None,
+            None,
+            lineno=sourceline,
+            col_offset=0)
+
+    def ast_makeelement_and_setup(
+            self, tag, sourceline,
+            attrdict=None,
+            nsdict=None,
+            text=None,
+            tail=None,
+            childfun=None,
+            varname="elem"):
+        """
+        Return a list of AST statements which create an element and set it up in
+        a sophisticated manner. Element creation happens through
+        :meth:`ast_makeelement`, thus the documentation of *tag*, *attrdict* and
+        *nsdict* from there applies.
+
+        After construction, the elements ``text`` attribute is set to *text*, if
+        *text* is not :data:`None`. The same holds for the ``tail`` attribute,
+        using *tail* respectively.
+
+        If *childfun* is not :data:`None`, a statement to append the children to
+        the element using the given *childfun* is created using
+        :meth:`ast_append_children`, so the documentation from there regarding
+        *childfun* applies.
+
+        The AST is tagged to belong to the given *sourceline*.
+
+        If any of *text* or *tail* is a string, it is wrapped in an
+        :class:`ast.Str`.
+        """
+
+        code = [
+            ast.Assign(
+                [
+                    ast.Name(
+                        varname,
+                        ast.Store(),
+                        lineno=sourceline,
+                        col_offset=0),
+                ],
+                self.ast_makeelement(tag, sourceline,
+                                     attrdict=attrdict,
+                                     nsdict=nsdict),
+                lineno=sourceline,
+                col_offset=0)
+        ]
+
+        if text is not None:
+            code.append(self.ast_set_text(varname, text, sourceline))
+
+        if tail is not None:
+            code.append(self.ast_set_tail(varname, tail, sourceline))
+
+        if childfun is not None:
+            code.append(
+                self.ast_append_children(
+                    varname,
+                    childfun,
+                    sourceline))
+
+        return code
+
+    def ast_or_name(self, value, sourceline, ctx=None):
+        """
+        Return an :class:`ast.Name` pointing to the name in *value* if *value*
+        is a string and return *value* otherwise.
+
+        If a :class:`ast.Name` instance is created, it will be attributed to the
+        given *sourceline* and be using the context *ctx*, which defaults to a
+        :class:`ast.Load` context.
+        """
+
+        ctx = ctx or ast.Load()
+        if isinstance(value, str):
+            value = ast.Name(
+                value,
+                ctx,
+                lineno=sourceline,
+                col_offset=0)
+
+        return value
+
+    def ast_or_str(self, value, sourceline):
+        """
+        Return an :class:`ast.Str` containing the string in *value* if *value*
+        is a string and return *value*x otherwise.
+
+        If a :class:`ast.Str` instance is created, it will be attributed to the
+        given *sourceline*.
+        """
+
+        if isinstance(value, str):
+            value = ast.Str(
+                value,
+                lineno=sourceline,
+                col_offset=0)
+
+        return value
+
+    def ast_set_attr(self, obj, attrname, value, sourceline):
+        """
+        Return an AST statement setting the attribute with *attrname* on the
+        given *obj* to the given *value*.
+
+        The AST is tagged to belong to the given *sourceline*.
+
+        If *obj* is a string, it will be converted to a :class:`ast.Name`.
+        """
+
+        return ast.Assign(
+            [
+                ast.Attribute(
+                    self.ast_or_name(obj, sourceline),
+                    attrname,
+                    ast.Store(),
+                    lineno=sourceline,
+                    col_offset=0)
+            ],
+            value,
+            lineno=sourceline,
+            col_offset=0)
+
+    def ast_set_elem_attr(self, key, value, sourceline, varname="elem"):
+        """
+        Return an AST statement setting the XML attribute *key* to the given
+        *value* on the XML element stored in the variable called *varname*.
+
+        The AST is tagged to belong to the given *sourceline*.
+
+        If *varname* is a string, it will be converted to an
+        :class:`ast.Name`. If any of *key* or *value* is a string, it will be
+        converted to :class:`ast.Str`.
+        """
+
+        return ast.Expr(
+            ast.Call(
+                self.ast_get_from_object(
+                    "set",
+                    self.ast_or_name(varname, sourceline),
+                    sourceline),
+                [
+                    self.ast_or_str(key, sourceline),
+                    self.ast_or_str(value, sourceline)
+                ],
+                [],
+                None,
+                None,
+                lineno=sourceline,
+                col_offset=0),
+            lineno=sourceline,
+            col_offset=0)
+
+    def ast_set_tail(self, varname, value, sourceline):
+        """
+        Return an AST statement setting the XML tail of the element in *varname*
+        to the given *value*.
+
+        The AST is tagged to belong to the given *sourceline*.
+
+        If *varname* is a string, it will be converted to an
+        :class:`ast.Name`. If *value* is a string, it will be converted to
+        :class:`ast.Str`.
+        """
+
+        return self.ast_set_attr(
+            self.ast_or_name(varname, sourceline),
+            "tail",
+            self.ast_or_str(value, sourceline),
+            sourceline)
+
+    def ast_set_text(self, varname, value, sourceline):
+        """
+        Return an AST statement setting the XML text of the element in *varname*
+        to the given *value*.
+
+        The AST is tagged to belong to the given *sourceline*.
+
+        If *varname* is a string, it will be converted to an
+        :class:`ast.Name`. If *value* is a string, it will be converted to
+        :class:`ast.Str`.
+        """
+
+        return self.ast_set_attr(
+            self.ast_or_name(varname, sourceline),
+            "text",
+            self.ast_or_str(value, sourceline),
+            sourceline)
+
+    def ast_yield(self, varname, sourceline):
+        """
+        Return an AST statement yielding the object referred to by *varname*.
+
+        The AST is tagged to belong to the given *sourceline*.
+
+        If *varname* is a string, it will be converted to an :class:`ast.Name`.
+        """
+
+        varname = self.ast_or_name(varname, sourceline)
+        return ast.Expr(
+            ast.Yield(
+                varname,
+                lineno=sourceline,
+                col_offset=0),
+            lineno=sourceline,
+            col_offset=0)
 
 
 class TemplateLoader(metaclass=abc.ABCMeta):

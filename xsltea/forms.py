@@ -200,18 +200,27 @@ class FormProcessor(TemplateProcessor):
 
 
     def handle_form(self, template, elem, attrib, value, context):
+        sourceline = elem.sourceline or 0
+
         form_ast = compile(value,
                            context.filename,
                            "eval",
                            ast.PyCF_ONLY_AST).body
         self._safety_level.check_safety(form_ast)
 
-        elemcode = compile("""\
-default_form = a""",
-                           context.filename,
-                           "exec",
-                           ast.PyCF_ONLY_AST).body
-        elemcode[0].value = form_ast
+        elemcode = [
+            ast.Assign(
+                [
+                    ast.Name(
+                        "default_form",
+                        ast.Store(),
+                        lineno=sourceline,
+                        col_offset=0),
+                ],
+                form_ast,
+                lineno=sourceline,
+                col_offset=0),
+        ]
 
         return [], elemcode, None, None, []
 
@@ -283,6 +292,8 @@ default_form = a""",
 
 
     def handle_field(self, template, elem, attrib, value, context):
+        sourceline = elem.sourceline or 0
+
         try:
             form = elem.get(self.xmlns.form, "default_form")
             id = elem.get(getattr(self.xmlns, "id"))
@@ -329,64 +340,301 @@ default_form = a""",
         if valuecode is None:
             valuecode = field_ast
 
-        settercode = compile("""\
-_form = __form
-_descriptor = __descriptor
-elem.set("name", _name)
-tmp_value = None
-if _descriptor in _form.errors:
-    tmp_value = _form.errors[_descriptor][0].original_value
-    elem.set("class", _errorclass + elem.get("class", ""))
-if tmp_value is None:
-    tmp_value = _value
-elem.set("value", str(tmp_value) if tmp_value is not None else "")""",
-                             context.filename,
-                             "exec",
-                             ast.PyCF_ONLY_AST)
+        settercode = []
+        settercode.extend([
+            ast.Assign(
+                [
+                    ast.Tuple(
+                        [
+                            ast.Name(
+                                "_form",
+                                ast.Store(),
+                                lineno=sourceline,
+                                col_offset=0),
+                            ast.Name(
+                                "_descriptor",
+                                ast.Store(),
+                                lineno=sourceline,
+                                col_offset=0),
+                            ast.Name(
+                                "_tmp_value",
+                                ast.Store(),
+                                lineno=sourceline,
+                                col_offset=0),
+                        ],
+                        ast.Store(),
+                        lineno=sourceline,
+                        col_offset=0)
+                ],
+                ast.Tuple(
+                    [
+                        form_ast,
+                        descriptor_ast,
+                        ast.Name(
+                            "None",
+                            ast.Load(),
+                            lineno=sourceline,
+                            col_offset=0)
+                    ],
+                    ast.Load(),
+                    lineno=sourceline,
+                    col_offset=0),
+                lineno=sourceline,
+                col_offset=0),
+            ast.If(
+                ast.UnaryOp(
+                    ast.Not(),
+                    ast.Call(
+                        ast.Name(
+                            "isinstance",
+                            ast.Load(),
+                            lineno=sourceline,
+                            col_offset=0),
+                        [
+                            ast.Name(
+                                "_form",
+                                ast.Load(),
+                                lineno=sourceline,
+                                col_offset=0),
+                            template.ast_get_stored(
+                                template.store(teapot.forms.Form),
+                                sourceline)
+                        ],
+                        [],
+                        None,
+                        None,
+                        lineno=sourceline,
+                        col_offset=0),
+                    lineno=sourceline,
+                    col_offset=0),
+                [
+                    ast.Raise(
+                        ast.Call(
+                            ast.Name(
+                                "ValueError",
+                                ast.Load(),
+                                lineno=sourceline,
+                                col_offset=0),
+                            [
+                                ast.Call(
+                                    ast.Attribute(
+                                        ast.Str(
+                                            "Not a valid form object: {}",
+                                            lineno=sourceline,
+                                            col_offset=0),
+                                        "format",
+                                        ast.Load(),
+                                        lineno=sourceline,
+                                        col_offset=0),
+                                    [
+                                        ast.Name(
+                                            "_form",
+                                            ast.Load(),
+                                            lineno=sourceline,
+                                            col_offset=0),
+                                    ],
+                                    [],
+                                    None,
+                                    None,
+                                    lineno=sourceline,
+                                    col_offset=0),
+                            ],
+                            [],
+                            None,
+                            None,
+                            lineno=sourceline,
+                            col_offset=0),
+                        None,
+                        lineno=sourceline,
+                        col_offset=0)
+                ],
+                [],
+                lineno=sourceline,
+                col_offset=0),
+            template.ast_set_elem_attr(
+                "name",
+                namecode,
+                sourceline),
+            ast.If(
+                ast.Compare(
+                    ast.Name(
+                        "_descriptor",
+                        ast.Load(),
+                        lineno=sourceline,
+                        col_offset=0),
+                    [
+                        ast.In()
+                    ],
+                    [
+                        template.ast_get_from_object(
+                            "errors",
+                            "_form",
+                            sourceline)
+                    ],
+                    lineno=sourceline,
+                    col_offset=0),
+                [
+                    # store the original value for re-display
+                    ast.Assign(
+                        [
+                            ast.Name(
+                                "_tmp_value",
+                                ast.Store(),
+                                lineno=sourceline,
+                                col_offset=0),
+                        ],
+                        ast.Attribute(
+                            ast.Subscript(
+                                ast.Subscript(
+                                    template.ast_get_from_object(
+                                        "errors",
+                                        "_form",
+                                        sourceline),
+                                    ast.Index(
+                                        ast.Name(
+                                            "_descriptor",
+                                            ast.Load(),
+                                            lineno=sourceline,
+                                            col_offset=0)),
+                                    ast.Load(),
+                                    lineno=sourceline,
+                                    col_offset=0),
+                                ast.Index(
+                                    ast.Num(
+                                        0,
+                                        lineno=sourceline,
+                                        col_offset=0)),
+                                ast.Load(),
+                                lineno=sourceline,
+                                col_offset=0),
+                            "original_value",
+                            ast.Load(),
+                            lineno=sourceline,
+                            col_offset=0),
+                        lineno=sourceline,
+                        col_offset=0),
+                    # set the error class
+                    template.ast_set_elem_attr(
+                        "class",
+                        ast.BinOp(
+                            ast.Str(
+                                ("" if self._errorclass is None
+                                 else (self._errorclass + " ")),
+                                lineno=sourceline,
+                                col_offset=0),
+                            ast.Add(),
+                            template.ast_get_elem_attr("class", sourceline),
+                            lineno=sourceline,
+                            col_offset=0),
+                        sourceline)
+                ],
+                [],
+                lineno=sourceline,
+                col_offset=0)
+        ])
 
-        settercode = xsltea.template.replace_ast_names(settercode, {
-            "_name": namecode,
-            "_value": valuecode,
-            "__form": form_ast,
-            "__descriptor": descriptor_ast,
-            "_errorclass": ("" if self._errorclass is None
-                            else (self._errorclass + " "))}).body
+        if valuecode is not False:
+            settercode.append(
+                ast.If(
+                    ast.Compare(
+                        ast.Name(
+                            "_tmp_value",
+                            ast.Load(),
+                            lineno=sourceline,
+                            col_offset=0),
+                        [
+                            ast.Is()
+                        ],
+                        [
+                            ast.Name(
+                                "None",
+                                ast.Load(),
+                                lineno=sourceline,
+                                col_offset=0)
+                        ],
+                        lineno=sourceline,
+                        col_offset=0),
+                    [
+                        ast.Assign(
+                            [
+                                ast.Name(
+                                    "_tmp_value",
+                                    ast.Store(),
+                                    lineno=sourceline,
+                                    col_offset=0),
+                            ],
+                            valuecode,
+                            lineno=sourceline,
+                            col_offset=0)
+                    ],
+                    [],
+                    lineno=sourceline,
+                    col_offset=0))
 
-        if valuecode is False:
-            del settercode[-2:-1]
+        settercode.append(
+            template.ast_set_elem_attr(
+                "value",
+                ast.IfExp(
+                    ast.Compare(
+                        ast.Name(
+                            "_tmp_value",
+                            ast.Load(),
+                            lineno=sourceline,
+                            col_offset=0),
+                        [
+                            ast.Is()
+                        ],
+                        [
+                            ast.Name(
+                                "None",
+                                ast.Load(),
+                                lineno=sourceline,
+                                col_offset=0)
+                        ],
+                        lineno=sourceline,
+                        col_offset=0),
+                    ast.Str(
+                        "",
+                        lineno=sourceline,
+                        col_offset=0),
+                    ast.Call(
+                        ast.Name(
+                            "str",
+                            ast.Load(),
+                            lineno=sourceline,
+                            col_offset=0),
+                        [
+                            ast.Name(
+                                "_tmp_value",
+                                ast.Load(),
+                                lineno=sourceline,
+                                col_offset=0)
+                        ],
+                        [],
+                        None,
+                        None,
+                        lineno=sourceline,
+                        col_offset=0),
+                    lineno=sourceline,
+                    col_offset=0),
+                sourceline))
 
-        validation_code = compile("""\
-if not isinstance(_form, template_storage[{!r}]):
-    raise ValueError("Not a valid form object: {{}}".format(
-        form))""".format(template.store(teapot.forms.Form)),
-                                  context.filename,
-                                  "exec",
-                                  ast.PyCF_ONLY_AST)
-
-        validation_code = xsltea.template.replace_ast_names(validation_code, {
-            "_form": form_ast}).body
-
-        elemcode[:0] = validation_code
         elemcode.extend(settercode)
 
         if id is not None:
             if id:
-                idcode = compile("""\
-elem.set("id", _id)""",
-                             context.filename,
-                             "exec",
-                             ast.PyCF_ONLY_AST)
-                elemcode.extend(xsltea.template.replace_ast_names(idcode, {
-                    "_id": ast.Str(id,
-                                   lineno=elem.sourceline or 0,
-                                   col_offset=0)}).body)
+                elemcode.append(
+                    template.ast_set_elem_attr(
+                        "id", id,
+                        sourceline))
         else:
-            idcode = compile("""\
-elem.set("id", elem.get("name"))""",
-                             context.filename,
-                             "exec",
-                             ast.PyCF_ONLY_AST).body
-            elemcode.extend(idcode)
+            elemcode.append(
+                template.ast_set_elem_attr(
+                    "id",
+                    template.ast_get_elem_attr(
+                        "name",
+                        sourceline),
+                    sourceline))
 
         return [], elemcode, None, None, []
 

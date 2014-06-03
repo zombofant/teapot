@@ -48,10 +48,10 @@ class StoringProcessor(xsltea.processor.TemplateProcessor):
     def handle_elem(self, template, elem, filename, offset):
         faketree = etree.Element(xsltea.exec.ExecProcessor.xmlns.text)
         faketree.text = """str([
-            template_storage[{!r}],
-            template_storage[{!r}],
-            template_storage[{!r}],
-            template_storage[{!r}]])""".format(
+            utils.storage[{!r}],
+            utils.storage[{!r}],
+            utils.storage[{!r}],
+            utils.storage[{!r}]])""".format(
                 template.store(self._a),
                 template.store(self._b),
                 template.store(self._c),
@@ -69,7 +69,7 @@ class TestTemplate(unittest.TestCase):
 
     xmlsrc_identity = """<test><test2 a="b" /><test3 c="d">spam<test4>foo</test4>bar<test5 e="f">baz</test5>fnord</test3></test>"""
 
-    xmlsrc_href = """<test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"><a><exec:text>href('/foo/bar')</exec:text></a><b><exec:text>href('foo/bar')</exec:text></b></test>"""
+    xmlsrc_href = """<test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"><a><exec:text>context.href('/foo/bar')</exec:text></a><b><exec:text>context.href('foo/bar')</exec:text></b></test>"""
 
     xmlsrc_storage = """<test xmlns:storage="uri:local:testing"><storage:foo /></test>"""
 

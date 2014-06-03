@@ -304,7 +304,9 @@ class BranchingProcessor(TemplateProcessor):
             postcode.extend(attr_postcode)
 
         if not conditions:
-            raise ValueError("Conditional element without conditions")
+            raise ValueError("Conditional element without conditions "
+                             "({}:{})".format(context.filename,
+                                              elem.sourceline or 0))
 
         conditioncode = functools.reduce(
             lambda prev, curr: ast.BinOp(
@@ -741,18 +743,14 @@ class FunctionProcessor(TemplateProcessor):
     template_libraries = weakref.WeakKeyDictionary()
 
     prohibited_names = {
-        "makeelement",
-        "append_children",
-        "template_storage",
-        "href",
-        "request"
+        "utils",
+        "context",
     }
 
     class Function:
         implicit_arguments = [
-            "makeelement",
-            "href",
-            "request"
+            "utils",
+            "context",
         ]
 
         def __init__(self, name, arguments, safety_level, context):
@@ -782,7 +780,7 @@ class FunctionProcessor(TemplateProcessor):
             self.lazy_defaults = lazy_defaults
 
             self._prototype = compile("""\
-def func(append_children, template_storage, makeelement, href, request, {}):
+def func(utils, context, {}):
     pass""".format(
         ", ".join(self.arguments)),
                               context.filename,
@@ -798,10 +796,7 @@ def func(append_children, template_storage, makeelement, href, request, {}):
 
             def_code = compile(def_ast, context.filename, "exec")
             exec(def_code, globals_dict, locals_dict)
-            self._func = functools.partial(
-                locals_dict["func"],
-                xsltea.template.Template.append_children,
-                template.storage)
+            self._func = locals_dict["func"]
 
 
         def compose_call(self, template, argumentmap, context, sourceline):
@@ -835,22 +830,9 @@ def func(append_children, template_storage, makeelement, href, request, {}):
             return [ast.Expr(
                 ast.YieldFrom(
                     ast.Call(
-                        ast.Subscript(
-                            ast.Name(
-                                "template_storage",
-                                ast.Load(),
-                                lineno=sourceline,
-                                col_offset=0),
-                            ast.Index(
-                                ast.Str(
-                                    template.store(self),
-                                    lineno=sourceline,
-                                    col_offset=0),
-                                lineno=sourceline,
-                                col_offset=0),
-                            ast.Load(),
-                            lineno=sourceline,
-                            col_offset=0),
+                        template.ast_get_stored(
+                            template.store(self),
+                            sourceline),
                         [
                             ast.Name(
                                 argname,
@@ -1078,21 +1060,6 @@ class GlobalsProcessor(TemplateProcessor):
                         lineno=0,
                         col_offset=0)
                 ],
-                ast.Subscript(
-                    ast.Name(
-                        "template_storage",
-                        ast.Load(),
-                        lineno=0,
-                        col_offset=0),
-                    ast.Index(
-                        ast.Str(
-                            key,
-                            lineno=0,
-                            col_offset=0),
-                        lineno=0,
-                        col_offset=0),
-                    ast.Load(),
-                    lineno=0,
-                    col_offset=0),
+                template.ast_get_stored(key, 0),
                 lineno=0,
                 col_offset=0)
