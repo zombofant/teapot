@@ -2,23 +2,133 @@ import unittest
 
 import teapot.forms
 
+class CustomField(teapot.forms.CustomField):
+    # install some instrumentations to test the different code paths in
+    # CustomField
+    def get_default(self, instance):
+        return "default"
+
+    def input_validate(self, test_state_value, value):
+        if test_state_value >= 1:
+            err = ValueError(value)
+            yield err
+            if test_state_value >= 2:
+                raise err
+
+        return value
+
+class CustomFieldTester(teapot.forms.Form):
+    field = CustomField()
+    field.name = "field"
+
+class TestCustomField(unittest.TestCase):
+    def setUp(self):
+        self.instance = CustomFieldTester()
+
+    def tearDown(self):
+        del self.instance
+
+    def test_access(self):
+        self.assertEqual(
+            "default",
+            self.instance.field)
+
+        self.instance.field = "foo"
+        self.assertEqual(
+            "foo",
+            self.instance.field)
+
+        del self.instance.field
+
+        self.assertEqual(
+            "default",
+            self.instance.field)
+
+    def test_validation_no_errors(self):
+        # no errors if argument is 0, due to instrumentation
+        self.assertFalse(
+            list(CustomFieldTester.field.from_field_values(
+                self.instance,
+                0,
+                ["bar"])))
+
+        self.assertEqual(
+            "bar",
+            self.instance.field,
+            "no errors, field value must get updated")
+
+    def test_validation_noncritcal(self):
+        errs = list(CustomFieldTester.field.from_field_values(
+            self.instance,
+            1,
+            ["bar"]))
+
+        self.assertIsInstance(
+            errs[0],
+            ValueError)
+        self.assertEqual(
+            "bar",
+            errs[0].err.args[0])
+
+        self.assertEqual(
+            "bar",
+            self.instance.field,
+            "field value must get updated if the error is noncritical")
+
+    def test_validation_critical(self):
+        self.instance.field = "foo"
+
+        errs = list(CustomFieldTester.field.from_field_values(
+            self.instance,
+            2,
+            ["bar"]))
+
+        self.assertIsInstance(
+            errs[0],
+            ValueError)
+        self.assertEqual(
+            "bar",
+            errs[0].err.args[0])
+
+        self.assertEqual(
+            "foo",
+            self.instance.field,
+            "field value must be unchanged")
+
+class FakeRequest:
+    def __init__(self, post_data):
+        self.post_data = post_data
+
 class TestWebForm(unittest.TestCase):
     class Form(teapot.forms.Form):
-        @teapot.forms.field
-        def test_int(self, value):
-            return int(value)
+        test_int = teapot.forms.IntField(default=None)
+        test_int_with_default = teapot.forms.IntField(
+            default=10)
+        boolfield = teapot.forms.CheckboxField()
 
-        @teapot.forms.field
-        def test_int_with_default(self, value):
-            return int(value)
+    class FormWithRows(Form):
+        class Row(teapot.forms.Row):
+            @classmethod
+            def with_foo(cls, foo):
+                instance = cls()
+                instance.foo = foo
+                return instance
 
-        @test_int_with_default.default
-        def test_int_with_default(self):
-            return 10
+            foo = teapot.forms.TextField(default=None)
 
-        @teapot.forms.boolfield
-        def boolfield(self, value):
-            return value
+            def __eq__(self, other):
+                return self.foo == other.foo
+
+            def __ne__(self, other):
+                return not (self == other)
+
+            def __repr__(self):
+                return "<Row foo={!r}>".format(self.foo)
+
+            def __hash__(self):
+                return object.__hash__(self)
+
+        testrows = teapot.forms.rows(Row)
 
     def test_keys(self):
         form = self.Form()
@@ -38,55 +148,47 @@ class TestWebForm(unittest.TestCase):
         del instance.test_int_with_default
         self.assertEqual(10, instance.test_int_with_default)
 
-        with self.assertRaises(ValueError):
-            instance.test_int = "foo"
-
-        with self.assertRaises(ValueError):
-            instance.test_int_with_default = "foo"
-
     def test_autovalidation(self):
-        post_data = {
+        request = FakeRequest({
             "test_int": ["20"],
             "test_int_with_default": ["30"]
-        }
-        instance = self.Form(post_data=post_data)
+        })
+        instance = self.Form(request=request)
 
         self.assertFalse(instance.errors)
         self.assertEqual(20, instance.test_int)
         self.assertEqual(30, instance.test_int_with_default)
 
     def test_boolfields(self):
-        post_data = {
+        request = FakeRequest({
             "test_int": ["20"],
             "test_int_with_default": ["30"]
-        }
-        instance = self.Form(post_data=post_data)
+        })
+        instance = self.Form(request=request)
 
         self.assertFalse(instance.errors)
         self.assertFalse(instance.boolfield)
 
-        post_data = {
+        request = FakeRequest({
             "test_int": ["20"],
             "test_int_with_default": ["30"],
             "boolfield": [1]
-        }
-        instance = self.Form(post_data=post_data)
+        })
+        instance = self.Form(request=request)
 
         self.assertFalse(instance.errors)
         self.assertTrue(instance.boolfield)
 
     def test_inheritance(self):
         class InheritedForm(self.Form):
-            @teapot.forms.field
-            def foo(self, value):
-                return str(value)
+            foo = teapot.forms.TextField(default=None)
 
-        post_data = {
+        request = FakeRequest({
             "test_int": ["20"],
             "test_int_with_default": ["30"],
             "foo": ["40"]
-        }
-        instance = InheritedForm(post_data=post_data)
+        })
+        instance = InheritedForm(request=request)
 
         self.assertFalse(instance.errors)
         self.assertEqual(20, instance.test_int)
@@ -94,76 +196,26 @@ class TestWebForm(unittest.TestCase):
         self.assertEqual("40", instance.foo)
 
     def test_rows(self):
-        class FormWithRows(self.Form):
-            class Row(teapot.forms.Row):
-                @classmethod
-                def with_foo(cls, foo):
-                    instance = cls()
-                    instance.foo = foo
-                    return instance
-
-                @teapot.forms.field
-                def foo(self, value):
-                    return str(value)
-
-                def __eq__(self, other):
-                    return self.foo == other.foo
-
-                def __ne__(self, other):
-                    return not (self == other)
-
-                def __repr__(self):
-                    return "<Row foo={!r}>".format(self.foo)
-
-                __hash__ = None
-
-            testrows = teapot.forms.rows(Row)
-
-        post_data = {
+        request = FakeRequest({
             "test_int": ["20"],
             "test_int_with_default": ["30"],
             "testrows[0].foo": ["bar"],
             "testrows[1].foo": ["baz"]
-        }
+        })
 
-        instance = FormWithRows(post_data=post_data)
+        instance = self.FormWithRows(request=request)
         self.assertFalse(instance.errors)
         self.assertEqual(20, instance.test_int)
         self.assertEqual(30, instance.test_int_with_default)
         self.assertSequenceEqual(
             instance.testrows,
             [
-                FormWithRows.Row.with_foo("bar"),
-                FormWithRows.Row.with_foo("baz")
+                self.FormWithRows.Row.with_foo("bar"),
+                self.FormWithRows.Row.with_foo("baz")
             ])
 
     def test_row_keys(self):
-        class FormWithRows(teapot.forms.Form):
-            class Row(teapot.forms.Row):
-                @classmethod
-                def with_foo(cls, foo):
-                    instance = cls()
-                    instance.foo = foo
-                    return instance
-
-                @teapot.forms.field
-                def foo(self, value):
-                    return str(value)
-
-                def __eq__(self, other):
-                    return self.foo == other.foo
-
-                def __ne__(self, other):
-                    return not (self == other)
-
-                def __repr__(self):
-                    return "<Row foo={!r}>".format(self.foo)
-
-                __hash__ = None
-
-            testrows = teapot.forms.rows(Row)
-
-        instance = FormWithRows()
+        instance = self.FormWithRows()
         instance.testrows.append(instance.Row())
         instance.testrows.append(instance.Row())
         instance.testrows.append(instance.Row())
@@ -177,35 +229,10 @@ class TestWebForm(unittest.TestCase):
             instance.testrows[0].get_html_field_key())
         self.assertEqual(
             "testrows[0].foo",
-            FormWithRows.Row.foo.key(instance.testrows[0]))
+            self.FormWithRows.Row.foo.key(instance.testrows[0]))
 
     def test_action_resolution(self):
-        class FormWithRows(teapot.forms.Form):
-            class Row(teapot.forms.Row):
-                @classmethod
-                def with_foo(cls, foo):
-                    instance = cls()
-                    instance.foo = foo
-                    return instance
-
-                @teapot.forms.field
-                def foo(self, value):
-                    return str(value)
-
-                def __eq__(self, other):
-                    return self.foo == other.foo
-
-                def __ne__(self, other):
-                    return not (self == other)
-
-                def __repr__(self):
-                    return "<Row foo={!r}>".format(self.foo)
-
-                __hash__ = None
-
-            testrows = teapot.forms.rows(Row)
-
-        instance = FormWithRows()
+        instance = self.FormWithRows()
         instance.testrows.append(instance.Row())
         instance.testrows.append(instance.Row())
         instance.testrows.append(instance.Row())

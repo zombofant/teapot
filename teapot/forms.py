@@ -28,10 +28,7 @@ however, returns ``10`` when read before an assignment, while the first returns
 
 Documentation for the different descriptors/decorators is also available:
 
-.. autoclass:: field
-   :members: key, load
-
-.. autoclass:: boolfield
+.. autoclass:: CustomField
 
 .. autoclass:: rows
 
@@ -58,12 +55,19 @@ And last, but not least, the exception type:
 import abc
 import collections
 import copy
+import functools
 import itertools
 import operator
+import weakref
 
 import teapot.utils
 
 ACTION_PREFIX = "action:"
+
+def generator_aware_map(func, iterable):
+    iterator = iter(iterable)
+    while True:
+        yield func(next(iterator))
 
 def parse_key(key):
     parts = key.split(".")
@@ -115,6 +119,24 @@ class ValidationError(ValueError):
     def register(self):
         self.instance.add_error(self.field, self)
 
+class FormErrors:
+    """
+    This namespace provides constructors for often-used errors in forms, to
+    consolidate error messages. This eases i18n.
+    """
+
+    __new__ = None
+    __init__ = None
+
+    @staticmethod
+    def must_not_be_empty():
+        return ValueError("Must not be empty")
+
+    @staticmethod
+    def one_or_more_rows_have_errors():
+        return ValueError("One or more rows have errors")
+
+
 class Meta(type):
     """
     A metaclass used to describe :class:`Form`. It takes care of collecting all
@@ -128,7 +150,7 @@ class Meta(type):
         field_descriptors = [
             value
             for value in namespace.values()
-            if isinstance(value, (field, abstract_rows))
+            if isinstance(value, CustomField)
         ]
 
         for base in reversed(bases):
@@ -139,10 +161,10 @@ class Meta(type):
         cls = super().__new__(mcls, name, bases, namespace)
 
         for name, descriptor in namespace.items():
-            if isinstance(descriptor, abstract_rows):
-                # fix rows names
+            if isinstance(descriptor, CustomField):
                 if hasattr(descriptor, "rowcls") and descriptor.rowcls is None:
                     descriptor.rowcls = cls
+                # fix rows names
                 descriptor.name = name
 
         return cls
@@ -153,148 +175,292 @@ class RowMeta(Meta):
     extension of the row classes, if neccessary.
     """
 
-class field:
+class CustomField(metaclass=abc.ABCMeta):
     """
-    This decorator converts a function *validator* into a form field, using the
-    function as validator for the field.
+    Base class for defining form fields. The base class offers interfaces for
+    serializers and parsers to access the fields data and metadata.
 
-    Whenever an assignment to the property is performed, the value assigned is
-    passed to the *validator* function (as second argument -- the first argument
-    is, as usual, the object instance) and it is expected that the *validator*
-    function returns the value which is ultimately to be assigned to the
-    property.
+    .. autoproperty:: field_type
 
-    The :class:`field` takes care of value storage by itself -- the *validator*
-    function does not need to (and should not) manage the storage by itself.
+    .. automethod:: from_field_values
 
-    If validation fails, :class:`ValueError` or :class:`TypeError` exceptions
-    should be thrown. These are caught by the :class:`field` and re-raised as
-    :class:`ValidationError` exceptions with the proper arguments.
+    .. automethod:: get_field_options
+
+    .. automethod:: get_default
+
+    .. automethod:: key
+
+    .. automethod:: input_validate
+
+    .. automethod:: to_field_value
+
+    .. automethod:: __set__
+
+    .. automethod:: __get__
+
+    .. automethod:: __delete__
+
+    .. attribute:: name
+
+       This is initially set to :data:`None`. If the class which has this object
+       as a member does not use the :class:`Meta` metaclass, it must set this
+       value manually.
+
+       The :class:`Meta` metaclass will automatically assign the name of the
+       attribute to which this object was assigned.
 
     """
 
-    def __init__(self,
-                 validator,
-                 default=None,
-                 defaultcon=None,
-                 name=None):
-        if default and defaultcon:
-            raise ValueError("At most one of default and defaultcon must be given")
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = None
 
-        if name is None:
-            name = validator.__name__
+    def __get__(self, instance, class_):
+        """
+        If this object is accessed through another object (that is, *instance*
+        is not :data:`None`), the current value of the field is
+        returned. Otherwise, this object is returned.
+        """
 
-        self.name = name
-        self.validator = validator
-        self.defaultcon = defaultcon or (lambda x: default)
-
-    def __get__(self, instance, cls):
         if instance is None:
             return self
 
         try:
-            return instance.fields[self.name]
+            return instance._field_data[self]
         except KeyError:
-            value = self.defaultcon(instance)
-            instance.fields[self.name] = value
-            return value
+            return instance._field_data.setdefault(
+                self,
+                self.get_default(instance))
 
     def __set__(self, instance, value):
-        try:
-            value = self.validator(instance, value)
-        except ValidationError as err:
-            raise
-        except (ValueError, TypeError) as err:
-            raise ValidationError(err, self, instance,
-                                  original_value=value) from err
+        """
+        Assign a new value to the field. Directly assigned values do not need to
+        pass through input validation.
+        """
 
-        instance.fields[self.name] = value
+        instance._field_data[self] = value
 
     def __delete__(self, instance):
+        """
+        Reset the field to the value provided by :prop:`default`. The evaluation
+        of the :prop:`default` property takes place on the next read of the
+        field.
+        """
+
         try:
-            del instance.fields[self.name]
+            del instance._field_data[self]
         except KeyError:
             pass
 
+    def _extract_value(self, values):
+        """
+        Extract the value from the *values* supplied by client. If too many or
+        too few values are present, raise :class:`ValueError`, otherwise return
+        the acquired value.
+
+        A value might of course be a list of values.
+        """
+
+        if len(values) != 1:
+            raise ValueError("Too much or no field data supplied")
+
+        return values.pop()
+
+    def _tag_error(self, instance, error):
+        """
+        Tag an *error* with metadata, by wrapping it in a
+        :class:`ValidationError` instance pointing to this field.
+
+        If *error* is a validation error, the attributes are updated to point to
+        this field.
+        """
+
+        if isinstance(error, ValidationError):
+            error.field = self
+            error.instance = instance
+            return error
+
+        return ValidationError(
+            error,
+            self,
+            instance)
+
+    @abc.abstractmethod
+    def get_default(self, instance):
+        """
+        A default value to be returned when no value is assigned to the
+        field. This must be implemented by deriving classes.
+
+        This property is only accessed *once* per access for which no value is
+        assigned.
+        """
+
+        return None
+
+    @property
+    def field_type(self):
+        """
+        The default HTML field type for this field. This is only a suggestion
+        and may be overriden by the specific view.
+        """
+
+        return "text"
+
+    def get_field_options(self, instance, request):
+        """
+        Provide a sequence of tuples which represent the options possible for
+        this field. If the field has no restricted set of fields, call the
+        default implementation, which will raise an appropiate exception..
+        """
+        raise NotImplementedError("This field does not support option"
+                                  " enumeration")
+
+    def from_field_values(self, instance, request, values):
+        """
+        Parse the *values* from the *request*. *values* must be a list of
+        strings as supplied by the client. This method removes all values used
+        from the list.
+
+        This method is a generator. It yields a list of errors, if any, which
+        must be fully evaluated for the changes to take place on the field.
+
+        The default implementation checks for the presence of exactly one
+        string, and will pass that string on to the :meth:`input_validate`
+        method. If :meth:`input_validate` raises a :class:`ValueError`, it will
+        be swallowed and evaluation aborts, without any changes made to the
+        object. If the error shall be propagated upwards, :meth:`input_validate`
+        is expected to ``yield`` this error first.
+
+        .. note::
+
+           Deriving classes should perform any *parsing* and *conversion* of the
+           values provided by the client in this method, while range checking
+           and other validation should take place in :meth:`input_validate`.
+
+        Any kind of errors which point to input manipulation, such as too few or
+        too many values in the list of values, or values which should not be
+        possible except in forged requests are expected to be raised during the
+        first iteration of the generator, before any value is returned.
+
+        Malformatted strings should never raise, but yield the error.
+
+        After the whole generator has been evaluated, the field of *instance*
+        carries the processed value.
+        """
+
+        value = self._extract_value(values)
+        try:
+            result = yield from generator_aware_map(
+                functools.partial(self._tag_error, instance),
+                self.input_validate(request, value))
+        except ValueError:
+            # input_validate requests to no change to take place to the field
+            return
+        self.__set__(instance, result)
+
+    def input_validate(self, request, value):
+        """
+        Validate the input and return the validated value. This allows the
+        validation to non-fatally constraint values.
+        """
+        return value
+        # required to make input_validate a generator
+        yield None
+
     def key(self, instance):
         """
-        Return the full name of the HTML form element in the context of a given
-        form (or row) *instance*.
+        Return a fully qualified string which uniquely points to this field.
         """
         return instance.get_html_field_key() + self.name
 
-    def load(self, instance, post_data):
+    def load(self, instance, request, data):
         """
-        Try to load the data for this field for the given *instance* from the
-        *post_data*. If loading fails, :class:`ValidationError` exceptions are
-        thrown.
-        """
-        try:
-            values = post_data.pop(self.name)
-            value = values.pop()
-            if len(values) > 0:
-                raise ValueError("too many values")
+        Find the appropriate key(s) and their values and call
+        :meth:`from_field_values` on the values. Yields any errors encountered.
 
-        except ValueError as err:
-            return ValidationError(
-                "Unexpected amount of values (must be exactly 1)",
-                self,
-                instance)
-        except KeyError as err:
-            return ValidationError(
-                "Missing POST data",
-                self,
-                instance)
-
-        self.__set__(instance, value)
-
-    def default(self, callable):
+        The *data* dictionaries keys must be rebased such that they can be
+        indexed by using the field :attr:`name`.
         """
-        Set the constructor for the default value to *callable*.
-        """
-        self.defaultcon = callable
-        return self
+
+        values = data.pop(self.name, [])
+        yield from self.from_field_values(instance, request, values)
 
     def postvalidate(self, instance, request):
         """
-        Run post-validation using the given *request* for the given
-        *instance*. This is a noop by default.
+        Perform any validation which is only possible after all other fields
+        have been filled.
         """
 
-    def __str__(self):
-        return "<field name={!r}>".format(self.name)
-
-class boolfield(field):
-    """
-    Due to the nature of HTML, it is required that boolean values, represented
-    by checkboxes, have special handling: Checkboxes do not generate any post
-    data if they are not checked.
-    """
-
-    def load(self, instance, post_data):
+    def to_field_value(self, instance):
         """
-        Handle the special case of a checkbox field. That is, a missing key is
-        not a fatal condition, but is interpreted as :data:`False` value.
+        Convert the value of the field on *instance* to a string which should be
+        used with HTML views.
 
-        See :meth:`field.load` for more information.
+        The default implementation returns the empty string if the value is
+        :data:`None`, else it returns
         """
+
+        value = self.__get__(instance, type(instance))
+        if value is None:
+            return ""
+        return str(value)
+
+class StaticDefaultField(CustomField):
+    def __init__(self, *, default=None, **kwargs):
+        super().__init__(**kwargs)
+        self._default = default
+
+    def get_default(self, instance):
+        return self._default
+
+class TextField(StaticDefaultField):
+    def __init__(self, default="", **kwargs):
+        super().__init__(default=default, **kwargs)
+
+class IntField(StaticDefaultField):
+    def __init__(self, default=0, allow_none=False, **kwargs):
+        super().__init__(default=default, **kwargs)
+        self.allow_none = allow_none
+
+    def input_validate(self, request, value):
+        if not value:
+            if self.allow_none:
+                if hasattr(self.allow_none, "__call__"):
+                    return self.allow_none()
+                else:
+                    return None
+
+            yield FormErrors.must_not_be_empty()
+
         try:
-            values = post_data.pop(self.name)
-            value = values.pop()
-            if len(values) > 0:
-                raise ValueError("too many values")
+            return int(value)
+        except ValueError:
+            err = FormErrors.not_a_valid_integer()
+            yield err
+            raise err from None
 
-        except ValueError as err:
-            return ValidationError(
-                "Unexpected amount of values (must be exactly 1)",
-                self,
-                instance)
-        except KeyError as err:
-            value = False
-        else:
-            value = True
+class CheckboxField(StaticDefaultField):
+    """
+    This implements a boolean field which can be used with a checkbox. The
+    speciality of a checkbox is that it provides no POST data if it is not
+    checked. The Checkbox implements the
+    """
 
-        self.__set__(instance, value)
+    def __init__(self, *, default=None, **kwargs):
+        super().__init__(default=default, **kwargs)
+
+    def _extract_value(self, values):
+        if not values:
+            return False
+        if len(values) > 1:
+            raise ValueError("Too many values")
+
+        values.pop()
+        return True
+
+    @property
+    def field_type(self):
+        return "checkbox"
 
 class RowList(teapot.utils.InstrumentedList):
     """
@@ -351,7 +517,7 @@ class RowList(teapot.utils.InstrumentedList):
             super().__iter__(),
             slice(None))
 
-class abstract_rows(metaclass=abc.ABCMeta):
+class CustomRows(CustomField):
     """
     This is an abstract base class for descriptors which allow forms to contain
     fields which consist of multiple rows.
@@ -387,33 +553,25 @@ class abstract_rows(metaclass=abc.ABCMeta):
         super().__init__()
         self.name = None
 
-    def __get__(self, instance, cls):
-        if instance is None:
-            return self
-
-        try:
-            return instance.fields[self.name]
-        except KeyError:
-            return instance.fields.setdefault(
-                self.name,
-                RowList(self, instance))
-
     def __set__(self, instance, value):
         raise AttributeError("assigning to a rows instance is not supported")
 
     def __delete__(self, instance):
         raise AttributeError("deleting a rows instance is not supported")
 
+    def get_default(self, instance):
+        return RowList(self, instance)
+
     @abc.abstractmethod
-    def get_row_instance(self, post_data):
+    def get_row_instance(self, request, subdata):
         """
-        Return a row instance suitable to hold the given *post_data*.
+        Return a row instance suitable to hold the given *subdata*.
         """
 
     def key(self, instance):
         return instance.get_html_field_key() + self.name
 
-    def load(self, instance, post_data):
+    def load(self, instance, request, post_data):
         prefix = self.name + "["
         try:
             grouped_data = [
@@ -436,27 +594,15 @@ class abstract_rows(metaclass=abc.ABCMeta):
             })
 
         rows = self.__get__(instance, type(instance))
-        instances = (self.get_row_instance(post_data=sub_data)
-                     for sub_data in items)
-        rows.extend(filter(lambda x: x is not None,
-                           instances))
+        instances = list(filter(
+            lambda x: x is not None,
+            (self.get_row_instance(request, subdata)
+             for subdata in items)))
+        rows.extend(instances)
+        if any(instance.errors for instance in instances):
+            yield FormErrors.one_or_more_rows_have_errors()
 
-    def postvalidate(self, instance, request):
-        """
-        Run post-validation on all rows.
-        """
-        rows = self.__get__(instance, type(instance))
-        for row in rows:
-            row.postvalidate(request)
-
-        if any(bool(item.errors)
-               for item in rows):
-            ValidationError(
-                "One or more rows have errors",
-                self,
-                instance).register()
-
-class rows(abstract_rows):
+class rows(CustomRows):
     """
     This is not a decorator, but a plain descriptor to be used to host a list of
     elements in a :class:`Form`. The elements are instances of *rowcls*, or of
@@ -467,8 +613,8 @@ class rows(abstract_rows):
         super().__init__()
         self.rowcls = rowcls
 
-    def get_row_instance(self, post_data):
-        return self.rowcls(post_data=post_data)
+    def get_row_instance(self, request, subdata):
+        return self.rowcls(request=request, post_data=subdata)
 
 class Form(metaclass=Meta):
     """
@@ -504,14 +650,11 @@ class Form(metaclass=Meta):
     """
 
     def __init__(self, *args, request=None, post_data=None, **kwargs):
-        self.fields = {}
+        self._field_data = {}
         self.errors = {}
         super().__init__(*args, **kwargs)
-        post_data = post_data or (
-            request.post_data if request is not None else None)
-        if post_data is not None:
-            self.fill_post_data(post_data)
         if request is not None:
+            self.fill_post_data(request, post_data or request.post_data)
             self.postvalidate(request)
         for k in list(self.errors.keys()):
             if not self.errors[k]:
@@ -535,12 +678,10 @@ class Form(metaclass=Meta):
         """
         return ""
 
-    def fill_post_data(self, post_data):
+    def fill_post_data(self, request, post_data):
         for descriptor in self.field_descriptors:
-            try:
-                descriptor.load(self, post_data)
-            except ValidationError as err:
-                err.register()
+            for error in descriptor.load(self, request, post_data):
+                error.register()
 
     def find_action_by_key(self, key):
         try:
@@ -593,6 +734,17 @@ class Form(metaclass=Meta):
 
         for field in self.field_descriptors:
             field.postvalidate(self, request)
+
+    def to_post_data(self):
+        """
+        Construct and return a dictionary containing the POST data which would
+        be required to fill the form in the state as it currently is.
+        """
+
+        d = {}
+        for field in self.field_descriptors:
+            field.to_post_data(d)
+        return d
 
 class Row(Form, metaclass=RowMeta):
     """
