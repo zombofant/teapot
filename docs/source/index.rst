@@ -18,6 +18,7 @@ Contents:
    wsgi
    templating
    timeutils
+   html
    sqlalchemy
 
    xsltea

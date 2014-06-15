@@ -104,7 +104,7 @@ class TestWebForm(unittest.TestCase):
         test_int = teapot.forms.IntField(default=None)
         test_int_with_default = teapot.forms.IntField(
             default=10)
-        boolfield = teapot.forms.CheckboxField()
+        boolfield = teapot.forms.FlagField()
 
     class FormWithRows(Form):
         class Row(teapot.forms.Row):
@@ -128,7 +128,7 @@ class TestWebForm(unittest.TestCase):
             def __hash__(self):
                 return object.__hash__(self)
 
-        testrows = teapot.forms.rows(Row)
+        testrows = teapot.forms.Rows(Row)
 
     def test_keys(self):
         form = self.Form()
@@ -157,6 +157,16 @@ class TestWebForm(unittest.TestCase):
 
         self.assertFalse(instance.errors)
         self.assertEqual(20, instance.test_int)
+        self.assertEqual(30, instance.test_int_with_default)
+
+        request = FakeRequest({
+            "test_int": ["foobar"],
+            "test_int_with_default": ["30"]
+        })
+        instance = self.Form(request=request)
+
+        self.assertTrue(instance.errors)
+        self.assertIsNone(instance.test_int)
         self.assertEqual(30, instance.test_int_with_default)
 
     def test_boolfields(self):

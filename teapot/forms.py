@@ -6,41 +6,55 @@ Teapot provides sophisticated means to deal with web forms, whose contents are
 submitted as POST data.
 
 To create a form, the easiest way is to inherit from the :class:`Form` class and
-use :class:`field` decorators to annotate the form fields. Example::
+use the field classes provided by this module:
 
     class Form(teapot.forms.Form):
-        @teapot.forms.field
-        def test_int(self, value):
-            return int(value)
+        test_int = teapot.forms.IntField()
+        test_int_with_default = teapot.forms.IntField(default=10)
+        some_text = teapot.forms.TextField()
 
-        @teapot.forms.field
-        def test_int_with_default(self, value):
-            return int(value)
+Several built in field types are provided.
 
-        @test_int_with_default.default
-        def test_int_with_default(self):
-            return 10
+.. note::
 
-This form has two fields, ``test_int`` and ``test_int_with_default``. Both are
-validated against and converted to integers on assignment. The second one,
-however, returns ``10`` when read before an assignment, while the first returns
-:data:`None`.
+   If using xsltea (or any other HTML serializer for that matter), you should
+   also take a look at :mod:`teapot.html`, which provides fields specialized for
+   the use with HTML output. For example, to support the HTML5 date and time
+   fields, you need to use :class:`teapot.html.DateTimeField`.
 
-Documentation for the different descriptors/decorators is also available:
+.. autoclass:: TextField
 
-.. autoclass:: CustomField
+.. autoclass:: IntField
 
-.. autoclass:: rows
+.. autoclass:: FlagField
 
-Also the base classes:
+.. autoclass:: DateTimeField
+
+.. autoclass:: Rows
+
+To create forms and rows, the following two classes are needed. :class:`Row`
+should be used as a base class if the objects are (also) used as rows in other
+forms. :class:`Row` instances can also be used standalone.
 
 .. autoclass:: Form
 
 .. autoclass:: Row
 
-.. autoclass:: abstract_rows
+Extending existing functionality
+================================
 
-The metaclasses:
+To implement custom field types, the following base classes are provided, which
+implement most of the field functionality.
+
+.. autoclass:: CustomField
+
+.. autoclass:: StaticDefaultField
+
+.. autoclass:: CustomRows
+
+The forms and rows are using the following metaclasses to annotate the fields
+with additional required information which is not available at field
+instanciation time:
 
 .. autoclass:: Meta
 
@@ -61,6 +75,8 @@ import operator
 import weakref
 
 import teapot.utils
+
+from datetime import datetime, timedelta
 
 ACTION_PREFIX = "action:"
 
@@ -136,6 +152,10 @@ class FormErrors:
     def one_or_more_rows_have_errors():
         return ValueError("One or more rows have errors")
 
+    @staticmethod
+    def not_a_valid_integer():
+        return ValueError("Must be a valid integer number")
+
 
 class Meta(type):
     """
@@ -180,7 +200,30 @@ class CustomField(metaclass=abc.ABCMeta):
     Base class for defining form fields. The base class offers interfaces for
     serializers and parsers to access the fields data and metadata.
 
-    .. autoproperty:: field_type
+    The control flows for the different operations on fields are described in
+    detail here, to help implementing custom subclasses.
+
+    * **Retrieving a value from POST data**
+
+      The :class:`teapot.request.Request` object along with a list of values
+      applying to the field is passed to :meth:`from_field_values`. By default,
+      this method calls :meth:`_extract_values` to retrieve **one** value,
+      wrapped in a tuple (subclasses might return more than one value in their
+      own implementation, but this also requires overriding
+      :meth:`from_field_values`).
+
+      The default implementation of :meth:`from_field_values` then continues to
+      yield from the :meth:`input_validate` generator, which receives the
+      request passed and the value obtained from :meth:`_extract_values`. The
+      further interface of :meth:`input_validate` is described in its
+      documentation.
+
+    * **Providing values for display**
+
+      When a serialized text representation is required, :meth:`to_field_value`
+      is called. Usually, a single string is expected; for different field
+      types, it might be sensible to return multiple values. To distinguish the
+      display modes, check the *view_type* attribute.
 
     .. automethod:: from_field_values
 
@@ -264,9 +307,9 @@ class CustomField(metaclass=abc.ABCMeta):
         if len(values) != 1:
             raise ValueError("Too much or no field data supplied")
 
-        return values.pop()
+        return (values.pop(), )
 
-    def _tag_error(self, instance, error):
+    def _tag_error(self, instance, original_value, error):
         """
         Tag an *error* with metadata, by wrapping it in a
         :class:`ValidationError` instance pointing to this field.
@@ -278,6 +321,7 @@ class CustomField(metaclass=abc.ABCMeta):
         if isinstance(error, ValidationError):
             error.field = self
             error.instance = instance
+            error.original_value = original_value
             return error
 
         return ValidationError(
@@ -296,15 +340,6 @@ class CustomField(metaclass=abc.ABCMeta):
         """
 
         return None
-
-    @property
-    def field_type(self):
-        """
-        The default HTML field type for this field. This is only a suggestion
-        and may be overriden by the specific view.
-        """
-
-        return "text"
 
     def get_field_options(self, instance, request):
         """
@@ -328,8 +363,7 @@ class CustomField(metaclass=abc.ABCMeta):
         string, and will pass that string on to the :meth:`input_validate`
         method. If :meth:`input_validate` raises a :class:`ValueError`, it will
         be swallowed and evaluation aborts, without any changes made to the
-        object. If the error shall be propagated upwards, :meth:`input_validate`
-        is expected to ``yield`` this error first.
+        object. The error is propagated upwards as if it had been yielded, too.
 
         .. note::
 
@@ -348,13 +382,14 @@ class CustomField(metaclass=abc.ABCMeta):
         carries the processed value.
         """
 
-        value = self._extract_value(values)
+        value, = self._extract_value(values)
         try:
             result = yield from generator_aware_map(
-                functools.partial(self._tag_error, instance),
+                functools.partial(self._tag_error, instance, value),
                 self.input_validate(request, value))
-        except ValueError:
+        except ValueError as err:
             # input_validate requests to no change to take place to the field
+            yield self._tag_error(instance, value, err)
             return
         self.__set__(instance, result)
 
@@ -391,13 +426,16 @@ class CustomField(metaclass=abc.ABCMeta):
         have been filled.
         """
 
-    def to_field_value(self, instance):
+    def to_field_value(self, instance, view_type):
         """
         Convert the value of the field on *instance* to a string which should be
-        used with HTML views.
+        used with HTML views. *view_type* is a token which identifies the kind
+        of view which will be used to display the field. Usually, it will be a
+        string corresponding to the value of the ``type`` attribute of the HTML
+        field used to show the contents.
 
         The default implementation returns the empty string if the value is
-        :data:`None`, else it returns
+        :data:`None`, else it returns the value.
         """
 
         value = self.__get__(instance, type(instance))
@@ -406,6 +444,13 @@ class CustomField(metaclass=abc.ABCMeta):
         return str(value)
 
 class StaticDefaultField(CustomField):
+    """
+    The :class:`StaticDefaultField` implements the :meth:`get_default` by
+    returning the value provided in the *default* argument to the
+    constructor. Direct use of this class is rarely useful; instead, use some of
+    its subclasses, or derive your own class using a static default.
+    """
+
     def __init__(self, *, default=None, **kwargs):
         super().__init__(**kwargs)
         self._default = default
@@ -414,10 +459,22 @@ class StaticDefaultField(CustomField):
         return self._default
 
 class TextField(StaticDefaultField):
+    """
+    The :class:`TextField` does no validation; it takes the value provided as
+    text, and defaults to the given *default*.
+    """
+
     def __init__(self, default="", **kwargs):
         super().__init__(default=default, **kwargs)
 
 class IntField(StaticDefaultField):
+    """
+    Parses the user submitted value as integer. If the value is empty and
+    *allow_none* is :data:`True`, the value is set to :data:`None`, otherwise,
+    for an empty value, an error is returned. Invalid integers also create an
+    error.
+    """
+
     def __init__(self, default=0, allow_none=False, **kwargs):
         super().__init__(default=default, **kwargs)
         self.allow_none = allow_none
@@ -430,20 +487,20 @@ class IntField(StaticDefaultField):
                 else:
                     return None
 
-            yield FormErrors.must_not_be_empty()
+            raise FormErrors.must_not_be_empty()
 
         try:
             return int(value)
         except ValueError:
-            err = FormErrors.not_a_valid_integer()
-            yield err
-            raise err from None
+            raise FormErrors.not_a_valid_integer() from None
 
-class CheckboxField(StaticDefaultField):
+        yield None
+
+class FlagField(StaticDefaultField):
     """
-    This implements a boolean field which can be used with a checkbox. The
-    speciality of a checkbox is that it provides no POST data if it is not
-    checked. The Checkbox implements the
+    This implements a boolean field which considers itself :data:`True` if
+    exactly one value is present in the user submitted data (no matter what its
+    contents are) and :data:`False` if no values are present.
     """
 
     def __init__(self, *, default=None, **kwargs):
@@ -451,16 +508,45 @@ class CheckboxField(StaticDefaultField):
 
     def _extract_value(self, values):
         if not values:
-            return False
+            return (False, )
         if len(values) > 1:
             raise ValueError("Too many values")
 
         values.pop()
-        return True
+        return (True,)
 
-    @property
-    def field_type(self):
-        return "checkbox"
+class DateTimeField(CustomField):
+    """
+    A :class:`DateTimeField` parses a variety of input formats as dates and/or
+    times (see :func:`teapot.timeutils.parse_datetime` for a list of supported
+    formats and conversion semantics).
+
+    The value produced by :meth:`to_field_value` is always a full ISO date
+    including microseconds and UTC offset specifier.
+    """
+
+    def __init__(self, *, default_generator=None, **kwargs):
+        super().__init__(**kwargs)
+        self._default_generator = (default_generator
+                                   or self._default_default_generator)
+
+    def _default_default_generator(self):
+        return datetime.utcnow()
+
+    def get_default(self, instance):
+        return self._default_generator()
+
+    def input_validate(self, request, value):
+        try:
+            return teapot.timeutils.parse_datetime(value)
+        except Exception as err:
+            print(err)
+            raise
+        yield None
+
+    def to_field_value(self, instance, view_type):
+        dt = self.__get__(instance, type(instance))
+        return dt.strftime("%Y-%m-%dT%H:%M:%S.%f+0000")
 
 class RowList(teapot.utils.InstrumentedList):
     """
@@ -602,7 +688,7 @@ class CustomRows(CustomField):
         if any(instance.errors for instance in instances):
             yield FormErrors.one_or_more_rows_have_errors()
 
-class rows(CustomRows):
+class Rows(CustomRows):
     """
     This is not a decorator, but a plain descriptor to be used to host a list of
     elements in a :class:`Form`. The elements are instances of *rowcls*, or of
