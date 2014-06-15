@@ -423,6 +423,8 @@ def {}():
         return self.default_subtree(elem, context, offset)
 
     def parse_tree(self, tree, context, global_precode, global_postcode):
+        self.utils = Namespace()
+
         root = tree.getroot()
 
         global_precode = list(itertools.chain(
@@ -566,12 +568,11 @@ def {}():
         locals_dict = {}
         exec(code, globals_dict, locals_dict)
 
-        utils = Namespace()
-        utils.append_children = self.append_children
-        utils.storage = self.storage
+        self.utils.append_children = self.append_children
+        self.utils.storage = self.storage
 
         return functools.partial(locals_dict["root"],
-                                 utils)
+                                 self.utils)
 
     def preserve_tail_code(self, elem, context):
         """

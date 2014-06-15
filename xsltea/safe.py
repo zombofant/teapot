@@ -749,7 +749,6 @@ class FunctionProcessor(TemplateProcessor):
 
     class Function:
         implicit_arguments = [
-            "utils",
             "context",
         ]
 
@@ -796,7 +795,9 @@ def func(utils, context, {}):
 
             def_code = compile(def_ast, context.filename, "exec")
             exec(def_code, globals_dict, locals_dict)
-            self._func = locals_dict["func"]
+            self._func = functools.partial(
+                locals_dict["func"],
+                template.utils)
 
 
         def compose_call(self, template, argumentmap, context, sourceline):
