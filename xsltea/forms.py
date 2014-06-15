@@ -523,7 +523,11 @@ class FormProcessor(TemplateProcessor):
                                 lineno=sourceline,
                                 col_offset=0),
                             ast.Add(),
-                            template.ast_get_elem_attr("class", sourceline),
+                            template.ast_get_elem_attr("class", sourceline,
+                                                       default=ast.Str(
+                                                           "",
+                                                           lineno=sourceline,
+                                                           col_offset=0)),
                             lineno=sourceline,
                             col_offset=0),
                         sourceline)

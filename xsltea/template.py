@@ -394,8 +394,8 @@ def {}():
             attrdict=attrdict,
             text=elem.text,
             tail=elem.tail,
+            elemcode=attr_elemcode,
             childfun=childfun_name if precode else None)
-        elemcode.extend(attr_elemcode)
         elemcode.append(
             self.ast_yield("elem", elem.sourceline or 0))
 
@@ -640,6 +640,15 @@ def {}():
 
         return identifier
 
+    # other utilities
+
+    def compilation_error(self, msg, context, sourceline):
+        return ValueError(
+            "{} (in {}:{})".format(
+                msg,
+                context.filename,
+                sourceline or 0))
+
     # AST code generation helpers, which may need Template state in the future
 
     def ast_append_children(self, elem, childfun, sourceline):
@@ -676,7 +685,7 @@ def {}():
             lineno=sourceline,
             col_offset=0)
 
-    def ast_get_elem_attr(self, key, sourceline, varname="elem"):
+    def ast_get_elem_attr(self, key, sourceline, varname="elem", default=None):
         """
         Return an AST expression which evaluates to the value of the XML
         attribute *key* on the element referred to by *varname*.
@@ -684,18 +693,24 @@ def {}():
         The AST is tagged to belong to the given *sourceline*.
 
         If *varname* is a string, it is converted to an :class:`ast.Name` with
-        load semantics. If *key* is a string, it is wrapped in an
-        :class:`ast.Str`.
+        load semantics. If any of *key* and *default* is a string, it is wrapped
+        in an :class:`ast.Str`.
         """
+
+        args = [
+            self.ast_or_str(key, sourceline),
+        ]
+
+        if default is not None:
+            default = self.ast_or_str(default, sourceline)
+            args.append(default)
 
         return ast.Call(
             self.ast_get_from_object(
                 "get",
                 self.ast_or_name(varname, sourceline),
                 sourceline),
-            [
-                self.ast_or_str(key, sourceline),
-            ],
+            args,
             [],
             None,
             None,
@@ -722,6 +737,17 @@ def {}():
             lineno=sourceline,
             col_offset=0)
 
+    def ast_get_href(self, sourceline):
+        """
+        Return an AST expression which evaluates to the :meth:`href` method,
+        partially specialized using the current request (so that it takes only
+        one argument, the object to be converted into an URL).
+
+        The AST is tagged to belong to the given *sourceline*.
+        """
+
+        return self.ast_get_from_object("href", "context", sourceline)
+
     def ast_get_util(self, utilname, sourceline, ctx=None):
         """
         Return an AST expression providing access to the attribute *utilname* on
@@ -732,6 +758,15 @@ def {}():
         """
 
         return self.ast_get_from_object(utilname, "utils", sourceline, ctx=ctx)
+
+    def ast_get_request(self, sourceline):
+        """
+        Return an AST expression evaluating to the current request. It can be
+        used in :class:`ast.Load` contexts.
+
+        The AST is tagged to belong to the given *sourceline*.
+        """
+        return self.ast_get_from_object("request", "context", sourceline)
 
     def ast_get_stored(self, key, sourceline):
         """
@@ -758,16 +793,26 @@ def {}():
             lineno=sourceline,
             col_offset=0)
 
-    def ast_href(self, sourceline):
+    def ast_href(self, from_, sourceline):
         """
-        Return an AST expression which evaluates to the :meth:`href` method,
-        partially specialized using the current request (so that it takes only
-        one argument, the object to be converted into an URL).
+        Return an AST expression which calls the ``href`` utility on the given
+        input, *from_*.
 
         The AST is tagged to belong to the given *sourceline*.
+
+        If *from_* is a string, it is wrapped into an :class:`ast.Str`.
         """
 
-        return self.ast_get_from_object("href", "context", sourceline)
+        return ast.Call(
+            self.ast_get_href(sourceline),
+            [
+                self.ast_or_str(from_, sourceline)
+            ],
+            [],
+            None,
+            None,
+            lineno=sourceline,
+            col_offset=0)
 
     def ast_makeelement(self, tag, sourceline, attrdict=None, nsdict=None):
         """
@@ -776,6 +821,9 @@ def {}():
         if given attributes from *attrdict* and it will be using the namespace
         map provided in *nsdict*. For details see the documentation of the
         ``makeelement`` function from :mod:`lxml.etree`.
+
+        The dictionaries **must** be :class:`ast.Dict` objects, or
+        :data:`None`.
 
         The AST is tagged to belong to the given *sourceline*.
 
@@ -812,6 +860,7 @@ def {}():
             nsdict=None,
             text=None,
             tail=None,
+            elemcode=None,
             childfun=None,
             varname="elem"):
         """
@@ -823,6 +872,9 @@ def {}():
         After construction, the elements ``text`` attribute is set to *text*, if
         *text* is not :data:`None`. The same holds for the ``tail`` attribute,
         using *tail* respectively.
+
+        If *elemcode* is not :data:`None`, it is inserted after text and tail
+        have been set up, but before the child function is called, if any.
 
         If *childfun* is not :data:`None`, a statement to append the children to
         the element using the given *childfun* is created using
@@ -856,6 +908,9 @@ def {}():
 
         if tail is not None:
             code.append(self.ast_set_tail(varname, tail, sourceline))
+
+        if elemcode is not None:
+            code.extend(elemcode)
 
         if childfun is not None:
             code.append(
