@@ -17,6 +17,7 @@ Contents:
    forms
    wsgi
    templating
+   timeutils
 
    xsltea
 
