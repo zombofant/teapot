@@ -227,7 +227,7 @@ class CustomField(metaclass=abc.ABCMeta):
 
     .. automethod:: from_field_values
 
-    .. automethod:: get_field_options
+    .. automethod:: get_options
 
     .. automethod:: get_default
 
@@ -341,7 +341,7 @@ class CustomField(metaclass=abc.ABCMeta):
 
         return None
 
-    def get_field_options(self, instance, request):
+    def get_options(self, instance, request):
         """
         Provide a sequence of tuples which represent the options possible for
         this field. If the field has no restricted set of fields, call the
@@ -547,6 +547,39 @@ class DateTimeField(CustomField):
     def to_field_value(self, instance, view_type):
         dt = self.__get__(instance, type(instance))
         return dt.strftime("%Y-%m-%dT%H:%M:%S.%f+0000")
+
+class EnumField(StaticDefaultField):
+    """
+    This field provides a set of options which are allowable through
+    :meth:`get_options`. In addition, it validates incoming user submitted
+    values against the set of options provided.
+
+    *options* must be a list of string values or a list of tuples, where the
+    tuples must contain the “internal” key followed by the user-shown
+    “value”. The latter are only provided through :meth:`get_options` and
+    otherwise ignored. If single-valued items are used instead of tuples, values
+    and keys are the same.
+
+    The keys should be strings and must be hashable.
+    """
+
+    def __init__(self, *, options=[], default=None, **kwargs):
+        super().__init__(default=default, **kwargs)
+        if options and isinstance(options[0], tuple):
+            self._options = list(options)
+        else:
+            self._options = [(key, key) for key in options]
+
+        self._option_map = dict(self._options)
+
+    def get_options(self, instance, request):
+        return list(self._options)
+
+    def input_validate(self, request, value):
+        if value not in self._option_map:
+            yield ValueError("Not a valid value")
+        return value
+
 
 class RowList(teapot.utils.InstrumentedList):
     """

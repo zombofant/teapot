@@ -11,7 +11,8 @@ __all__ = [
     "TextField",
     "IntField",
     "DateTimeField",
-    "CheckboxField"
+    "CheckboxField",
+    "EnumField"
 ]
 
 class Supermode:
@@ -281,8 +282,6 @@ class DateTimeField(teapot.forms.DateTimeField, HTMLField):
     :attr:`DateTimeMode.DateTime` is fine for most cases; you should only change
     this if you want to truncate the default date, for example.
 
-
-
     The *field_type* is the field type suggested to an HTML renderer -- this
     might be overriden by the handler, and the field is ready to support that
     and return the correct value according to the HTML standard.
@@ -344,3 +343,8 @@ class DateTimeField(teapot.forms.DateTimeField, HTMLField):
     def to_field_value(self, instance, view_type):
         formatter = self.FORMATTERS.get(view_type, self.FORMATTERS["datetime"])
         return formatter(self.__get__(instance, type(instance))) + "Z"
+
+class EnumField(teapot.forms.EnumField, HTMLField):
+    @property
+    def field_type(self):
+        return "select"

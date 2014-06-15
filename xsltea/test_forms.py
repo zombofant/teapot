@@ -1,6 +1,7 @@
 import unittest
 
 import teapot.forms
+import teapot.html
 
 import xsltea.safe
 import xsltea.forms
@@ -10,7 +11,14 @@ import lxml.etree as etree
 from xsltea.namespaces import xhtml_ns
 
 class Form(teapot.forms.Form):
-    field = teapot.forms.IntField(default=10)
+    field = teapot.html.IntField(default=10)
+    enum = teapot.html.EnumField(
+        options=[
+            ("1", "One"),
+            ("2", "Two"),
+            ("3", "Three")
+        ],
+        default="2")
 
 class TestFormProcessor(unittest.TestCase):
     xmlsrc_text_inputs = """<test xmlns="http://www.w3.org/1999/xhtml"
@@ -41,7 +49,38 @@ class TestFormProcessor(unittest.TestCase):
            value="2" />
     <input type="radio"
            form:field="field" />
-</test>"""
+    </test>"""
+
+    xmlsrc_select_input_populate = """<test
+    xmlns="http://www.w3.org/1999/xhtml"
+    xmlns:form="https://xmlns.zombofant.net/xsltea/form"
+    form:form="arguments['form']">
+    <select form:field="enum" />
+    </test>"""
+
+    xmlsrc_select_input_select_with_optgroup = """<test
+    xmlns="http://www.w3.org/1999/xhtml"
+    xmlns:form="https://xmlns.zombofant.net/xsltea/form"
+    form:form="arguments['form']">
+    <select form:field="enum">
+    <optgroup>
+      <option value="1" label="One" />
+      <option value="2" label="Two" />
+    </optgroup>
+    <option value="3" label="Three" />
+    </select>
+    </test>"""
+
+    xmlsrc_select_input_select_by_text = """<test
+    xmlns="http://www.w3.org/1999/xhtml"
+    xmlns:form="https://xmlns.zombofant.net/xsltea/form"
+    form:form="arguments['form']">
+    <select form:field="enum">
+    <option>1</option>
+    <option>2</option>
+    <option>3</option>
+    </select>
+    </test>"""
 
     xmlsrc_textarea_inputs = """<test
     xmlns="http://www.w3.org/1999/xhtml"
@@ -224,3 +263,54 @@ class TestFormProcessor(unittest.TestCase):
         self.assertEqual(
             "action:update",
             tree.getroot().find(xhtml_ns.input).get("name"))
+
+    def test_select_input_populate(self):
+        tree = self._process_with_form(self.xmlsrc_select_input_populate)
+        select_elem = tree.getroot().find(xhtml_ns.select)
+
+        self.assertGreaterEqual(
+            len(select_elem),
+            3)
+
+        for child, (key, value) in zip(select_elem, Form.enum._options):
+            if child.tag:
+                self.assertEqual(
+                    xhtml_ns.option,
+                    child.tag)
+            else:
+                continue
+
+            self.assertEqual(
+                key,
+                child.get("value"))
+            self.assertEqual(
+                value,
+                child.get("label"))
+
+    def test_select_input_select_with_optgroup(self):
+        tree = self._process_with_form(
+            self.xmlsrc_select_input_select_with_optgroup)
+        select_elem = tree.getroot().find(xhtml_ns.select)
+
+        selected = select_elem.xpath(".//html:option[@selected]",
+                                     namespaces={"html": str(xhtml_ns)})
+        self.assertEqual(
+            1,
+            len(selected))
+        self.assertEqual(
+            "2",
+            selected[0].get("value"))
+
+    def test_select_input_select_by_text(self):
+        tree = self._process_with_form(
+            self.xmlsrc_select_input_select_by_text)
+        select_elem = tree.getroot().find(xhtml_ns.select)
+
+        selected = select_elem.xpath(".//html:option[@selected]",
+                                     namespaces={"html": str(xhtml_ns)})
+        self.assertEqual(
+            1,
+            len(selected))
+        self.assertEqual(
+            "2",
+            selected[0].text)

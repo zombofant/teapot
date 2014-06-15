@@ -8,6 +8,8 @@ import copy
 import functools
 import logging
 
+import lxml.etree as etree
+
 import teapot.forms
 
 import xsltea.safe
@@ -301,6 +303,27 @@ class FormProcessor(TemplateProcessor):
         if elem.get("value") == strvalue:
             elem.set("checked", "checked")
 
+    def _elemcode_input_select(self, request, form, field, elem, put_options):
+        field_value = field.to_field_value(form, "select")
+
+        if put_options:
+            for key, value in field.get_options(form, request):
+                option = etree.SubElement(
+                    elem,
+                    xhtml_ns.option)
+                option.set("value", key)
+                option.set("label", value)
+
+                if key == field_value:
+                    option.set("selected", "selected")
+        else:
+            for option in elem.xpath(".//html:option",
+                                     namespaces={"html": str(xhtml_ns)}):
+                if option.get("value", option.text) == field_value:
+                    option.set("selected", "selected")
+                    break
+
+
     def _elemcode_input_default(self, form, field, field_type,
                                 elem, original_value):
         value = original_value
@@ -319,6 +342,7 @@ class FormProcessor(TemplateProcessor):
     def elemcode_input(self,
                        makeelement,
                        append_children,
+                       request,
                        field_type,
                        form, field, childfun,
                        attrib):
@@ -339,7 +363,7 @@ class FormProcessor(TemplateProcessor):
 
         allow_options = field_type == "select"
         if allow_options and childfun:
-            append_children(elem, childfun)
+            append_children(elem, childfun())
 
         elem.set("name", field.key(form))
 
@@ -356,6 +380,10 @@ class FormProcessor(TemplateProcessor):
             self._elemcode_input_checkbox(form, field, elem)
         elif field_type == "radio":
             self._elemcode_input_radio(form, field, elem)
+        elif field_type == "select":
+            put_options = childfun is None or len(elem) == 0
+            self._elemcode_input_select(request, form, field, elem,
+                                        put_options)
         else:
             self._elemcode_input_default(form, field, field_type,
                                          elem, original_value)
@@ -411,6 +439,10 @@ class FormProcessor(TemplateProcessor):
                                 sourceline),
                             template.ast_get_util(
                                 "append_children",
+                                sourceline),
+                            template.ast_get_from_object(
+                                "request",
+                                "context",
                                 sourceline),
                             ast.Str(
                                 input_type,
