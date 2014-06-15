@@ -71,7 +71,7 @@ class TestForeachProcessor(unittest.TestCase):
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
     ><exec:code>foo = list(range(3))</exec:code>
-<tea:for-each tea:bind="i" tea:from="foo">
+<tea:for-each bind="i" from="foo">
     <b />
 </tea:for-each></test>"""
 
@@ -79,8 +79,8 @@ class TestForeachProcessor(unittest.TestCase):
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
     ><exec:code>foo = list(range(3))</exec:code>
-<tea:for-each tea:bind="i" tea:from="foo">
-    <tea:for-each tea:bind="j" tea:from="foo">
+<tea:for-each bind="i" from="foo">
+    <tea:for-each bind="j" from="foo">
         <b />
     </tea:for-each>
 </tea:for-each></test>"""
@@ -89,20 +89,20 @@ class TestForeachProcessor(unittest.TestCase):
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
     ><exec:code>foo = list(range(3))</exec:code>
-<tea:for-each tea:bind="i" tea:from="foo">a</tea:for-each></test>"""
+<tea:for-each bind="i" from="foo">a</tea:for-each></test>"""
 
     xmlsrc_nested_with_text = """<?xml version="1.0" ?>
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
     ><exec:code>foo = list(range(3))</exec:code>
-<tea:for-each tea:bind="i" tea:from="foo">a<tea:for-each tea:bind="j" tea:from="foo">b</tea:for-each>c</tea:for-each></test>"""
+<tea:for-each bind="i" from="foo">a<tea:for-each bind="j" from="foo">b</tea:for-each>c</tea:for-each></test>"""
 
     xmlsrc_with_exec_text = """<?xml version="1.0" ?>
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
     ><exec:code>foo = list(range(3))</exec:code>
-<tea:for-each tea:bind="i" tea:from="foo">
-    <tea:for-each tea:bind="j" tea:from="foo">
+<tea:for-each bind="i" from="foo">
+    <tea:for-each bind="j" from="foo">
         <exec:text>str(i)+str(j)</exec:text>
     </tea:for-each>
 </tea:for-each></test>"""
@@ -111,8 +111,8 @@ class TestForeachProcessor(unittest.TestCase):
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
     ><exec:code>foo = list(range(3))</exec:code>
-<tea:for-each tea:bind="i" tea:from="foo">
-    <tea:for-each tea:bind="j" tea:from="foo">
+<tea:for-each bind="i" from="foo">
+    <tea:for-each bind="j" from="foo">
         <foo><exec:code>k = i+j</exec:code><exec:text>k</exec:text></foo>
     </tea:for-each>
 </tea:for-each></test>"""
@@ -121,7 +121,7 @@ class TestForeachProcessor(unittest.TestCase):
 <test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
       xmlns:tea="https://xmlns.zombofant.net/xsltea/processors">
     ><exec:code>foo = list(zip(range(3), range(4, 8)))</exec:code>
-<tea:for-each tea:bind="i, j" tea:from="foo">
+<tea:for-each bind="i, j" from="foo">
     <foo exec:attr="i+j"><exec:text>i+j</exec:text></foo>
 </tea:for-each></test>"""
 
@@ -199,12 +199,12 @@ class TestFunctionProcessor(unittest.TestCase):
     xmlsrc_def_and_call = """\
 <test xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
       xmlns:exec="https://xmlns.zombofant.net/xsltea/exec">
-  <def><tea:def tea:name="test">
+  <def><tea:def name="test">
     <tea:arg name="a" />
     <tea:arg name="b" />foo<a><exec:text>a</exec:text></a>
     <b><exec:text>b</exec:text></b>
   </tea:def>bar</def>
-  <eval><tea:call tea:name="test">
+  <eval><tea:call name="test">
     <tea:pass name="a">1</tea:pass>
     <tea:pass name="b">2</tea:pass>
   </tea:call></eval>
@@ -213,17 +213,17 @@ class TestFunctionProcessor(unittest.TestCase):
     xmlsrc_argument_variants = """\
 <test xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
       xmlns:exec="https://xmlns.zombofant.net/xsltea/exec">
-  <def><tea:def tea:name="test">
+  <def><tea:def name="test">
     <tea:arg name="a" default="'foo'" />
     <tea:arg name="b" mode="lazy" default="arguments['passed']" />
     <a><exec:text>a</exec:text></a>
     <b><exec:text>b</exec:text></b>
   </tea:def>bar</def>
-  <eval1><tea:call tea:name="test" /></eval1>
-  <eval2><tea:call tea:name="test">
+  <eval1><tea:call name="test" /></eval1>
+  <eval2><tea:call name="test">
     <tea:pass name="a">1</tea:pass>
   </tea:call></eval2>
-  <eval3><tea:call tea:name="test">
+  <eval3><tea:call name="test">
     <tea:pass name="b">1</tea:pass>
   </tea:call></eval3>
 </test>"""

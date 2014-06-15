@@ -484,13 +484,13 @@ class ForeachProcessor(TemplateProcessor):
     The processor for the ``tea:for-each`` xml element provides a safe for-each
     loop for templates.
 
-    It treats the name given in ``@tea:from`` as an iterable, from which each
-    item will be bound to the expression given in ``@tea:bind``. The expression
+    It treats the name given in ``@from`` as an iterable, from which each
+    item will be bound to the expression given in ``@bind``. The expression
     must only consist of valid python names and possibly tuples. The name from
-    ``@tea:from`` will be evaluated in the scope of the ``tea:for-each``
+    ``@from`` will be evaluated in the scope of the ``tea:for-each``
     element.
 
-    For each item of the iterable, the expression from ``@tea:bind`` will be
+    For each item of the iterable, the expression from ``@bind`` will be
     evaluated as if it was on the right side of an assignment, assigning the
     item from the iterable. A deep copy of all elements in the ``tea:for-each``
     element is created and the names obtained from the above evaluation are put
@@ -577,11 +577,11 @@ def _():
 
     def handle_foreach(self, template, elem, context, offset):
         try:
-            from_ = elem.attrib[getattr(self.xmlns, "from")]
-            bind = elem.attrib[self.xmlns.bind]
+            from_ = elem.attrib["from"]
+            bind = elem.attrib["bind"]
         except KeyError as err:
             raise ValueError(
-                "missing required attribute on tea:for-each: @tea:{}".format(
+                "missing required attribute on tea:for-each: @{}".format(
                     str(err).split("}", 1)[1]))
 
         bind_ast = compile(bind,
@@ -619,16 +619,16 @@ class IncludeProcessor(TemplateProcessor):
     templates. The other template will be loaded as element tree and inserted as
     if it was part of the current template.
 
-    The optional ``tea:xpath`` attribute allows to customize which parts of the
+    The optional ``@xpath`` attribute allows to customize which parts of the
     template are included. All nodes matching the given xpath expression will be
     included in match-order at the point where the ``tea:include`` directive
     was.
 
     If the xpath expression requires additional namespaces, these can be set by
-    passing a python dictionary expression to ``tea:nsmap``. The dictionary must
+    passing a python dictionary expression to ``@nsmap``. The dictionary must
     be a literal expression.
 
-    ``tea:source`` must be set to an identifier identifying the template to
+    ``@src`` must be set to an identifier identifying the template to
     insert; the semantics of the identifier depend on the configured template
     loader, usually it is a file name.
     """
@@ -646,12 +646,12 @@ class IncludeProcessor(TemplateProcessor):
 
     def handle_include(self, template, elem, context, offset):
         try:
-            xpath = elem.get(self.xmlns.xpath, "/*")
-            source = elem.attrib[self.xmlns.source]
-            nsmap = elem.get(self.xmlns.nsmap, "{}")
+            xpath = elem.get("xpath", "/*")
+            source = elem.attrib["src"]
+            nsmap = elem.get("nsmap", "{}")
         except KeyError as err:
             raise ValueError(
-                "missing required attribute on tea:include: @tea:{}".format(
+                "missing required attribute on tea:include: @{}".format(
                     str(err).split("}", 1)[1]))
 
         loader = self._override_loader
@@ -709,7 +709,7 @@ class FunctionProcessor(TemplateProcessor):
         <?xml version="1.0" ?>
         …
         <tea:def xmlns:tea="https://xmlns.zombofant.net/xsltea/processors"
-                 tea:name="foo">
+                 name="foo">
           <!-- declare required argument named `a` -->
           <tea:arg name="a" />
           <!-- declare argument named `b`, with default "foo" -->
@@ -894,10 +894,10 @@ def func(utils, context, {}):
 
     def handle_def(self, template, elem, context, offset):
         try:
-            name = elem.attrib[self.xmlns.name]
+            name = elem.attrib["name"]
         except KeyError as err:
             raise ValueError("Missing required attribute on tea:def:"
-                             " @tea:{}".format(str(err).split("}")[1]))
+                             " @{}".format(str(err).split("}")[1]))
 
         library = self.template_libraries.setdefault(template, {})
 
@@ -969,8 +969,8 @@ def func(utils, context, {}):
 
     def handle_call(self, template, elem, context, offset):
         try:
-            name = elem.attrib[self.xmlns.name]
-            source = elem.get(self.xmlns.src)
+            name = elem.attrib["name"]
+            source = elem.get("src")
         except KeyError as err:
             raise ValueError("Missing required attribute on tea:call:"
                              " @tea:{}".format(str(err).split("}")[1]))
