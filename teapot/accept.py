@@ -132,12 +132,6 @@ class Preference(object):
         except AttributeError:
             return NotImplemented
 
-    def __le__(self, other):
-        try:
-            return self.full_key <= other.full_key
-        except AttributeError:
-            return NotImplemented
-
     def __hash__(self):
         return hash(self.full_key)
 
