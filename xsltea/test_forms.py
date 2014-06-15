@@ -10,28 +10,24 @@ import lxml.etree as etree
 from xsltea.namespaces import xhtml_ns
 
 class Form(teapot.forms.Form):
-    @teapot.forms.field
-    def field(self, value):
-        return int(value)
-
-    @field.default
-    def field(self):
-        return 10
+    field = teapot.forms.IntField(default=10)
 
 class TestFormProcessor(unittest.TestCase):
-    xmlsrc_text_inputs = """<input
-    xmlns="http://www.w3.org/1999/xhtml"
+    xmlsrc_text_inputs = """<test xmlns="http://www.w3.org/1999/xhtml"
     xmlns:form="https://xmlns.zombofant.net/xsltea/form"
-    form:field="field"
-    form:form="arguments['form']"
-    type="text" />"""
+    form:form="arguments['form']">
+    <input
+        form:field="field"
+        type="text" />
+    </test>"""
 
-    xmlsrc_box_inputs = """<input
-    xmlns="http://www.w3.org/1999/xhtml"
+    xmlsrc_box_inputs = """<test xmlns="http://www.w3.org/1999/xhtml"
     xmlns:form="https://xmlns.zombofant.net/xsltea/form"
-    form:field="field"
-    form:form="arguments['form']"
-    type="checkbox" />"""
+    form:form="arguments['form']">
+    <input
+        form:field="field"
+        type="checkbox" />
+    </test>"""
 
     xmlsrc_radio_inputs = """<test
     xmlns="http://www.w3.org/1999/xhtml"
@@ -47,11 +43,12 @@ class TestFormProcessor(unittest.TestCase):
            form:field="field" />
 </test>"""
 
-    xmlsrc_textarea_inputs = """<textarea
+    xmlsrc_textarea_inputs = """<test
     xmlns="http://www.w3.org/1999/xhtml"
     xmlns:form="https://xmlns.zombofant.net/xsltea/form"
-    form:field="field"
-    form:form="arguments['form']" />"""
+    form:form="arguments['form']">
+    <textarea form:field="field" rows="20" cols="100"/>
+    </test>"""
 
     xmlsrc_if_has_error = """\
 <test
@@ -68,15 +65,15 @@ class TestFormProcessor(unittest.TestCase):
     xmlns="http://www.w3.org/1999/xhtml"
     xmlns:form="https://xmlns.zombofant.net/xsltea/form">
     <form:for-each-error
-        form:field="field"
-        form:form="arguments['form']">foo</form:for-each-error>
+        field="field"
+        form="arguments['form']">foo</form:for-each-error>
 </test>"""
 
     xmlsrc_for_field = """\
 <test
     xmlns="http://www.w3.org/1999/xhtml"
     xmlns:form="https://xmlns.zombofant.net/xsltea/form">
-    <label form:for-field="field" form:form="arguments['form']" />
+    <label form:for="field" form:form="arguments['form']" />
 </test>"""
 
     xmlsrc_action = """\
@@ -113,32 +110,35 @@ class TestFormProcessor(unittest.TestCase):
 
     def test_text_inputs(self):
         tree = self._process_with_form(self.xmlsrc_text_inputs)
+        input_elem = tree.getroot().find(xhtml_ns.input)
         self.assertEqual(
             "field",
-            tree.getroot().get("name"))
+            input_elem.get("name"))
         self.assertEqual(
             "10",
-            tree.getroot().get("value"))
+            input_elem.get("value"))
 
     def test_box_inputs(self):
         tree = self._process_with_form(
             self.xmlsrc_box_inputs,
             value=1)
+        input_elem = tree.getroot().find(xhtml_ns.input)
         self.assertEqual(
             "field",
-            tree.getroot().get("name"))
+            input_elem.get("name"))
         self.assertEqual(
             "checked",
-            tree.getroot().get("checked"))
+            input_elem.get("checked"))
 
         tree = self._process_with_form(
             self.xmlsrc_box_inputs,
             value=0)
+        input_elem = tree.getroot().find(xhtml_ns.input)
         self.assertEqual(
             "field",
-            tree.getroot().get("name"))
+            input_elem.get("name"))
         self.assertIsNone(
-            tree.getroot().get("checked"))
+            input_elem.get("checked"))
 
     def test_radio_inputs(self):
         tree = self._process_with_form(
@@ -159,12 +159,19 @@ class TestFormProcessor(unittest.TestCase):
         tree = self._process_with_form(
             self.xmlsrc_textarea_inputs,
             value=10)
+        textarea_elem = tree.getroot().find(xhtml_ns.textarea)
         self.assertEqual(
             "field",
-            tree.getroot().get("name"))
+            textarea_elem.get("name"))
         self.assertEqual(
             "10",
-            tree.getroot().text)
+            textarea_elem.text)
+        self.assertEqual(
+            "20",
+            textarea_elem.get("rows"))
+        self.assertEqual(
+            "100",
+            textarea_elem.get("cols"))
 
     def test_if_has_error(self):
         template = self._load_xml(self.xmlsrc_if_has_error)

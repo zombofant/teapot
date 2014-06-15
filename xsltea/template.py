@@ -685,6 +685,88 @@ def {}():
             lineno=sourceline,
             col_offset=0)
 
+    def ast_store_and_call(self, callable,
+                           args=[],
+                           keywords={},
+                           starargs=None, kwargs=None,
+                           *,
+                           sourceline=0):
+        """
+        Store a given *callable* in the template and call it with the provided
+        arguments.
+
+        *args* must be a list of AST nodes or strings (may be mixed). Strings
+        are converted to names implicitly (using :meth:`ast_or_name`).
+
+        *keywords* must either be a list of :class:`ast.keyword` instances or a
+        dictionary. If it is a dictionary, it is converted to a list tof
+        :class:`ast.keyword` instances, by taking the keys (which must be
+        strings) as keyword keys and the values as names or AST nodes (using
+        :meth:`ast_or_name`).
+
+        If *starargs* is not :data:`None`, it must either be an AST node
+        pointing to a sequence, which will be passed as starargs to the
+        function, or a list of AST nodes or strings (may be mixed; strings are
+        converted to AST nodes via :meth:`ast_or_name`).
+
+        If *kwargs* is not :data:`None`, it must either be an AST node pointing
+        to a dictionary to be passed as kwargs to the function, or a dictionary,
+        which will be converted to an :class:`ast.Dict`. Plain string keys are
+        converted to :class:`ast.Str`, plain string values are converted to
+        :class:`ast.Name`.
+
+        Return the :class:`ast.Expr` object which wraps the call.
+        """
+
+        for i, arg in enumerate(args):
+            args[i] = self.ast_or_name(arg, sourceline)
+
+        if hasattr(keywords, "items"):
+            keywords = [
+                ast.keyword(key, self.ast_or_name(value, sourceline))
+                for key, value in keywords.items()
+            ]
+
+        if starargs is not None and hasattr(starargs, "__iter__"):
+            starargs = ast.List(
+                [
+                    self.ast_or_name(arg, sourceline)
+                    for arg in starargs
+                ],
+                lineno=sourceline,
+                col_offset=0)
+
+        if (    kwargs is not None and
+                hasattr(kwargs, "items")):
+
+            kwargs_keys = []
+            kwargs_values = []
+
+            for key, value in kwargs.items():
+                kwargs_keys.append(self.ast_or_str(key, sourceline))
+                kwargs_values.append(self.ast_or_name(value, sourceline))
+
+            kwargs = ast.Dict(
+                kwargs_keys,
+                kwargs_values,
+                lineno=sourceline,
+                col_offset=0)
+
+        return ast.Expr(
+            ast.Call(
+                self.ast_get_stored(
+                    self.store(callable),
+                    sourceline),
+                args,
+                keywords,
+                starargs,
+                kwargs,
+                lineno=sourceline,
+                col_offset=0),
+            lineno=sourceline,
+            col_offset=0)
+
+
     def ast_get_elem_attr(self, key, sourceline, varname="elem", default=None):
         """
         Return an AST expression which evaluates to the value of the XML

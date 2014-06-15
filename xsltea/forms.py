@@ -11,6 +11,7 @@ import logging
 import teapot.forms
 
 import xsltea.safe
+import xsltea.exec
 import xsltea.template
 
 from .processor import TemplateProcessor
@@ -33,179 +34,145 @@ class FormProcessor(TemplateProcessor):
         self._errorclass = errorclass
 
         self.attrhooks = {
-            (str(self.xmlns), "field"): [self.handle_field],
-            (str(self.xmlns), "form"): [self.handle_form],
-            (str(self.xmlns), "for-field"): [self.handle_for_field],
-            (str(self.xmlns), "action"): [self.handle_action],
             (str(shared_ns), "if", str(self.xmlns), "field-error"): [
                 self.cond_field_error],
             (str(shared_ns), "case", str(self.xmlns), "field-error"): [
                 self.cond_field_error],
+            (str(xhtml_ns), "input", str(self.xmlns), "action"): [self.handle_attr_action],
+            (str(xhtml_ns), "button", str(self.xmlns), "action"): [self.handle_attr_action],
+            (str(xhtml_ns), "input", str(self.xmlns), "form"): [self.attr_noop],
+            (str(xhtml_ns), "button", str(self.xmlns), "form"): [self.attr_noop],
+            (str(self.xmlns), "form"): [self.handle_attr_form],
+            (str(self.xmlns), "field"): [self.warn_attr_usage],
+            (str(self.xmlns), "id"): [self.warn_attr_usage],
+            (str(self.xmlns), "mode"): [self.warn_attr_usage],
+            (str(self.xmlns), "action"): [self.warn_attr_usage],
+            (str(self.xmlns), "for"): [self.handle_attr_for],
+            (str(self.xmlns), "for-field"): [self.handle_attr_for],
         }
         self.elemhooks = {
-            (str(self.xmlns), "for-each-error"): [self.handle_for_each_error],
+            (str(xhtml_ns), "input"): [self.handle_input],
+            (str(xhtml_ns), "textarea"): [self.handle_input],
+            (str(xhtml_ns), "select"): [self.handle_input],
+            (str(self.xmlns), "for-each-error"): [self.handle_for_each_error]
         }
 
-        self._input_handlers = {
-            "checkbox": self._input_box_handler,
-            "radio": self._input_radiobox_handler,
-            "hidden": self._input_text_handler,
-            "text": self._input_text_handler,
-            "search": self._input_text_handler,
-            "tel": self._input_text_handler,
-            "url": self._input_text_handler,
-            "email": self._input_text_handler,
-            "password": self._input_text_handler,
-            "datetime": functools.partial(
-                self._input_datetime_handler,
-                "%Y-%m-%dT%H:%M:%SZ"),
-            "date": functools.partial(
-                self._input_datetime_handler,
-                "%Y-%m-%d"),
-            "month": functools.partial(
-                self._input_datetime_handler,
-                "%Y-%m"),
-            "week": functools.partial(
-                self._input_datetime_handler,
-                "%Y-W%V"),
-            "time": functools.partial(
-                self._input_datetime_handler,
-                "%H:%M:%S"),
-            "number": self._input_text_handler,
-        }
+    def _ast_form(self, template, formstr, context, sourceline):
+        if formstr is None:
+            return ast.Name(
+                "default_form",
+                ast.Load(),
+                lineno=sourceline,
+                col_offset=0)
 
-    def _get_descriptor_ast(self, form_ast, fieldname, sourceline):
+        form_ast = compile(formstr,
+                           context.filename,
+                           "eval",
+                           ast.PyCF_ONLY_AST).body
+
+        self._safety_level.check_safety(form_ast)
+
+        return form_ast
+
+    def _ast_field(self, form_ast, field_name, sourceline):
         return ast.Attribute(
             ast.Call(
-                ast.Name("type",
-                         ast.Load(),
-                         lineno=sourceline or 0,
-                         col_offset=0),
+                ast.Name(
+                    "type",
+                    ast.Load(),
+                    lineno=sourceline,
+                    col_offset=0),
                 [
-                    form_ast
+                    form_ast,
                 ],
                 [],
                 None,
                 None,
-                lineno=sourceline or 0,
+                lineno=sourceline,
                 col_offset=0),
-            fieldname,
+            field_name,
             ast.Load(),
-            lineno=sourceline or 0,
+            lineno=sourceline,
             col_offset=0)
 
-    def _get_id_ast(self, form_ast, descriptor_ast, sourceline):
-        return ast.Call(
-            ast.Attribute(
-                descriptor_ast,
-                "key",
-                ast.Load(),
-                lineno=sourceline or 0,
-                col_offset=0),
-            [
-                form_ast
-            ],
-            [],
-            None,
-            None,
-            lineno=sourceline or 0,
-            col_offset=0)
+    def cond_field_error(self, template, elem, key, value, context):
+        sourceline = elem.sourceline or 0
 
-    def cond_field_error(self, template, elem, key, field, context):
-        form_ast = compile("default_form",
-                           context.filename,
-                           "eval",
-                           ast.PyCF_ONLY_AST).body
-        self._safety_level.check_safety(form_ast)
+        form_ast = self._ast_form(
+            template,
+            None,
+            context,
+            sourceline)
 
         condition_ast = ast.Compare(
-            self._get_descriptor_ast(
-                form_ast, field,
-                elem.sourceline),
+            self._ast_field(
+                form_ast,
+                value,
+                sourceline),
             [ast.In()],
             [ast.Attribute(
                 form_ast,
                 "errors",
                 ast.Load(),
-                lineno=elem.sourceline or 0,
+                lineno=sourceline,
                 col_offset=0)],
             lineno=elem.sourceline or 0,
             col_offset=0)
 
         return [], [], None, condition_ast, []
 
-    def handle_for_each_error(self, template, elem, context, offset):
-        try:
-            form = elem.get(self.xmlns.form, "default_form")
-            field = elem.get(self.xmlns.field, None)
-        except KeyError as err:
-            raise ValueError("Missing required attribute @form:{} on "
-                             "form:for-each-error".format(err)) from None
+    def handle_attr_action(self, template, elem, key, value, context):
+        sourceline = elem.sourceline or 0
 
-        form_ast = compile(form, context.filename, "eval", ast.PyCF_ONLY_AST).body
-        self._safety_level.check_safety(form_ast)
+        form_ast = self._ast_form(
+            template,
+            elem.get(self.xmlns.form, None),
+            context,
+            sourceline)
 
-        errors_attr = ast.Attribute(
-            form_ast,
-            "errors",
-            ast.Load(),
-            lineno=elem.sourceline or 0,
+        name_ast = ast.Str(
+            "name",
+            lineno=sourceline,
             col_offset=0)
 
-        if field is not None and field != "None":
-            descriptor_ast = self._get_descriptor_ast(
-                form_ast, field,
-                elem.sourceline)
-        else:
-            descriptor_ast = ast.Name(
-                "None",
-                ast.Load(),
-                lineno=elem.sourceline or 0,
-                col_offset=0)
-
-        iter_ast = ast.IfExp(
-            ast.Compare(
-                descriptor_ast,
-                [ast.In(lineno=elem.sourceline or 0,
-                        col_offset=0)],
-                [errors_attr],
-                lineno=elem.sourceline or 0,
-                col_offset=0),
-            ast.Subscript(
-                errors_attr,
-                ast.Index(
-                    descriptor_ast,
-                    lineno=elem.sourceline or 0,
+        value_ast = ast.BinOp(
+            ast.BinOp(
+                ast.Str(teapot.forms.ACTION_PREFIX,
+                        lineno=sourceline,
+                        col_offset=0),
+                ast.Add(),
+                ast.Call(
+                    ast.Attribute(
+                        form_ast,
+                        "get_html_field_key",
+                        ast.Load(),
+                        lineno=sourceline,
+                        col_offset=0),
+                    [],
+                    [],
+                    None,
+                    None,
+                    lineno=sourceline,
                     col_offset=0),
-                ast.Load(),
-                lineno=elem.sourceline or 0,
+                lineno=sourceline,
                 col_offset=0),
-            ast.List(
-                [],
-                ast.Load(),
-                lineno=elem.sourceline or 0,
-                col_offset=0),
-            lineno=elem.sourceline or 0,
+            ast.Add(),
+            ast.Str(value,
+                    lineno=sourceline,
+                    col_offset=0),
+            lineno=sourceline,
             col_offset=0)
 
-        bind_ast = ast.Name(
-            "error",
-            ast.Store(),
-            lineno=elem.sourceline or 0,
-            col_offset=0)
+        return [], [], name_ast, value_ast, []
 
-        return xsltea.safe.ForeachProcessor.create_foreach(
-            template, elem, context, offset,
-            bind_ast, iter_ast)
-
-
-    def handle_form(self, template, elem, attrib, value, context):
+    def handle_attr_form(self, template, elem, key, value, context):
         sourceline = elem.sourceline or 0
 
         form_ast = compile(value,
                            context.filename,
                            "eval",
                            ast.PyCF_ONLY_AST).body
+
         self._safety_level.check_safety(form_ast)
 
         elemcode = [
@@ -219,525 +186,266 @@ class FormProcessor(TemplateProcessor):
                 ],
                 form_ast,
                 lineno=sourceline,
-                col_offset=0),
+                col_offset=0)
         ]
 
         return [], elemcode, None, None, []
 
-    def handle_for_field(self, template, elem, attrib, value, context):
-        try:
-            form = elem.get(self.xmlns.form, "default_form")
-        except KeyError as err:
-            raise ValueError(
-                "missing required attribute:"
-                " @form:{}".format(err))
-        form_ast = compile(form, context.filename, "eval", ast.PyCF_ONLY_AST).body
-        self._safety_level.check_safety(form_ast)
+    def handle_attr_for(self, template, elem, key, value, context):
+        sourceline = elem.sourceline or 0
 
-        descriptor_ast = self._get_descriptor_ast(form_ast, value,
-                                                  elem.sourceline)
+        form_ast = self._ast_form(
+            template,
+            elem.get(self.xmlns.form, None),
+            context,
+            sourceline)
 
-        id_ast = self._get_id_ast(form_ast, descriptor_ast,
-                                  elem.sourceline)
+        field_ast = self._ast_field(
+            form_ast,
+            value,
+            sourceline)
 
-        return [], [], ast.Str("for",
-                               lineno=elem.sourceline or 0,
-                               col_offset=0), id_ast, []
+        name_ast = ast.Str(
+            "for",
+            lineno=sourceline,
+            col_offset=0)
 
-    def handle_action(self, template, elem, attrib, value, context):
-        try:
-            form = elem.get(self.xmlns.form, "default_form")
-        except KeyError as err:
-            raise ValueError(
-                "missing required attribute:"
-                " @form:{}".format(err))
-        form_ast = compile(form, context.filename, "eval", ast.PyCF_ONLY_AST).body
-        self._safety_level.check_safety(form_ast)
-
-        name_ast = ast.Str("name",
-                           lineno=elem.sourceline or 0,
-                           col_offset=0)
-
-        value_ast = ast.BinOp(
-            ast.BinOp(
-                ast.Str(teapot.forms.ACTION_PREFIX,
-                        lineno=elem.sourceline or 0,
-                        col_offset=0),
-                ast.Add(lineno=elem.sourceline or 0,
-                        col_offset=0),
-                ast.Call(
-                    ast.Attribute(
-                        form_ast,
-                        "get_html_field_key",
-                        ast.Load(),
-                        lineno=elem.sourceline or 0,
-                        col_offset=0),
-                    [],
-                    [],
-                    None,
-                    None,
-                    lineno=elem.sourceline or 0,
-                    col_offset=0),
-                lineno=elem.sourceline or 0,
+        value_ast = ast.Call(
+            ast.Attribute(
+                field_ast,
+                "key",
+                ast.Load(),
+                lineno=sourceline,
                 col_offset=0),
-            ast.Add(lineno=elem.sourceline or 0,
-                    col_offset=0),
-            ast.Str(value,
-                    lineno=elem.sourceline or 0,
-                    col_offset=0),
-            lineno=elem.sourceline or 0,
+            [
+                form_ast,
+            ],
+            [],
+            None,
+            None,
+            lineno=sourceline,
             col_offset=0)
 
         return [], [], name_ast, value_ast, []
 
-
-    def handle_field(self, template, elem, attrib, value, context):
+    def handle_for_each_error(self, template, elem, context, offset):
         sourceline = elem.sourceline or 0
+        attrib = elem.attrib
 
-        try:
-            form = elem.get(self.xmlns.form, "default_form")
-            id = elem.get(getattr(self.xmlns, "id"))
-            mode = elem.get(self.xmlns.mode)
-        except KeyError as err:
-            raise ValueError(
-                "missing required attribute:"
-                " @form:{}".format(err))
+        field = attrib.get("field", None)
+        if field is None:
+            raise ValueError("Missing required attribute @field on"
+                             " form:for-each-error")
 
-        form_ast = compile(form, context.filename, "eval", ast.PyCF_ONLY_AST).body
-        self._safety_level.check_safety(form_ast)
+        form_ast = self._ast_form(
+            template,
+            elem.get("form", None),
+            context,
+            sourceline)
 
-        field_ast = ast.Attribute(
-            form_ast,
-            value,
-            ast.Load(),
-            lineno=elem.sourceline or 0,
-            col_offset=0)
-
-        descriptor_ast = self._get_descriptor_ast(
-            form_ast, value,
-            elem.sourceline)
-
-        if elem.tag == xhtml_ns.input or mode is not None:
-            type_ = mode or elem.get("type", "text")
-            try:
-                handler = self._input_handlers[type_]
-            except KeyError as err:
-                raise ValueError("Unsupported html:input@type: {!s}".format(
-                    err))
-        elif elem.tag == xhtml_ns.textarea:
-            handler = self._textarea_handler
-        elif elem.tag == xhtml_ns.select:
-            handler = self._select_handler
+        if field is not None:
+            field_ast = self._ast_field(
+                form_ast,
+                field,
+                sourceline)
         else:
-            raise ValueError("Unsupported form element: {}".format(
-                elem.tag))
+            field_ast = ast.Name(
+                "None",
+                ast.Load(),
+                lineno=sourceline,
+                col_offset=0)
 
-        namecode, valuecode, elemcode = handler(
-            elem, form_ast, field_ast, context)
-        if namecode is None:
-            namecode = self._get_id_ast(form_ast, descriptor_ast,
-                                        elem.sourceline or 0)
-        if valuecode is None:
-            valuecode = field_ast
-
-        settercode = []
-        settercode.extend([
-            ast.Assign(
-                [
-                    ast.Tuple(
-                        [
-                            ast.Name(
-                                "_form",
-                                ast.Store(),
-                                lineno=sourceline,
-                                col_offset=0),
-                            ast.Name(
-                                "_descriptor",
-                                ast.Store(),
-                                lineno=sourceline,
-                                col_offset=0),
-                            ast.Name(
-                                "_tmp_value",
-                                ast.Store(),
-                                lineno=sourceline,
-                                col_offset=0),
-                        ],
-                        ast.Store(),
-                        lineno=sourceline,
-                        col_offset=0)
-                ],
-                ast.Tuple(
-                    [
-                        form_ast,
-                        descriptor_ast,
-                        ast.Name(
-                            "None",
-                            ast.Load(),
-                            lineno=sourceline,
-                            col_offset=0)
-                    ],
+        errors_ast = ast.Call(
+            ast.Attribute(
+                ast.Attribute(
+                    form_ast,
+                    "errors",
                     ast.Load(),
                     lineno=sourceline,
                     col_offset=0),
+                "get",
+                ast.Load(),
                 lineno=sourceline,
                 col_offset=0),
-            ast.If(
-                ast.UnaryOp(
-                    ast.Not(),
-                    ast.Call(
-                        ast.Name(
-                            "isinstance",
-                            ast.Load(),
-                            lineno=sourceline,
-                            col_offset=0),
+            [
+                field_ast,
+                ast.List(
+                    [],
+                    ast.Load(),
+                    lineno=sourceline,
+                    col_offset=0)
+            ],
+            [],
+            None,
+            None,
+            lineno=sourceline,
+            col_offset=0)
+
+        return xsltea.safe.ForeachProcessor.create_foreach(
+            template, elem, context, offset,
+            ast.Name(
+                "error",
+                ast.Store(),
+                lineno=sourceline,
+                col_offset=0),
+            errors_ast)
+
+
+
+    def _elemcode_input_checkbox(self, form, field, elem):
+        if field.__get__(form, type(form)):
+            elem.set("checked", "checked")
+
+    def _elemcode_input_radio(self, form, field, elem):
+        strvalue = field.to_field_value(form, "radio")
+        if elem.get("value") == strvalue:
+            elem.set("checked", "checked")
+
+    def _elemcode_input_default(self, form, field, field_type,
+                                elem, original_value):
+        value = original_value
+
+        if value is None:
+            value = field.to_field_value(
+                form,
+                field_type)
+
+        if value is not None:
+            if field_type == "textarea":
+                elem.text = value
+            else:
+                elem.set("value", value)
+
+    def elemcode_input(self,
+                       makeelement,
+                       append_children,
+                       field_type,
+                       form, field, childfun,
+                       attrib):
+        if not isinstance(form, teapot.forms.Form):
+            raise ValueError("Not a valid form object: {}".format(form))
+
+        if field_type is None:
+            try:
+                field_type = field.field_type
+            except AttributeError:
+                raise ValueError("Can not infer type of field {}".format(field))
+
+        if field_type in {"select", "textarea"}:
+            elem = makeelement(getattr(xhtml_ns, field_type), **attrib)
+        else:
+            elem = makeelement(xhtml_ns.input, **attrib)
+            elem.set("type", field_type)
+
+        allow_options = field_type == "select"
+        if allow_options and childfun:
+            append_children(elem, childfun)
+
+        elem.set("name", field.key(form))
+
+        try:
+            original_value = form.errors[field][0].original_value
+        except (KeyError, IndexError):
+            original_value = None
+        else:
+            # field has errors
+            if self.errorclass is not None:
+                elem.set("class", elem.get("class", "") + " " + self.errorclass)
+
+        if field_type == "checkbox":
+            self._elemcode_input_checkbox(form, field, elem)
+        elif field_type == "radio":
+            self._elemcode_input_radio(form, field, elem)
+        else:
+            self._elemcode_input_default(form, field, field_type,
+                                         elem, original_value)
+
+        if elem.get("id") is None:
+            elem.set("id", elem.get("name"))
+
+        yield elem
+
+    def handle_input(self, template, elem, context, offset):
+        attrib = elem.attrib
+        sourceline = elem.sourceline or 0
+
+        try:
+            field = attrib[self.xmlns.field]
+        except KeyError:
+            # not a form input
+            return template.default_subtree(elem, context, offset)
+
+        form_ast = self._ast_form(
+            template,
+            attrib.get(self.xmlns.form),
+            context,
+            sourceline
+        )
+
+        childfun_name = "children{}".format(offset)
+        precode = template.compose_childrenfun(
+            elem, context, childfun_name)
+
+        elem_localname = xsltea.template.split_tag(elem.tag)[1]
+        if elem_localname in {"select", "textarea"}:
+            input_type = elem_localname
+        else:
+            # if input_type is None, the type will be inferred from the field
+            input_type = attrib.get("type")
+
+        sanitized_attribs = {
+            key: value
+            for key, value in attrib.items()
+            if xsltea.template.split_tag(key)[0] != str(self.xmlns)
+        }
+
+        elemcode = [
+            ast.Expr(
+                ast.YieldFrom(
+                    template.ast_store_and_call(
+                        self.elemcode_input,
                         [
-                            ast.Name(
-                                "_form",
-                                ast.Load(),
+                            template.ast_get_from_object(
+                                "makeelement",
+                                "context",
+                                sourceline),
+                            template.ast_get_util(
+                                "append_children",
+                                sourceline),
+                            ast.Str(
+                                input_type,
                                 lineno=sourceline,
                                 col_offset=0),
+                            form_ast,
+                            self._ast_field(form_ast, field, sourceline),
+                            childfun_name if precode else "None",
                             template.ast_get_stored(
-                                template.store(teapot.forms.Form),
+                                template.store(sanitized_attribs),
                                 sourceline)
                         ],
-                        [],
-                        None,
-                        None,
-                        lineno=sourceline,
-                        col_offset=0),
+                        sourceline=sourceline).value,
                     lineno=sourceline,
                     col_offset=0),
-                [
-                    ast.Raise(
-                        ast.Call(
-                            ast.Name(
-                                "ValueError",
-                                ast.Load(),
-                                lineno=sourceline,
-                                col_offset=0),
-                            [
-                                ast.Call(
-                                    ast.Attribute(
-                                        ast.Str(
-                                            "Not a valid form object: {}",
-                                            lineno=sourceline,
-                                            col_offset=0),
-                                        "format",
-                                        ast.Load(),
-                                        lineno=sourceline,
-                                        col_offset=0),
-                                    [
-                                        ast.Name(
-                                            "_form",
-                                            ast.Load(),
-                                            lineno=sourceline,
-                                            col_offset=0),
-                                    ],
-                                    [],
-                                    None,
-                                    None,
-                                    lineno=sourceline,
-                                    col_offset=0),
-                            ],
-                            [],
-                            None,
-                            None,
-                            lineno=sourceline,
-                            col_offset=0),
-                        None,
-                        lineno=sourceline,
-                        col_offset=0)
-                ],
-                [],
-                lineno=sourceline,
-                col_offset=0),
-            template.ast_set_elem_attr(
-                "name",
-                namecode,
-                sourceline),
-            ast.If(
-                ast.Compare(
-                    ast.Name(
-                        "_descriptor",
-                        ast.Load(),
-                        lineno=sourceline,
-                        col_offset=0),
-                    [
-                        ast.In()
-                    ],
-                    [
-                        template.ast_get_from_object(
-                            "errors",
-                            "_form",
-                            sourceline)
-                    ],
-                    lineno=sourceline,
-                    col_offset=0),
-                [
-                    # store the original value for re-display
-                    ast.Assign(
-                        [
-                            ast.Name(
-                                "_tmp_value",
-                                ast.Store(),
-                                lineno=sourceline,
-                                col_offset=0),
-                        ],
-                        ast.Attribute(
-                            ast.Subscript(
-                                ast.Subscript(
-                                    template.ast_get_from_object(
-                                        "errors",
-                                        "_form",
-                                        sourceline),
-                                    ast.Index(
-                                        ast.Name(
-                                            "_descriptor",
-                                            ast.Load(),
-                                            lineno=sourceline,
-                                            col_offset=0)),
-                                    ast.Load(),
-                                    lineno=sourceline,
-                                    col_offset=0),
-                                ast.Index(
-                                    ast.Num(
-                                        0,
-                                        lineno=sourceline,
-                                        col_offset=0)),
-                                ast.Load(),
-                                lineno=sourceline,
-                                col_offset=0),
-                            "original_value",
-                            ast.Load(),
-                            lineno=sourceline,
-                            col_offset=0),
-                        lineno=sourceline,
-                        col_offset=0),
-                    # set the error class
-                    template.ast_set_elem_attr(
-                        "class",
-                        ast.BinOp(
-                            ast.Str(
-                                ("" if self._errorclass is None
-                                 else (self._errorclass + " ")),
-                                lineno=sourceline,
-                                col_offset=0),
-                            ast.Add(),
-                            template.ast_get_elem_attr("class", sourceline,
-                                                       default=ast.Str(
-                                                           "",
-                                                           lineno=sourceline,
-                                                           col_offset=0)),
-                            lineno=sourceline,
-                            col_offset=0),
-                        sourceline)
-                ],
-                [],
                 lineno=sourceline,
                 col_offset=0)
-        ])
+        ]
 
-        if valuecode is not False:
-            settercode.append(
-                ast.If(
-                    ast.Compare(
-                        ast.Name(
-                            "_tmp_value",
-                            ast.Load(),
-                            lineno=sourceline,
-                            col_offset=0),
-                        [
-                            ast.Is()
-                        ],
-                        [
-                            ast.Name(
-                                "None",
-                                ast.Load(),
-                                lineno=sourceline,
-                                col_offset=0)
-                        ],
-                        lineno=sourceline,
-                        col_offset=0),
-                    [
-                        ast.Assign(
-                            [
-                                ast.Name(
-                                    "_tmp_value",
-                                    ast.Store(),
-                                    lineno=sourceline,
-                                    col_offset=0),
-                            ],
-                            valuecode,
-                            lineno=sourceline,
-                            col_offset=0)
-                    ],
-                    [],
-                    lineno=sourceline,
-                    col_offset=0))
+        return precode, elemcode, []
 
-        settercode.append(
-            template.ast_set_elem_attr(
-                "value",
-                ast.IfExp(
-                    ast.Compare(
-                        ast.Name(
-                            "_tmp_value",
-                            ast.Load(),
-                            lineno=sourceline,
-                            col_offset=0),
-                        [
-                            ast.Is()
-                        ],
-                        [
-                            ast.Name(
-                                "None",
-                                ast.Load(),
-                                lineno=sourceline,
-                                col_offset=0)
-                        ],
-                        lineno=sourceline,
-                        col_offset=0),
-                    ast.Str(
-                        "",
-                        lineno=sourceline,
-                        col_offset=0),
-                    ast.Call(
-                        ast.Name(
-                            "str",
-                            ast.Load(),
-                            lineno=sourceline,
-                            col_offset=0),
-                        [
-                            ast.Name(
-                                "_tmp_value",
-                                ast.Load(),
-                                lineno=sourceline,
-                                col_offset=0)
-                        ],
-                        [],
-                        None,
-                        None,
-                        lineno=sourceline,
-                        col_offset=0),
-                    lineno=sourceline,
-                    col_offset=0),
-                sourceline))
 
-        elemcode.extend(settercode)
+    def warn_attr_usage(self, template, elem, key, value, context):
+        sourceline = elem.sourceline or 0
+        logger.warn("%s:%d: attribute @form:%s appeared on element %s, which is"
+                    " not a supported location of that attribute",
+                    context.filename,
+                    sourceline,
+                    xsltea.template.split_tag(key)[1],
+                    elem.tag)
+        logger.info("%s:%d: are you missing a form:field attribute?",
+                    context.filename,
+                    sourceline)
 
-        if id is not None:
-            if id:
-                elemcode.append(
-                    template.ast_set_elem_attr(
-                        "id", id,
-                        sourceline))
-        else:
-            elemcode.append(
-                template.ast_set_elem_attr(
-                    "id",
-                    template.ast_get_elem_attr(
-                        "name",
-                        sourceline),
-                    sourceline))
+        return [], [], None, None, []
 
-        return [], elemcode, None, None, []
-
-    def _input_box_handler(self, elem, form_ast, field_ast, context):
-        valuecode = compile("""
-if a:
-    elem.set("checked", "checked")""",
-                            context.filename,
-                            "exec",
-                            ast.PyCF_ONLY_AST).body
-
-        valuecode[0].test = field_ast
-
-        return None, False, valuecode
-
-    def _input_radiobox_handler(self, elem, form_ast, field_ast, context):
-        cmpvalue = elem.get("value")
-        if not cmpvalue:
-            return None, False, []
-
-        cmpcode = compile(cmpvalue, context.filename, "eval",
-                          ast.PyCF_ONLY_AST).body
-        self._safety_level.check_safety(cmpcode)
-
-        valuecode = compile("""
-if a == b:
-    elem.set("checked", "checked")""",
-                            context.filename,
-                            "exec",
-                            ast.PyCF_ONLY_AST)
-
-        valuecode = xsltea.template.replace_ast_names(valuecode, {
-            "a": field_ast,
-            "b": cmpcode
-            }).body
-
-        return None, cmpcode, valuecode
-
-    def _input_text_handler(self, elem, form_ast, field_ast, context):
-        return None, None, []
-
-    def _input_datetime_handler(self, fmt, elem, form_ast, field_ast, context):
-        def partcode(part, obj_ast):
-            if "%" in part:
-                code = compile("""\
-a.strftime({!r})""".format(part),
-                               context.filename,
-                               "eval",
-                               ast.PyCF_ONLY_AST).body
-                code.func.value = obj_ast
-                return code
-            else:
-                return ast.Str(part,
-                               lineno=elem.sourceline or 0,
-                               col_offset=0)
-
-        pre, seconds_part, post = fmt.partition("%S")
-        if seconds_part is not None:
-            precode = partcode(pre, field_ast)
-            postcode = partcode(post, field_ast)
-
-            secondscode = compile("""\
-"{:06.3f}".format(a.second + (a.microsecond / 1000000))""",
-                                  context.filename,
-                                  "eval",
-                                  ast.PyCF_ONLY_AST).body
-            secondscode.args[0].left.value = field_ast
-            secondscode.args[0].right.left.value = field_ast
-
-            valuecode = ast.BinOp(
-                precode,
-                ast.Add(
-                    lineno=elem.sourceline or 0,
-                    col_offset=0),
-                ast.BinOp(
-                    secondscode,
-                    ast.Add(
-                        lineno=elem.sourceline or 0,
-                        col_offset=0),
-                    postcode,
-                    lineno=elem.sourceline or 0,
-                    col_offset=0),
-                lineno=elem.sourceline or 0,
-                col_offset=0)
-        else:
-            valuecode = partcode(fmt, field_ast)
-
-        return None, valuecode, []
-
-    def _textarea_handler(self, elem, form_ast, field_ast, context):
-        elemcode = compile("""\
-elem.text = str(a)""",
-                           context.filename,
-                           "exec",
-                           ast.PyCF_ONLY_AST).body
-        elemcode[0].value.args[0] = field_ast
-
-        return None, False, elemcode
-
-    def _select_handler(self, elem, form_ast, field_ast, context):
-        logger.warn("select inputs are not entirely supported yet")
-        return None, False, []
+    def attr_noop(self, template, elem, key, value, context):
+        return [], [], None, None, []
