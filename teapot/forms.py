@@ -146,7 +146,7 @@ class FormErrors:
 
     @staticmethod
     def must_not_be_empty():
-        return ValueError("Must not be empty")
+        return ValueError("Value is empty")
 
     @staticmethod
     def one_or_more_rows_have_errors():
@@ -154,7 +154,7 @@ class FormErrors:
 
     @staticmethod
     def not_a_valid_integer():
-        return ValueError("Must be a valid integer number")
+        return ValueError("Not a valid integer number")
 
 
 class Meta(type):
