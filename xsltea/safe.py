@@ -581,8 +581,7 @@ def _():
             bind = elem.attrib["bind"]
         except KeyError as err:
             raise ValueError(
-                "missing required attribute on tea:for-each: @{}".format(
-                    str(err).split("}", 1)[1]))
+                "missing required attribute on tea:for-each: @{}".format(err))
 
         bind_ast = compile(bind,
                            context.filename,
@@ -651,8 +650,7 @@ class IncludeProcessor(TemplateProcessor):
             nsmap = elem.get("nsmap", "{}")
         except KeyError as err:
             raise ValueError(
-                "missing required attribute on tea:include: @{}".format(
-                    str(err).split("}", 1)[1]))
+                "missing required attribute on tea:include: @{}".format(err))
 
         loader = self._override_loader
         if loader is None:
