@@ -476,9 +476,13 @@ class IntField(StaticDefaultField):
     error.
     """
 
-    def __init__(self, default=0, allow_none=False, **kwargs):
+    def __init__(self, *, default=0,
+                 allow_none=False, min=None, max=None,
+                 **kwargs):
         super().__init__(default=default, **kwargs)
         self.allow_none = allow_none
+        self.min = min
+        self.max = max
 
     def input_validate(self, request, value):
         if not value:
@@ -491,11 +495,16 @@ class IntField(StaticDefaultField):
             raise FormErrors.must_not_be_empty()
 
         try:
-            return int(value)
+            value = int(value)
         except ValueError:
             raise FormErrors.not_a_valid_integer() from None
 
-        yield None
+        if self.min is not None and value < self.min:
+            yield ValueError("Value is less than {}".format(self.min))
+        if self.max is not None and value > self.max:
+            yield ValueError("Value is greater than {}".format(self.max))
+
+        return value
 
 class FlagField(StaticDefaultField):
     """
