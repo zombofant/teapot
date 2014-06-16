@@ -421,6 +421,18 @@ class FormProcessor(TemplateProcessor):
             # if input_type is None, the type will be inferred from the field
             input_type = attrib.get("type")
 
+        if input_type is not None:
+            input_type = ast.Str(
+                input_type,
+                lineno=sourceline,
+                col_offset=0)
+        else:
+            input_type = ast.Name(
+                "None",
+                ast.Load(),
+                lineno=sourceline,
+                col_offset=0)
+
         sanitized_attribs = {
             key: value
             for key, value in attrib.items()
@@ -444,10 +456,7 @@ class FormProcessor(TemplateProcessor):
                                 "request",
                                 "context",
                                 sourceline),
-                            ast.Str(
-                                input_type,
-                                lineno=sourceline,
-                                col_offset=0),
+                            input_type,
                             form_ast,
                             self._ast_field(form_ast, field, sourceline),
                             childfun_name if precode else "None",
