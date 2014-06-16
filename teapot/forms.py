@@ -327,7 +327,8 @@ class CustomField(metaclass=abc.ABCMeta):
         return ValidationError(
             error,
             self,
-            instance)
+            instance,
+            original_value=original_value)
 
     @abc.abstractmethod
     def get_default(self, instance):
