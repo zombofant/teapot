@@ -334,7 +334,7 @@ class DateTimeField(teapot.forms.DateTimeField, HTMLField):
         self._field_type = field_type
 
     def _default_default_generator(self):
-        return self._mode.truncate_datetime(datetime.utcnow())
+        return self.mode.truncate_datetime(datetime.utcnow())
 
     @property
     def field_type(self):

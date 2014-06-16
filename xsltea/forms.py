@@ -373,8 +373,8 @@ class FormProcessor(TemplateProcessor):
             original_value = None
         else:
             # field has errors
-            if self.errorclass is not None:
-                elem.set("class", elem.get("class", "") + " " + self.errorclass)
+            if self._errorclass is not None:
+                elem.set("class", elem.get("class", "") + " " + self._errorclass)
 
         if field_type == "checkbox":
             self._elemcode_input_checkbox(form, field, elem)
