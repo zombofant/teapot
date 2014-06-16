@@ -794,7 +794,10 @@ class Form(metaclass=Meta):
 
     def __deepcopy__(self, d):
         result = copy.copy(self)
-        result.fields = copy.deepcopy(self.fields, d)
+        result._field_data = {
+            key: copy.deepcopy(value, d)
+            for key, value in self._field_data.items()
+        }
         result.errors = copy.deepcopy(self.errors, d)
         return result
 
