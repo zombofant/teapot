@@ -535,10 +535,11 @@ class DateTimeField(CustomField):
     including microseconds and UTC offset specifier.
     """
 
-    def __init__(self, *, default_generator=None, **kwargs):
+    def __init__(self, *, default_generator=None, allow_none=False, **kwargs):
         super().__init__(**kwargs)
         self._default_generator = (default_generator
                                    or self._default_default_generator)
+        self.allow_none = allow_none
 
     def _default_default_generator(self):
         return datetime.utcnow()
@@ -547,10 +548,11 @@ class DateTimeField(CustomField):
         return self._default_generator()
 
     def input_validate(self, request, value):
+        if not value and self.allow_none:
+            return None
         try:
             return teapot.timeutils.parse_datetime(value)
         except Exception as err:
-            print(err)
             raise
         yield None
 
