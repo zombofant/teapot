@@ -623,7 +623,7 @@ class RowList(teapot.utils.InstrumentedList):
         self.field = field
 
     def _acquire_item(self, item):
-        if item.parent is not None:
+        if item.parent is not None and item.parent is not self:
             raise ValueError("{} is already in another row list".format(item))
         item.parent = self
 
@@ -694,7 +694,7 @@ class CustomRows(CustomField):
         return RowList(self, instance)
 
     @abc.abstractmethod
-    def get_row_instance(self, request, subdata):
+    def instanciate_row(self, rows, request, subdata):
         """
         Return a row instance suitable to hold the given *subdata*.
         """
@@ -725,13 +725,16 @@ class CustomRows(CustomField):
             })
 
         rows = self.__get__(instance, type(instance))
-        instances = list(filter(
-            lambda x: x is not None,
-            (self.get_row_instance(request, subdata)
-             for subdata in items)))
-        rows.extend(instances)
-        if any(instance.errors for instance in instances):
-            yield FormErrors.one_or_more_rows_have_errors()
+        for subdata in items:
+            self.instanciate_row(
+                rows,
+                request,
+                subdata)
+        if any(instance.errors for instance in rows):
+            yield ValidationError(
+                FormErrors.one_or_more_rows_have_errors(),
+                self,
+                instance)
 
 class Rows(CustomRows):
     """
@@ -744,8 +747,12 @@ class Rows(CustomRows):
         super().__init__()
         self.rowcls = rowcls
 
-    def get_row_instance(self, request, subdata):
-        return self.rowcls(request=request, post_data=subdata)
+    def instanciate_row(self, rows, request, subdata):
+        rows.append(
+            self.rowcls(
+                request=request,
+                post_data=subdata,
+                parent=rows))
 
 class Form(metaclass=Meta):
     """
@@ -901,8 +908,8 @@ class Row(Form, metaclass=RowMeta):
 
     """
 
-    def __init__(self, *args, **kwargs):
-        self.parent = None
+    def __init__(self, *args, parent=None, **kwargs):
+        self.parent = parent
         self.index = None
         super().__init__(*args, **kwargs)
 
