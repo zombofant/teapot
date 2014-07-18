@@ -541,22 +541,30 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
         }
         self.elemhooks = {
             (str(self.xmlns), "_"): [self.handle_elem],
+            (str(self.xmlns), "any"): [
+                functools.partial(
+                    self.handle_elem_type,
+                    None)],
             (str(self.xmlns), "date"): [
                 functools.partial(
                     self.handle_elem_type,
-                    "date")],
+                    "format_date")],
             (str(self.xmlns), "datetime"): [
                 functools.partial(
                     self.handle_elem_type,
-                    "datetime")],
+                    "format_datetime")],
             (str(self.xmlns), "time"): [
                 functools.partial(
                     self.handle_elem_type,
-                    "time")],
+                    "format_time")],
             (str(self.xmlns), "timedelta"): [
                 functools.partial(
                     self.handle_elem_type,
-                    "timedelta")],
+                    "format_timedelta")],
+            (str(self.xmlns), "number"): [
+                functools.partial(
+                    self.handle_elem_type,
+                    "format_number")],
         }
         self.globalhooks = [self.provide_vars]
 
@@ -583,13 +591,18 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
                     col_offset=0))
             attrs_dict.values.append(value)
 
-        lookup_result = ast.Call(
-            ast.Attribute(
-                self._access_var(template, ast.Load(), sourceline),
+        to_call = self._access_var(template, ast.Load(), sourceline)
+
+        if type_ is not None:
+            to_call = ast.Attribute(
+                to_call,
                 type_,
                 ast.Load(),
                 lineno=sourceline,
-                col_offset=0),
+                col_offset=0)
+
+        lookup_result = ast.Call(
+            to_call,
             [
                 lookup_key
             ],
@@ -626,7 +639,7 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
             lineno=sourceline,
             col_offset=0)
 
-        valuecode = self._lookup_type(template, value, "_", sourceline)
+        valuecode = self._lookup_type(template, value, None, sourceline)
 
         return [], [], keycode, valuecode, []
 
@@ -658,7 +671,9 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
 
         elemcode = [
             template.ast_yield(
-                self._lookup_type(template, elem.text, "_", sourceline, attrs),
+                self._lookup_type(template, elem.text,
+                                  "gettext",
+                                  sourceline, attrs),
                 sourceline)
         ]
         elemcode.extend(template.preserve_tail_code(elem, context))
@@ -706,7 +721,7 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
                         template.ast_get_stored(
                             textdb_key,
                             0),
-                        "catalog_by_preference",
+                        "get_localizer_by_client_preference",
                         ast.Load(),
                         lineno=0,
                         col_offset=0),

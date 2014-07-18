@@ -5,6 +5,10 @@ from datetime import date, time, datetime, timedelta
 import teapot.accept
 
 from . import i18n
+from . import template
+from . import exec
+from . import safe
+from . import errors
 
 def simple_preflist(s):
     preflist = teapot.accept.LanguagePreferenceList()
@@ -55,10 +59,11 @@ class TestLocalizer(unittest.TestCase):
         with self.assertRaises(AttributeError):
             l.text_sources = l.text_sources
 
-class TestTextDatabase(unittest.TestCase):
+class TextDatabaseTest:
     def setUp(self):
+        super().setUp()
         self.example_date = date(2014, 7, 6)
-        self.example_time = time(12, 34, 56)
+        self.example_time = time(16, 34, 56)
         self.example_datetime = datetime(2014, 7, 6, 12, 34, 56)
         self.example_timedelta = timedelta(days=3, minutes=4)
         textdb = i18n.TextDatabase(
@@ -89,6 +94,7 @@ class TestTextDatabase(unittest.TestCase):
 
         self.textdb = textdb
 
+class TestTextDatabase(TextDatabaseTest, unittest.TestCase):
     def test_cache(self):
         textdb = self.textdb
         localizer_base = textdb.get_localizer("de-de")
@@ -193,7 +199,7 @@ class TestTextDatabase(unittest.TestCase):
             "06.07.2014")
         self.assertEqual(
             localizer(self.example_time),
-            "12:34:56")
+            "16:34:56")
         self.assertEqual(
             localizer(self.example_datetime),
             "06.07.2014 12:34:56")
@@ -234,3 +240,100 @@ class TestTextDatabase(unittest.TestCase):
                 simple_preflist("de-at;q=1.0,en;q=0.9")
             ).locale,
             ("en", None))
+
+class TestI18NProcessor(TextDatabaseTest, unittest.TestCase):
+    xmlsrc_gettext = """<?xml version="1.0" ?>
+<test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
+      xmlns:i18n="https://xmlns.zombofant.net/xsltea/i18n"
+    ><i18n:_>key</i18n:_></test>"""
+
+    xmlsrc_gettext_invalid_key = """<?xml version="1.0" ?>
+<test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
+      xmlns:i18n="https://xmlns.zombofant.net/xsltea/i18n"
+    ><i18n:_>wrong key</i18n:_></test>"""
+
+    xmlsrc_magic = """<?xml version="1.0" ?>
+<test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
+      xmlns:i18n="https://xmlns.zombofant.net/xsltea/i18n"
+    ><i18n:any>arguments['value']</i18n:any></test>"""
+
+    def setUp(self):
+        super().setUp()
+        self._loader = template.XMLTemplateLoader()
+        self._loader.add_processor(exec.ExecProcessor)
+        self._loader.add_processor(i18n.I18NProcessor(
+            self.textdb,
+            safety_level=safe.SafetyLevel.unsafe))
+
+    def _load_xml(self, xmlstr):
+        template = self._loader.load_template(xmlstr, "<string>")
+        return template
+
+    def _process_xml(self, xmlstr,
+                     accept_language="en-gb;q=1.0",
+                     **arguments):
+        accept_language_list = teapot.accept.LanguagePreferenceList()
+        accept_language_list.append_header(accept_language)
+        template = self._load_xml(xmlstr)
+        return template.process(
+            arguments,
+            request=teapot.request.Request(
+                accept_info=(
+                    teapot.accept.all_content_types(),
+                    accept_language_list,
+                    teapot.accept.all_charsets()
+                )))
+
+    def test_gettext(self):
+        tree = self._process_xml(self.xmlsrc_gettext)
+        self.assertEqual(
+            tree.getroot().text,
+            "british english")
+
+    def test_gettext_with_invalid_key(self):
+        with self.assertRaises(errors.TemplateEvaluationError) as ctx:
+            self._process_xml(self.xmlsrc_gettext_invalid_key)
+
+        self.assertIsInstance(
+            ctx.exception.__context__,
+            LookupError)
+
+    def test_magic_key(self):
+        tree = self._process_xml(
+            self.xmlsrc_magic,
+            value="key")
+        self.assertEqual(
+            tree.getroot().text,
+            "british english")
+
+    def test_magic_date(self):
+        tree = self._process_xml(
+            self.xmlsrc_magic,
+            value=self.example_date)
+        self.assertEqual(
+            tree.getroot().text,
+            "6 Jul 2014")
+
+    def test_magic_datetime(self):
+        tree = self._process_xml(
+            self.xmlsrc_magic,
+            value=self.example_datetime)
+        self.assertEqual(
+            tree.getroot().text,
+            "6 Jul 2014 12:34:56")
+
+    def test_magic_time(self):
+        tree = self._process_xml(
+            self.xmlsrc_magic,
+            value=self.example_time)
+        self.assertEqual(
+            tree.getroot().text,
+            "16:34:56")
+
+    def test_magic_number(self):
+        tree = self._process_xml(
+            self.xmlsrc_magic,
+            value=12345.67)
+        self.assertEqual(
+            tree.getroot().text,
+            "12,345.67")
