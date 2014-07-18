@@ -52,6 +52,9 @@ def parse_locale(localestr):
 
     return lang, variant
 
+def format_locale(locale):
+    return "_".join(part for part in locale if part)
+
 def sanitize_preference_values(values):
     # print(values)
     return tuple(
