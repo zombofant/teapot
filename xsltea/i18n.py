@@ -1,3 +1,98 @@
+"""
+``xsltea.i18n`` — Internationalization services
+###############################################
+
+This module provides support classes for implementing internationalization as
+well as a ready-to-use :mod:`gettext` and :mod:`babel` interface.
+
+To get started, you need a :class:`TextDatabase` object which stores the text
+sources you have. Text sources are commonly :class:`DictLookup` sources, which
+take a dictionary and perform text lookups in that dictionary, or
+:class:`GNUCatalog` sources, which use :mod:`gettext` to provide translated
+texts.
+
+Example
+=======
+
+Take the following as an example on how to use this module, given that `loader`
+is a :class:`xsltea.template.TemplateLoader`::
+
+  # when talking about locales, we can either use string notation like below,
+  # or tuple notation, like ("en", "GB"). Case doesn’t matter.
+  textdb = TextDatabase(fallback_locale="en_GB")
+
+  # to add sources, just assign them to the corresponding locale slot
+  textdb["en"] = DictLookup({
+      "color": "colour"
+  })
+  # this is legal too
+  textdb["en", "gb"] = textdb["en"]
+  textdb["en", "us"] = DictLookup({
+      "color": "color"
+  })
+
+
+  # we could obtain a localizer now to do some lookups or formatting
+  localizer = textdb.get_localizer(("en", "us"))
+  assert localizer.gettext("color") == "color"
+
+  # de_DE is not in the db, so it will default to en_GB
+  localizer = textdb.get_localizer(("de", "de"))
+  assert localizer.gettext("color") == "colour"
+  # nevertheless, dates and such will be formatted with german locale
+  localizer.format_datetime(datetime.datetime.utcnow())  # yields german date
+
+
+  # a processor for a loader is initialized as simple as this
+  loader.add_processor(I18NProcessor(textdb))
+
+Text sources
+============
+
+.. autoclass:: DictLookup
+   :members: gettext
+
+.. autoclass:: GNUCatalog
+
+Text database
+=============
+
+.. autoclass:: TextDatabase
+   :members:
+
+Making use of localization sources
+==================================
+
+The :class:`TextDatabase` (above) provides you with an interface for acquiring a
+:class:`Localizer` instance for a given locale, which then makes use of all
+sources available for that locale to provide awesome internationalization.
+
+.. autoclass:: Localizer
+   :members:
+
+Internationalization processor
+==============================
+
+.. autoclass:: I18NProcessor
+
+Customizing internationalization support
+========================================
+
+Implementing custom text sources
+--------------------------------
+
+To implement custom text sources, it is recommended (although not required) to
+subclass the :class:`TextSource` class.
+
+.. autoclass:: TextSource
+   :members:
+
+.. autoclass:: TextDatabaseFallback
+   :members:
+
+
+"""
+
 import abc
 import ast
 import functools
@@ -45,6 +140,12 @@ class Localizer:
     well as numbers (as we cannot distinguish between currency, percent and
     plain numbers, plain numbers are assumed). Strings are passed to
     :meth:`gettext`.
+
+    .. note::
+
+       Generally, it is tedious to create a :class:`Localizer` instance, which
+       is why you should use a :class:`TextDatabase` to do so.
+
     """
 
     NUMBERS_FUNCTIONS = [
@@ -235,25 +336,57 @@ class GNUCatalog(TextSource):
 
 
 class DictLookup(TextSource):
-    def __init__(self, text_dict, fallback=None):
+    """
+    Use the given *text_dict* to initialize the :attr:`texts` attribute, from
+    which lookups are sourced.
+
+    .. attribute:: texts
+
+       A mapping which maps translation keys to texts to translated strings.
+    """
+
+    def __init__(self, text_dict):
         super().__init__()
         self.texts = text_dict
 
     def gettext(self, key):
+        """
+        Return the *key* from the :attr:`texts` dictionary, or raise
+        :class:`KeyError` if the key is not available.
+        """
         return self.texts[key]
 
 
 class TextDatabaseFallback(TextSource):
-    def __init__(self, fallback_mode):
+    """
+    This fallback is a fake text source whose behaviour depends on the *mode*
+    attribute value.
+
+    By default, the :class:`TextDatabase` uses a :class:`TextDatabaseFallback`
+    object as the last source when creating a :class:`Localizer`, so that the
+    *mode* of the fallback governs the result of any failed lookup in any
+    localizer created by the :class:`TextDatabase`.
+    """
+    def __init__(self, mode):
         super().__init__()
-        self.fallback_mode = fallback_mode
+        self.mode = mode
 
     @property
-    def fallback_mode(self):
-        return self._fallback_mode
+    def mode(self):
+        """
+        This attribute can take one of the following values:
 
-    @fallback_mode.setter
-    def fallback_mode(self, value):
+        * ``"error"``: Each lookup will throw :class:`LookupError`, with the *key*
+          looked up as the only argument.
+        * ``"key"``: Return the *key* looked up as the value. This is equivalent to
+          using plain :mod:`gettext`.
+
+        Attempting to assign a different value will raise a :class:`ValueError`.
+        """
+        return self._mode
+
+    @mode.setter
+    def mode(self, value):
         if value == "error":
             self.gettext = self._gettext_error
         elif value == "key":
@@ -262,7 +395,7 @@ class TextDatabaseFallback(TextSource):
             raise ValueError("Unknown fallback mode: {!r}".format(
                 value))
 
-        self._fallback_mode = value
+        self._mode = value
 
     def _gettext_error(self, key):
         raise self.lookup_error(key)
@@ -314,9 +447,9 @@ def _get_localizer(textdb, locale):
 
 class TextDatabase:
     """
-    A container to hold various :class:`TextSource` instances. Specific
-    localizers for a given *locale* can be obtained by calling
-    :meth:`get_localizer`.
+    The text database provides a mapping from locales to text sources. It
+    provides an interface (:meth:`get_localizer`) to obtain a :class:`Localizer`
+    instance for a given locale.
 
     The *fallback_locale* argument provides the initial value for the
     :attr:`fallback_locale` attribute. *fallback_mode* can either be a string,
@@ -331,6 +464,9 @@ class TextDatabase:
     be created (e.g. ``Accept-Language`` HTTP headers). To disable caching
     altogether, set *cache_size* to a non-positive number (e.g. ``0``).
 
+    The cache is automatically cleared when the :class:`TextDatabase` is altered
+    in any relevant way.
+
     :class:`TextDatabase` support dictionary-like access for locales, both in
     string format (e.g. ``de-at`` or ``en``) and tuple format
     (e.g. ``('de', 'at')``, ``('de', None)``). That is, subscript operators (for
@@ -338,20 +474,6 @@ class TextDatabase:
     supported. Iteration is supported as well, yielding all explicitly supported
     locales in tuple format. The iteration order is unspecified, but grouped
     (that is, all variants of a locale appear together).
-
-    .. attribute:: fallback_locale
-
-       The locale (in tuple notation) which is always included as the
-       second-last source when constructing localizers. This can be set to
-       :data:`None` (to disable this feature).
-
-       Writing to this attribute invalidates the :meth:`get_localizer` cache.
-
-    .. attribute:: fallback_handler
-
-       A :class:`TextSource` object which is always added as last source to the
-       text sources when constructing a localizer. Must not be set to
-       :data:`None`.
     """
 
     def __init__(self, fallback_locale, fallback_mode="error", cache_size=32):
@@ -382,6 +504,13 @@ class TextDatabase:
 
     @property
     def fallback_locale(self):
+        """
+        The locale (in tuple notation) which is always included as the
+        second-last source when constructing localizers. This can be set to
+        :data:`None` (to disable this feature).
+
+        Writing to this attribute invalidates the :meth:`get_localizer` cache.
+        """
         return self._fallback_locale
 
     @fallback_locale.setter
@@ -391,6 +520,11 @@ class TextDatabase:
 
     @property
     def fallback_handler(self):
+        """
+        A :class:`TextSource` object which is always added as last source to the
+        text sources when constructing a localizer. Must not be set to
+        :data:`None`.
+        """
         return self._fallback_handler
 
     @fallback_handler.setter
@@ -486,6 +620,13 @@ class TextDatabase:
           equal to :attr:`fallback_locale`)
           ``self[self.fallback_locale]``: The source for the fallback locale
         * :attr:`fallback_handler`: The final handler
+
+        As :class:`Localizer` objects are immutable, changes to the
+        :class:`TextDatabase` do not affect it directly. However, changes to
+        sources (e.g. changing the :attr:`TextDatabaseFallback.mode` attribute
+        or adding texts) will affect living :class:`Localizer` objects. Adding
+        or replacing texts sources will not affect already created
+        :class:`Localizer` objects.
         """
 
         return self._cached_get_localizer(self._mapkey(locale))
@@ -566,6 +707,9 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
     * if the request has an ``localizer`` attribute, its value is taken
     * otherwise, use the :attr:`teapot.request.Request.accept_language`
       attribute to negotiate a language.
+
+    The namespace of ``i18n:`` elements is
+    ``https://xmlns.zombofant.net/xsltea/i18n``.
     """
 
     class xmlns(metaclass=NamespaceMeta):

@@ -22,6 +22,8 @@ The following modules and classes provide extension points to xsltea.
 
 .. automodule:: xsltea.safe
 
+.. automodule:: xsltea.i18n
+
 .. automodule:: xsltea.exec
 
 .. automodule:: xsltea.namespaces
