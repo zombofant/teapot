@@ -55,8 +55,7 @@ class TestResponse(unittest.TestCase):
 
         content_type = teapot.mime.Type("text", "plain")
 
-        response = teapot.response.Response(
-            content_type, "foobar")
+        response = teapot.response.Response(content_type, "foobar")
         response.negotiate_charset(client_preferences)
         self.assertEqual(response.content_type.charset, "utf-8")
 

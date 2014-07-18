@@ -908,7 +908,9 @@ class content_type(Selector):
     def __init__(self, *content_types, **kwargs):
         super().__init__(**kwargs)
         self._content_types = frozenset(
-            str(content_type) if content_type is not None else None
+            (None
+             if content_type is None
+             else tuple(str(content_type).split("/", 2)))
             for content_type in content_types)
 
     def select(self, request):

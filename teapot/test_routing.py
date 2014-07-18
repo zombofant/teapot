@@ -127,6 +127,16 @@ class SomeRoutable(metaclass=teapot.RoutableMeta):
         self.args = ["PUT"]
         self.kwargs = {}
 
+    @teapot.route("ordering", order=1)
+    def ordering_1(self):
+        self.args = ["1"]
+        self.kwargs = {}
+
+    @teapot.route("ordering", order=2)
+    def ordering_2(self):
+        self.args = ["2"]
+        self.kwargs = {}
+
 class TestContext(unittest.TestCase):
     method = teapot.request.Method.GET
     path = "/foo/bar"
@@ -534,9 +544,9 @@ class TestRouting(unittest.TestCase):
         request = teapot.request.Request(
             local_path="/content-negotiation",
             accept_info=(
-                teapot.accept.AcceptPreferenceList([
-                    teapot.accept.AcceptPreference("image/png", q=1.0),
-                    teapot.accept.AcceptPreference("text/plain", q=0.9)]),
+                teapot.accept.MIMEPreferenceList([
+                    teapot.accept.MIMEPreference("image", "png", q=1.0),
+                    teapot.accept.MIMEPreference("text", "plain", q=0.9)]),
                 teapot.accept.all_languages(),
                 teapot.accept.all_charsets()))
 
@@ -548,9 +558,9 @@ class TestRouting(unittest.TestCase):
         request = teapot.request.Request(
             local_path="/content-negotiation",
             accept_info=(
-                teapot.accept.AcceptPreferenceList([
-                    teapot.accept.AcceptPreference("image/png", q=1.0),
-                    teapot.accept.AcceptPreference("text/html", q=1.0)]),
+                teapot.accept.MIMEPreferenceList([
+                    teapot.accept.MIMEPreference("image", "png", q=1.0),
+                    teapot.accept.MIMEPreference("text", "html", q=1.0)]),
                 teapot.accept.all_languages(),
                 teapot.accept.all_charsets()))
 
@@ -562,9 +572,9 @@ class TestRouting(unittest.TestCase):
         request = teapot.request.Request(
             local_path="/content-negotiation",
             accept_info=(
-                teapot.accept.AcceptPreferenceList([
-                    teapot.accept.AcceptPreference("image/png", q=0.9),
-                    teapot.accept.AcceptPreference("text/plain", q=1.0)]),
+                teapot.accept.MIMEPreferenceList([
+                    teapot.accept.MIMEPreference("image", "png", q=0.9),
+                    teapot.accept.MIMEPreference("text", "plain", q=1.0)]),
                 teapot.accept.all_languages(),
                 teapot.accept.all_charsets()))
 
@@ -576,8 +586,8 @@ class TestRouting(unittest.TestCase):
         request = teapot.request.Request(
             local_path="/content-negotiation",
             accept_info=(
-                teapot.accept.AcceptPreferenceList([
-                    teapot.accept.AcceptPreference("text/html", q=1.0)]),
+                teapot.accept.MIMEPreferenceList([
+                    teapot.accept.MIMEPreference("text", "html", q=1.0)]),
                 teapot.accept.all_languages(),
                 teapot.accept.all_charsets()))
 
@@ -590,9 +600,9 @@ class TestRouting(unittest.TestCase):
         request = teapot.request.Request(
             local_path="/content-negotiation",
             accept_info=(
-                teapot.accept.AcceptPreferenceList([
-                    teapot.accept.AcceptPreference("text/plain", q=1.0),
-                    teapot.accept.AcceptPreference("text/png", q=1.0)]),
+                teapot.accept.MIMEPreferenceList([
+                    teapot.accept.MIMEPreference("text", "plain", q=1.0),
+                    teapot.accept.MIMEPreference("image", "png", q=1.0)]),
                 teapot.accept.all_languages(),
                 teapot.accept.all_charsets()))
 
@@ -623,6 +633,13 @@ class TestRouting(unittest.TestCase):
             path="/method",
             request_method=teapot.request.Method.PUT)
         self.assertSequenceEqual(args, ["PUT"])
+        self.assertFalse(kwargs)
+
+    def test_ordering(self):
+        args, kwargs = self.get_routed_args(
+            path="/ordering",
+            request_method=teapot.request.Method.GET)
+        self.assertSequenceEqual(args, ["1"])
         self.assertFalse(kwargs)
 
     def tearDown(self):

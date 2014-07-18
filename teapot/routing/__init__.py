@@ -487,6 +487,11 @@ class RoutableMeta(type):
                 class_routenodes.append(info)
             instance_routenodes.append(info)
 
+        class_routenodes.sort(key=lambda x: x.order,
+                              reverse=False)
+        instance_routenodes.sort(key=lambda x: x.order,
+                                 reverse=False)
+
         for base in bases:
             try:
                 info = getrouteinfo(base)
@@ -677,12 +682,6 @@ def find_route(root, request):
     if not candidates:
         return False, error
 
-    # content_types = [
-    #     (candidate_type, candidate)
-    #     for candidate in candidates
-    #     for candidate_type in candidate.content_types
-    # ]
-
     unique_content_types = list(map_unique(
         lambda x: x,
         (content_type
@@ -691,40 +690,39 @@ def find_route(root, request):
 
     content_type_candidates = request.accept_content.get_candidates(
         [
-            teapot.accept.AcceptPreference(content_type, q=1.0)
-            for content_type in unique_content_types
+            teapot.accept.MIMEPreference(*content_type, q=1.0)
+            for content_type in reversed(unique_content_types)
             if content_type is not None
-        ],
-        match_wildcard=True)
+        ])
 
-    candidate = None
-
-    if not content_type_candidates:
-        best_match = None
-        if None not in unique_content_types:
+    routable_candidate = None
+    try:
+        # FIXME: language selection
+        q, pref = content_type_candidates.pop()
+        if q <= 0:
+            best_match = None
+        else:
+            best_match = pref.values
+    except IndexError:
+        if None in unique_content_types:
+            best_match = None
+        else:
             # no matches at all, we use our preferences.
             # FIXME: check for HTTP/1.1, otherwise we might have to reply with
             # 406.
-            candidate = candidates[0]
-    else:
-        # if we ever do more than one lookup here, we might be better off with a
-        # dictionary: type_map = dict(reversed(content_types))
+            routable_candidate = candidates[0]
 
-        # FIXME: language selection
-        best_match = content_type_candidates.pop()[1]
-
-    best_match = None if best_match is None else best_match.value
-
-    if candidate is None:
-        # we will find a match here
+    if routable_candidate is None:
+        # search for the routable satisfying the given content type
         for candidate in candidates:
             if best_match in candidate.content_types:
+                routable_candidate = candidate
                 break
 
     # FIXME: deal with parameters and such
     if best_match is not None:
         request.accepted_content_type = \
-            teapot.mime.Type(*best_match.split("/"))
+            teapot.mime.Type(*best_match)
     else:
         request.accepted_content_type = None
 

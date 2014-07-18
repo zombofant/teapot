@@ -455,7 +455,7 @@ class Request:
             charsets.inject_rfc_values()
 
         try:
-            contents = teapot.accept.AcceptPreferenceList()
+            contents = teapot.accept.MIMEPreferenceList()
             contents.append_header(headers["Accept"])
         except KeyError:
             contents = teapot.accept.all_content_types()

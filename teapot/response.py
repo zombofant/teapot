@@ -202,7 +202,7 @@ class Response:
             candidates.append("utf-8")
 
         for i, candidate in enumerate(candidates):
-            if candidate == "*":
+            if candidate is None:
                 candidate = "utf8"
             try:
                 self.body = self.body.encode(candidate)

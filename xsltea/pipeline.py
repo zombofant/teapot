@@ -272,8 +272,8 @@ class XMLPipeline(Pipeline):
     """
 
     _preferences = [
-        teapot.accept.AcceptPreference("application/xml", 1.0),
-        teapot.accept.AcceptPreference("text/xml", 0.9),
+        teapot.accept.MIMEPreference("application", "xml", q=1.0),
+        teapot.accept.MIMEPreference("text", "xml", q=0.9),
     ]
 
     def __init__(self, *, strict=False, pretty_print=False, **kwargs):
@@ -302,11 +302,9 @@ class XMLPipeline(Pipeline):
         charsets = request.accept_charset.get_sorted_by_preference()
         for charset in charsets:
             charset = charset.value
-            if charset == "*":
+            if charset is None:
                 charset = "utf-8"
                 break
-            if "*" in charset:
-                continue
         else:
             charset = "latin1"
 
@@ -338,10 +336,10 @@ class XHTMLPipeline(XMLPipeline):
     """
 
     _preferences = [
-        teapot.accept.AcceptPreference("application/xhtml+xml", 1.0),
-        teapot.accept.AcceptPreference("text/html", 0.9),
-        teapot.accept.AcceptPreference("application/xhtml", 0.85),
-        teapot.accept.AcceptPreference("text/xhtml", 0.85),
+        teapot.accept.MIMEPreference("application", "xhtml+xml", q=1.0),
+        teapot.accept.MIMEPreference("text", "html", q=0.9),
+        teapot.accept.MIMEPreference("application", "xhtml", q=0.85),
+        teapot.accept.MIMEPreference("text", "xhtml", q=0.85),
     ]
 
     _remove_prefixes_transform = etree.XSLT(etree.fromstring(
