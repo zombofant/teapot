@@ -62,13 +62,15 @@ def sanitize_preference_values(values):
         )
     )
 
-def match_tuple(a, b):
+def match_tuple(a, b, rhs_wildcard=True):
     if len(a) != len(b):
         raise ValueError("Tuples must have equal length")
 
     wildcard_penalty = 0
     for av, bv in zip(a, b):
-        if (av is None) ^ (bv is None):
+        # the last clause is to catch rhs_wildcard pulling the rhs of the first
+        # check to False
+        if ((av is None) ^ (rhs_wildcard and bv is None)) and av is not bv:
             wildcard_penalty += 1
             continue
 
@@ -244,6 +246,14 @@ class AbstractPreference(metaclass=abc.ABCMeta):
                              q=self.q,
                              parameters=self.parameters))
 
+    @classmethod
+    def _values_match(cls, my_values, other_values):
+        """
+        The function to use for matching the tuple values. Usually, this is the
+        wildcard-aware :func:`match_tuple` function.
+        """
+        return match_tuple(my_values, other_values)
+
     def rfc_match(self, server):
         """
         Matches a client preference (*self*) against a server preference
@@ -260,9 +270,12 @@ class AbstractPreference(metaclass=abc.ABCMeta):
         not be used.
         """
 
-        matches, wildcard_penalty = match_tuple(
+        matches, wildcard_penalty = self._values_match(
             self.values,
             server.values)
+
+        # print("{!s} <-> {!s}: {} {}".format(
+        #     self, server, matches, wildcard_penalty))
 
         if not matches:
             return False, ()
@@ -375,6 +388,11 @@ class LanguagePreference(AbstractPreference):
     @property
     def value(self):
         return "-".join(value for value in self.values if value)
+
+    @classmethod
+    def _values_match(cls, my_values, other_values):
+        return match_tuple(my_values, other_values,
+                           rhs_wildcard=False)
 
 
 class MIMEPreference(AbstractPreference):

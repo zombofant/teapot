@@ -150,7 +150,7 @@ class LanguagePreferenceList(ListTest):
 
     def test_rfc_compliance(self):
         P = teapot.accept.LanguagePreference
-        header = """da, en-gb;q=0.8, en;q=0.7"""
+        header = """da, en-gb;q=0.8, en;q=0.7, de-at;q=0.5"""
         l = teapot.accept.LanguagePreferenceList()
         l.append_header(header)
 
@@ -160,6 +160,7 @@ class LanguagePreferenceList(ListTest):
             (P.parse("en-us"),                  0.7),
             (P.parse("da-foo"),                 1.0),
             (P.parse("de-de"),                  0.0),
+            (P.parse("de"),                     0.0),
         ]
         self._test_list(l, expected_qualities)
 
