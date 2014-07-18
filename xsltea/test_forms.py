@@ -285,7 +285,7 @@ class TestFormProcessor(unittest.TestCase):
                 child.get("value"))
             self.assertEqual(
                 value,
-                child.get("label"))
+                child.text)
 
     def test_select_input_select_with_optgroup(self):
         tree = self._process_with_form(

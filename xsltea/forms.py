@@ -312,7 +312,7 @@ class FormProcessor(TemplateProcessor):
                     elem,
                     xhtml_ns.option)
                 option.set("value", key)
-                option.set("label", value)
+                option.text = value
 
                 if key == field_value:
                     option.set("selected", "selected")
