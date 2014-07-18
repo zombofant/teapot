@@ -337,3 +337,20 @@ class TestI18NProcessor(TextDatabaseTest, unittest.TestCase):
         self.assertEqual(
             tree.getroot().text,
             "12,345.67")
+
+    def test_use_localizer_attribute(self):
+        accept_language_list = teapot.accept.LanguagePreferenceList()
+        accept_language_list.append_header("en-gb;q=1.0")
+        template = self._load_xml(self.xmlsrc_gettext)
+        request = teapot.request.Request(
+            accept_info=(
+                teapot.accept.all_content_types(),
+                accept_language_list,
+                teapot.accept.all_charsets()
+            ))
+        request.localizer = self.textdb.get_localizer(("de", "de"))
+
+        tree = template.process({}, request=request)
+        self.assertEqual(
+            tree.getroot().text,
+            "deutsch (deutschland)")

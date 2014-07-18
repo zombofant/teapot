@@ -527,6 +527,47 @@ class TextDatabase:
 
 
 class I18NProcessor(xsltea.processor.TemplateProcessor):
+    """
+    Processor which allows the use of the *textdb* :class:`TextDatabase` object
+    in XML templates.
+
+    The following nodes are available:
+
+    * ``i18n:_``: Is replaced with the text obtained from looking up the text
+      content of the element via :meth:`Localizer.gettext` in the localizer from
+      the current request.
+
+      Any attributes are taken as key-value pairs for running :meth:`str.format`
+      on the result of the lookup. Attributes in the ``exec:`` namespace are
+      first interpreted according to the specified *safety_level* and then
+      passed to :meth:`str.format`.
+
+    * ``i18n:date``, ``i18n:datetime``, ``i18n:time``, ``i18n:timedelta``,
+      ``i18n:number``: Format the respective datatype using the current
+      :class:`Localizer` and replace the element with the formatted text. The
+      value is obtained by interpreting the text as python code using the given
+      *safety_level*.
+
+    * ``i18n:any``: Calls the :class:`Localizer` instance itself with the value
+      obtained from interpreting the element text as python code according to
+      the current *safety_level*. Replaces the element with the text obtained
+      from the call.
+
+    * ``@i18n:*``: The contents of attributes in the ``i18n:`` namespace on
+      arbitrary elements are taken as a key for a ``gettext`` lookup. The result
+      is used as the new attribute value, with the namespace removed from the
+      attribute.
+
+    In addition to the node processing, the processor adds an attribute with
+    the name *varname* to the ``context`` object in the template scope.
+
+    The value of that attribute depends on the state of the ``request`` object:
+
+    * if the request has an ``localizer`` attribute, its value is taken
+    * otherwise, use the :attr:`teapot.request.Request.accept_language`
+      attribute to negotiate a language.
+    """
+
     class xmlns(metaclass=NamespaceMeta):
         xmlns = "https://xmlns.zombofant.net/xsltea/i18n"
 
@@ -663,7 +704,7 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
                     col_offset=0)
             else:
                 raise template.compilation_error(
-                    "Unexpected attribute on i18n:text: {} "
+                    "Unexpected attribute on i18n:_: {} "
                     "(in namespace {})".format(
                         name, ns),
                     context,
@@ -700,8 +741,14 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
 
         return [], elemcode, []
 
+    def negotiate_language(self, request):
+        if hasattr(request, "localizer") and request.localizer is not None:
+            return request.localizer
+
+        return self._textdb.get_localizer_by_client_preference(
+            request.accept_language)
+
     def provide_vars(self, template, tree, context):
-        textdb_key = template.store(self._textdb)
         precode = [
             ast.Assign(
                 [
@@ -717,21 +764,11 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
                         col_offset=0),
                 ],
                 ast.Call(
-                    ast.Attribute(
-                        template.ast_get_stored(
-                            textdb_key,
-                            0),
-                        "get_localizer_by_client_preference",
-                        ast.Load(),
-                        lineno=0,
-                        col_offset=0),
+                    template.ast_get_stored(
+                        template.store(self.negotiate_language),
+                        0),
                     [
-                        ast.Attribute(
-                            template.ast_get_request(0),
-                            "accept_language",
-                            ast.Load(),
-                            lineno=0,
-                            col_offset=0)
+                        template.ast_get_request(0),
                     ],
                     [],
                     None,
