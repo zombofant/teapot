@@ -225,3 +225,34 @@ class TestView(DBTestCase):
                 (1, "foo"),
             ]
         )
+
+    def test_method_mutation(self):
+        all_as, all_bs = self.insert_test_data()
+
+        data = [
+            (a.a_id, a.value1)
+            for a in sorted(all_as,
+                            key=lambda x: x.a_id,
+                            reverse=True)
+        ]
+
+        f = self._make_form_and_query(
+            A,
+            [
+                ("id", A.a_id, None),
+                ("value1", A.value1, None),
+            ],
+            itemsperpage=2,
+            query_data={
+                "p": ["1"],
+                "d": ["desc"],
+                "ob": ["id"],
+            })
+
+        self.assertSequenceEqual(
+            list(f),
+            data[:2])
+
+        self.assertSequenceEqual(
+            list(f.at_page(2)),
+            data[2:4])

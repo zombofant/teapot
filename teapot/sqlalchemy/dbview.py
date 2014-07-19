@@ -120,20 +120,20 @@ class View(teapot.forms.Form):
     Objects of this class behave approximately immutable. This means, any
     changes to attributes should happen using the provided methods and return
     new objects. This is to simplify unrouting.
-
-    .. warning::
-
-       The views provided through these methods are currently dysfunctional and
-       can only be used to unselect (unroute) a routable, for creating
-       e.g. redirect responses or URLs.
-
-       They do not return valid data.
-
     """
 
-    def __init__(self, dbsession, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, dbsession, request=None, **kwargs):
+        super().__init__(request=request, **kwargs)
+        self.dbsession = dbsession
+        self.request = request
+        self._query = None
 
+    @property
+    def query(self):
+        if self._query is not None:
+            return self._query
+
+        dbsession = self.dbsession
         fields = []
         fieldmap = {}
         joins = []
@@ -193,11 +193,39 @@ class View(teapot.forms.Form):
         else:
             length = total
 
-        self.query = query
-        self.length = length
-        self.offset = offset
-        self.total = total
-        self.total_pages = total_pages
+        self._query = query
+        self._length = length
+        self._offset = offset
+        self._total = total
+        self._total_pages = total_pages
+
+        return self._query
+
+    @property
+    def length(self):
+        self.query
+        return self._length
+
+    @property
+    def offset(self):
+        self.query
+        return self._offset
+
+    @property
+    def total(self):
+        self.query
+        return self._total
+
+    @property
+    def total_pages(self):
+        self.query
+        return self._total_pages
+
+    def __deepcopy__(self, copydict):
+        result = super().__deepcopy__(copydict)
+        # invalidate the query cache
+        result._query = None
+        return result
 
     def get_pageno(self):
         """
@@ -241,11 +269,6 @@ class View(teapot.forms.Form):
         """
         Create and return a new view which is equal to this view, except that it
         points to a different page number.
-
-        .. warning::
-
-           See the warning at :class:`View`.
-
         """
         result = copy.deepcopy(self)
         setattr(result, self._pageno_key, int(new_pageno))
@@ -260,18 +283,12 @@ class View(teapot.forms.Form):
         one, if *new_fieldname* is :data:`None`) and the *new_direction* as
         direction (or the current one, if *new_direction* is :data:`None`) for
         ordering.
-
-        .. warning::
-
-           If ``new_fieldname`` and ``new_direction`` are both :data:`None`,
-           **this** view is returned instead of a new object.
-
-           In addition to that, see the warning at :class:`View`.
         """
-        if new_fieldname is None and new_direction is None:
-            return self
-
         result = copy.deepcopy(self)
+
+        if new_fieldname is None and new_direction is None:
+            return result
+
         if new_fieldname is not None:
             setattr(result, self._orderfield_key, new_fieldname)
         if new_direction is not None:
