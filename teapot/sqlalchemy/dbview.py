@@ -474,7 +474,6 @@ class dbview(teapot.routing.selectors.Selector):
     def select(self, request):
         dbsession = request.original_request.dbsession
         view = self._ViewForm(dbsession,
-                              self,
                               request=request.original_request,
                               post_data=request.query_data)
 
@@ -487,7 +486,7 @@ class dbview(teapot.routing.selectors.Selector):
         try:
             view = request.kwargs.pop(self._destarg)
         except KeyError:
-            view = self._ViewForm(dbsession, self)
+            view = self._ViewForm(dbsession)
         dest = request.query_data
 
         dest[view._pageno_key] = [str(getattr(view, view._pageno_key))]
