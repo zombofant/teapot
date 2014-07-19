@@ -441,7 +441,7 @@ def make_form(
         "_fields": fields,
         "_primary_object": primary_object,
         "_filter_key": filter_key,
-        "_custom_filter": custom_filter,
+        "_custom_filter": staticmethod(custom_filter),
         "_itemsperpage": itemsperpage,
         "_orderfield_key": orderfield_key,
         "_orderdir_key": orderdir_key,
