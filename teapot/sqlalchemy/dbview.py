@@ -1,3 +1,10 @@
+"""
+
+.. autoclass:: dbview
+
+.. autoclass:: View
+"""
+
 import abc
 import copy
 import functools
@@ -11,7 +18,8 @@ from datetime import datetime, timedelta
 
 __all__ = [
     "dbview",
-    "subquery"]
+    "subquery"
+]
 
 datetime_formats = [
     "%Y-%m-%dT%H:%M:%SZ",
@@ -62,7 +70,7 @@ def descriptor_for_type(name, python_type, **kwargs):
         field_constructor, operators = type_mapping[python_type]
     except KeyError:
         raise ValueError("python type {} not mapped; provide an entry in the"
-                         " priyom.api.dbview.type_mapping"
+                         " teapot.sqlalchemy.dbview.type_mapping"
                          " dict".format(python_type))
 
     descriptor = field_constructor(**kwargs)
@@ -100,6 +108,25 @@ class RowBase(teapot.forms.Row):
     pass
 
 class View(teapot.forms.Form):
+    """
+    A :class:`View` object represents a slice of data, filtered, ordered and
+    limited according to the parameters provided in a query. Instances of
+    :class:`View` are provided to routables decorated with :class:`dbview`.
+
+    Objects of this class behave approximately immutable. This means, any
+    changes to attributes should happen using the provided methods and return
+    new objects. This is to simplify unrouting.
+
+    .. warning::
+
+       The views provided through these methods are currently dysfunctional and
+       can only be used to unselect (unroute) a routable, for creating
+       e.g. redirect responses or URLs.
+
+       They do not return valid data.
+
+    """
+
     def __init__(self, dbsession, dbview, **kwargs):
         super().__init__(**kwargs)
 
@@ -164,18 +191,36 @@ class View(teapot.forms.Form):
         self.total_pages = total_pages
 
     def get_pageno(self):
+        """
+        Return the page number this view points to.
+        """
         return getattr(self, self.dbview._pageno_key)
 
     def get_orderby_dir(self):
+        """
+        Return the direction in which this view is ordered (either ``"asc"`` or
+        ``"desc"``).
+        """
         return getattr(self, self.dbview._orderdir_key)
 
     def get_orderby_field(self):
+        """
+        Return the field with respect to which this view is
+        ordered.
+        """
         return getattr(self, self.dbview._orderfield_key)
 
     def __len__(self):
+        """
+        Return the amount of entries provided by iterating over this view.
+        """
         return self.length
 
     def __iter__(self):
+        """
+        Iterate over all items returned by this view (that is, all items on this
+        page).
+        """
         if self.dbview._provide_primary_object:
             return iter(self.query)
         else:
@@ -184,11 +229,36 @@ class View(teapot.forms.Form):
                 for row in self.query)
 
     def at_page(self, new_pageno):
+        """
+        Create and return a new view which is equal to this view, except that it
+        points to a different page number.
+
+        .. warning::
+
+           See the warning at :class:`View`.
+
+        """
         result = copy.deepcopy(self)
         setattr(result, self.dbview._pageno_key, int(new_pageno))
         return result
 
     def with_orderby(self, new_fieldname=None, new_direction=None):
+        """
+        Create and return a new view which is equal to this view, but uses a
+        different ordering.
+
+        The new view uses the given *new_fieldname* as a field (or the current
+        one, if *new_fieldname* is :data:`None`) and the *new_direction* as
+        direction (or the current one, if *new_direction* is :data:`None`) for
+        ordering.
+
+        .. warning::
+
+           If ``new_fieldname`` and ``new_direction`` are both :data:`None`,
+           **this** view is returned instead of a new object.
+
+           In addition to that, see the warning at :class:`View`.
+        """
         if new_fieldname is None and new_direction is None:
             return self
 
@@ -201,11 +271,62 @@ class View(teapot.forms.Form):
         return result
 
     def without_filters(self):
+        """
+        Create and return a new view which is equal to this view, but with all
+        filters removed.
+
+
+        .. warning::
+
+           See the warning at :class:`View`.
+        """
         result = copy.deepcopy(self)
         getattr(result, self.dbview._filter_key).clear()
         return result
 
 class dbview(teapot.routing.selectors.Selector):
+    """
+    A routing selector which is used to create a database query from query
+    arguments.
+
+    The database query is a select on *primary_object*. The query queries for
+    the given list of *fields* (which must be valid, selectable
+    :mod:`sqlalchemy` expressions).
+
+    If additional objects are required (e.g. explicit joins), these can be
+    specified in the *supplemental_objects* list. These are never returned in
+    the result and only used to set up the joins in sqlalchemy. If *autojoin* is
+    :data:`True`, the code tries to guess the required *supplemental_objects*
+    from the *fields* given, by adding each table once.
+
+    *pageno_key*, *orderfield_key*, *orderdir_key* and *filter_key* define the
+    query keys which are used to transfer the query information.
+
+    *viewname* is the name of the class which will be created for this
+    *dbview*. It does not matter much except possibly for debug
+    purposes.
+
+    *itemsperpage* is the amount of items returned in one pagination step.
+
+    If *provide_primary_object* is true, the first element of the result tuple
+    in an iteration of the query result will be the *primary_object* associated
+    with the row.
+
+    *custom_filter* can be a callable which is called on the final query object,
+    before any limiting and ordering is applied. It must return a new query
+    object to which limiting and ordering will be applied and which will be used
+    to retrieve the data.
+
+    Applying this decorator creates a :class:`teapot.forms.Form` which holds all
+    the fields required to configure ordering, pagination and optionally
+    filtering. Upon selecting, an instance of this form is created and, if that
+    is succesful, passed to the routed function via *destarg*. For unselecting,
+    such a form instance is converted into query arguments.
+
+    The methods available on all forms created by this decorator are documented
+    in :class:`View`.
+    """
+
     FIELDNAME_KEY = "f"
     OPERATOR_KEY = "o"
     VALUE_KEY = "v"

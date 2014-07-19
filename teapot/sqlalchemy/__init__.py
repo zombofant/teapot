@@ -1,5 +1,5 @@
 """
-SQLAlchemy Utilities
+SQLAlchemy utilities
 ####################
 
 Teapot provides some utilities to better integrate with the popular
@@ -12,7 +12,14 @@ There is a :class:`~teapot.routing.Router` mixin which provides a ``dbsession``
 attribute on the :class:`~teapot.request.Request` instance. For this it uses a
 standard :class:`sqlalchemy.orm.session.sessionmaker`.
 
+Creating queries through routing
+================================
+
+.. automodule:: teapot.sqlalchemy.dbview
+
 """
+
+from . import dbview
 
 class SessionMixin:
     def __init__(self, sessionmaker, **kwargs):
