@@ -166,7 +166,7 @@ class View(teapot.forms.Form):
                 getattr(field, filterrow.o)(filterrow.v))
 
         if self._custom_filter is not None:
-            query = self._custom_filter(query)
+            query = self._custom_filter(self.request, query)
 
         total = query.count()
         if self._itemsperpage > 0:
@@ -394,7 +394,8 @@ def make_form(
     *custom_filter* can be a callable which is called on the final query object,
     before any limiting and ordering is applied. It must return a new query
     object to which limiting and ordering will be applied and which will be used
-    to retrieve the data.
+    to retrieve the data. The callable receives the *request* passed to the form
+    on construction time as first, and the current query as second argument.
 
     Applying this decorator creates a :class:`teapot.forms.Form` which holds all
     the fields required to configure ordering, pagination and optionally
@@ -491,7 +492,7 @@ class dbview(teapot.routing.selectors.Selector):
     def select(self, request):
         dbsession = request.original_request.dbsession
         view = self._ViewForm(dbsession,
-                              request=request.original_request,
+                              request=request,
                               post_data=request.query_data)
 
 
