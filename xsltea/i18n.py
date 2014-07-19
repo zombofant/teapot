@@ -663,7 +663,7 @@ class TextDatabase:
         except KeyError:
             fallback = None
 
-        catalog = Catalog(for_locale, sourcefile, fallback=fallback)
+        catalog = GNUCatalog(for_locale, sourcefile, fallback=fallback)
         self[for_locale] = catalog
 
 
