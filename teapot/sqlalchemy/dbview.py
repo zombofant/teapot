@@ -21,6 +21,10 @@ __all__ = [
     "subquery"
 ]
 
+FIELDNAME_KEY = "f"
+OPERATOR_KEY = "o"
+VALUE_KEY = "v"
+
 datetime_formats = [
     "%Y-%m-%dT%H:%M:%SZ",
     "%Y-%m-%dT%H:%M:%S",
@@ -127,13 +131,20 @@ class View(teapot.forms.Form):
 
     """
 
-    def __init__(self, dbsession, dbview, **kwargs):
+    def __init__(self, dbsession, **kwargs):
         super().__init__(**kwargs)
 
         fields = []
         fieldmap = {}
-        joins = [("outerjoin", obj) for obj in dbview._supplemental_objects]
-        for fieldname, field, typehint in dbview._fields:
+        joins = []
+        for obj in self._supplemental_objects:
+            try:
+                join_mode, obj = obj
+            except TypeError as err:
+                join_mode = "join"
+            joins.append((join_mode, obj))
+
+        for fieldname, field, typehint in self._fields:
             if isinstance(field, lazy_node):
                 subquery = field._evaluate(dbsession).subquery()
                 field = getattr(subquery.c, fieldname)
@@ -142,47 +153,45 @@ class View(teapot.forms.Form):
             fieldmap[fieldname] = field
 
         query = dbsession.query(
-            dbview._primary_object,
+            self._primary_object,
             *fields)
         for join in joins:
             jointype = join[0]
             args = join[1:]
             query = getattr(query, jointype)(*args)
 
-        for filterrow in getattr(self, dbview._filter_key):
+        for filterrow in getattr(self, self._filter_key):
             field = fieldmap[filterrow.f]
             query = query.filter(
                 getattr(field, filterrow.o)(filterrow.v))
 
-        if dbview._custom_filter is not None:
-            query = dbview._custom_filter(query)
+        if self._custom_filter is not None:
+            query = self._custom_filter(query)
 
         total = query.count()
-        if dbview._itemsperpage > 0:
-            total_pages = (total+(dbview._itemsperpage-1)) // dbview._itemsperpage
+        if self._itemsperpage > 0:
+            total_pages = (total+(self._itemsperpage-1)) // self._itemsperpage
         else:
             total_pages = 1
 
         query = query.order_by(
             getattr(
-                fieldmap[getattr(self, dbview._orderfield_key)],
-                getattr(self, dbview._orderdir_key))())
+                fieldmap[getattr(self, self._orderfield_key)],
+                getattr(self, self._orderdir_key))())
 
-        offset = (getattr(self, dbview._pageno_key)-1)*dbview._itemsperpage
+        offset = (getattr(self, self._pageno_key)-1)*self._itemsperpage
         if total < offset:
-            offset = (total_pages-1)*dbview._itemsperpage
+            offset = (total_pages-1)*self._itemsperpage
         if offset < 0:
             offset = 0
         query = query.offset(offset)
 
-        if dbview._itemsperpage > 0:
-            length = min(total - offset, dbview._itemsperpage)
-            query = query.limit(dbview._itemsperpage)
-            setattr(self, dbview._pageno_key, (offset // dbview._itemsperpage)+1)
+        if self._itemsperpage > 0:
+            length = min(total - offset, self._itemsperpage)
+            query = query.limit(self._itemsperpage)
+            setattr(self, self._pageno_key, (offset // self._itemsperpage)+1)
         else:
             length = total
-
-        self.dbview = dbview
 
         self.query = query
         self.length = length
@@ -194,21 +203,21 @@ class View(teapot.forms.Form):
         """
         Return the page number this view points to.
         """
-        return getattr(self, self.dbview._pageno_key)
+        return getattr(self, self._pageno_key)
 
     def get_orderby_dir(self):
         """
         Return the direction in which this view is ordered (either ``"asc"`` or
         ``"desc"``).
         """
-        return getattr(self, self.dbview._orderdir_key)
+        return getattr(self, self._orderdir_key)
 
     def get_orderby_field(self):
         """
         Return the field with respect to which this view is
         ordered.
         """
-        return getattr(self, self.dbview._orderfield_key)
+        return getattr(self, self._orderfield_key)
 
     def __len__(self):
         """
@@ -221,7 +230,7 @@ class View(teapot.forms.Form):
         Iterate over all items returned by this view (that is, all items on this
         page).
         """
-        if self.dbview._provide_primary_object:
+        if self._provide_primary_object:
             return iter(self.query)
         else:
             return (
@@ -239,7 +248,7 @@ class View(teapot.forms.Form):
 
         """
         result = copy.deepcopy(self)
-        setattr(result, self.dbview._pageno_key, int(new_pageno))
+        setattr(result, self._pageno_key, int(new_pageno))
         return result
 
     def with_orderby(self, new_fieldname=None, new_direction=None):
@@ -264,9 +273,9 @@ class View(teapot.forms.Form):
 
         result = copy.deepcopy(self)
         if new_fieldname is not None:
-            setattr(result, self.dbview._orderfield_key, new_fieldname)
+            setattr(result, self._orderfield_key, new_fieldname)
         if new_direction is not None:
-            setattr(result, self.dbview._orderdir_key, new_direction)
+            setattr(result, self._orderdir_key, new_direction)
 
         return result
 
@@ -281,17 +290,68 @@ class View(teapot.forms.Form):
            See the warning at :class:`View`.
         """
         result = copy.deepcopy(self)
-        getattr(result, self.dbview._filter_key).clear()
+        getattr(result, self._filter_key).clear()
         return result
 
-class dbview(teapot.routing.selectors.Selector):
+def _create_row_class_for_field(fieldname, field, type_hint=None):
     """
-    A routing selector which is used to create a database query from query
-    arguments.
+    Create a filter row class for a field with name *fieldname* and object
+    *field*. Use the *type_hint* if available, otherwise auto-detect the type
+    from ``field.type.python_type``.
 
-    The database query is a select on *primary_object*. The query queries for
-    the given list of *fields* (which must be valid, selectable
-    :mod:`sqlalchemy` expressions).
+    Return the newly created class.
+    """
+
+    value_descriptor, operators = descriptor_for_type(
+        VALUE_KEY,
+        type_hint or field.type.python_type)
+    namespace = {
+        FIELDNAME_KEY: one_of_descriptor(
+            FIELDNAME_KEY,
+            [fieldname],
+            error="Field name must match exactly"),
+        OPERATOR_KEY: one_of_descriptor(
+            OPERATOR_KEY,
+            operators,
+            error="Operator not supported for this field",
+            default="__eq__"),
+        VALUE_KEY: value_descriptor
+    }
+
+    return teapot.forms.RowMeta(
+        "Row_"+fieldname,
+        (RowBase,),
+        namespace)
+
+
+def make_form(
+        primary_object,
+        fields,
+        *,
+        supplemental_objects=[],
+        autojoin=True,
+        pageno_key="p",
+        orderfield_key="ob",
+        orderdir_key="d",
+        filter_key="f",
+        name="View",
+        default_orderfield=None,
+        default_orderdir="asc",
+        provide_primary_object=False,
+        itemsperpage=25,
+        custom_filter=None):
+    """
+    Create a :class:`View` descandant for a specific use case.
+
+    The database query produced by the instances of this class is a select on
+    *primary_object*. The query queries for the given list of *fields*, which
+    must be tuples of the following form: ``(name, field, type_hint)``. In this
+    tuple, *name* is a unique (in this class) name for the field, *field* is the
+    sqlalchemy Column object (or any selectable sqlalchemy expression). If
+    *field* does not provide type information (read: does not have a
+    ``type.python_type`` attribute), you have to provide a *type_hint* pointing
+    to the python type which shall be used to deal with the fields
+    values. Otherwise, you can leave the *type_hint* set to :data:`None`.
 
     If additional objects are required (e.g. explicit joins), these can be
     specified in the *supplemental_objects* list. These are never returned in
@@ -299,12 +359,14 @@ class dbview(teapot.routing.selectors.Selector):
     :data:`True`, the code tries to guess the required *supplemental_objects*
     from the *fields* given, by adding each table once.
 
+    *default_orderfield* and *default_orderdir* provide defaults for ordering,
+    if the user hasn’t specified ordering. The *default_orderfield* must be a
+    string referring to one of the field names from *fields*.
+
     *pageno_key*, *orderfield_key*, *orderdir_key* and *filter_key* define the
     query keys which are used to transfer the query information.
 
-    *viewname* is the name of the class which will be created for this
-    *dbview*. It does not matter much except possibly for debug
-    purposes.
+    *name* is the name of the class which will be created.
 
     *itemsperpage* is the amount of items returned in one pagination step.
 
@@ -327,117 +389,94 @@ class dbview(teapot.routing.selectors.Selector):
     in :class:`View`.
     """
 
-    FIELDNAME_KEY = "f"
-    OPERATOR_KEY = "o"
-    VALUE_KEY = "v"
+    if autojoin and not supplemental_objects:
+        # generate supplemental_objects by inspecting the fields
+        supplemental_objects = list(set(
+            field.class_
+            for field_name, field, type_hint in fields
+            if (hasattr(field, "class_") and
+                field.class_ is not primary_object and
+                not isinstance(field.class_, lazy_node))))
 
-    def create_class_for_field(self, fieldname, field, type_hint=None):
-        value_descriptor, operators = descriptor_for_type(
-            self.VALUE_KEY,
-            type_hint or field.type.python_type)
-        namespace = {
-            self.FIELDNAME_KEY: one_of_descriptor(
-                self.FIELDNAME_KEY,
-                [fieldname],
-                error="Field name must match exactly"),
-            self.OPERATOR_KEY: one_of_descriptor(
-                self.OPERATOR_KEY,
-                operators,
-                error="Operator not supported for this field",
-                default="__eq__"),
-            self.VALUE_KEY: value_descriptor
-        }
+    # detect which fields are filterable by checking whether they have a
+    # type.python_type attribute
+    filterable_fields = list(filter(
+        lambda x: x[2] or (hasattr(x[1], "type") and
+                           hasattr(x[1].type, "python_type")),
+        fields))
 
-        return teapot.forms.RowMeta(
-            "Row_"+fieldname,
-            (RowBase,),
-            namespace)
+    # names for all valid fields
+    field_names = frozenset(
+        field_name
+        for field_name, _, _ in filterable_fields)
 
-    def __init__(self,
-                 primary_object,
-                 fields,
-                 *,
-                 destarg="view",
-                 supplemental_objects=[],
-                 autojoin=True,
-                 pageno_key="p",
-                 orderfield_key="ob",
-                 orderdir_key="d",
-                 filter_key="f",
-                 viewname="View",
-                 itemsperpage=25,
-                 default_orderfield=None,
-                 default_orderdir="asc",
-                 provide_primary_object=False,
-                 custom_filter=None,
-                 **kwargs):
+    # map field names to types
+    fieldclasses = {
+        field_name: _create_row_class_for_field(
+            field_name, field, type_hint)
+        for field_name, field, type_hint in filterable_fields}
+
+
+    # finally, the namespace for the :class:`View` descendant we’re about to
+    # create
+    namespace = {
+        # “active” :class:`teapot.forms.Form` fields
+        orderfield_key: one_of_descriptor(
+            orderfield_key,
+            field_names,
+            default=default_orderfield),
+        orderdir_key: one_of_descriptor(
+            orderdir_key,
+            {"asc", "desc"},
+            default=default_orderdir),
+        pageno_key: descriptor_for_type(
+            pageno_key,
+            int,
+            default=1)[0],
+        filter_key: dynamic_rows(
+            FIELDNAME_KEY, fieldclasses),
+
+        # the supplemental information required to create the query
+        "_supplemental_objects": supplemental_objects,
+        "_fields": fields,
+        "_primary_object": primary_object,
+        "_filter_key": filter_key,
+        "_custom_filter": custom_filter,
+        "_itemsperpage": itemsperpage,
+        "_orderfield_key": orderfield_key,
+        "_orderdir_key": orderdir_key,
+        "_pageno_key": pageno_key,
+        "_provide_primary_object": provide_primary_object
+    }
+
+    ViewForm = teapot.forms.Meta(
+        name,
+        (View,),
+        namespace)
+
+    return ViewForm
+
+class dbview(teapot.routing.selectors.Selector):
+    """
+    A routing selector which is used to create a database query from query
+    arguments.
+
+    The selector uses the given *ViewForm*, which should have been created
+    through :func:`make_form`. The *ViewForm* is populated during routing and
+    passed to the routable via the argument whose name is given in *destarg*.
+    """
+
+    def __init__(self, ViewForm, *, destarg="view", **kwargs):
         super().__init__(**kwargs)
-        self._primary_object = primary_object
-        if autojoin and not supplemental_objects:
-            supplemental_objects = list(set(
-                field.class_
-                for field_name, field, type_hint in fields
-                if (hasattr(field, "class_") and
-                    field.class_ is not primary_object and
-                    not isinstance(field.class_, lazy_node))))
-
-        self._supplemental_objects = supplemental_objects
-        self._fields = fields
-
+        self._ViewForm = ViewForm
         self._destarg = destarg
-        self._pageno_key = pageno_key
-        self._orderfield_key = orderfield_key
-        self._orderdir_key = orderdir_key
-        self._filter_key = filter_key
-        self._custom_filter = custom_filter
-
-        filterable_fields = list(filter(
-            lambda x: x[2] or (hasattr(x[1], "type") and
-                               hasattr(x[1].type, "python_type")),
-            fields))
-        self._filterable_fields = filterable_fields
-
-        field_names = frozenset(
-            field_name
-            for field_name, _, _ in filterable_fields)
-
-        fieldclasses = {
-            field_name: self.create_class_for_field(
-                field_name, field, type_hint)
-            for field_name, field, type_hint in filterable_fields}
-
-        namespace = {
-            orderfield_key: one_of_descriptor(
-                orderfield_key,
-                field_names,
-                default=default_orderfield),
-            orderdir_key: one_of_descriptor(
-                orderdir_key,
-                {"asc", "desc"},
-                default=default_orderdir),
-            pageno_key: descriptor_for_type(
-                pageno_key,
-                int,
-                default=1)[0],
-            filter_key: dynamic_rows(
-                self.FIELDNAME_KEY, fieldclasses),
-        }
-
-        self.ViewForm = teapot.forms.Meta(
-            viewname,
-            (View,),
-            namespace)
-
-        self._itemsperpage = itemsperpage
-        self._provide_primary_object = provide_primary_object
-        self._fieldclasses = fieldclasses
 
     def select(self, request):
         dbsession = request.original_request.dbsession
-        view = self.ViewForm(dbsession,
-                             self,
-                             request=request.original_request,
-                             post_data=request.query_data)
+        view = self._ViewForm(dbsession,
+                              self,
+                              request=request.original_request,
+                              post_data=request.query_data)
 
 
         request.kwargs[self._destarg] = view
@@ -448,23 +487,22 @@ class dbview(teapot.routing.selectors.Selector):
         try:
             view = request.kwargs.pop(self._destarg)
         except KeyError:
-            view = self.ViewForm(dbsession,
-                                 self)
+            view = self._ViewForm(dbsession, self)
         dest = request.query_data
 
-        dest[self._pageno_key] = [str(getattr(view, self._pageno_key))]
-        dest[self._orderfield_key] = [str(getattr(view, self._orderfield_key))]
-        dest[self._orderdir_key] = [str(getattr(view, self._orderdir_key))]
+        dest[view._pageno_key] = [str(getattr(view, view._pageno_key))]
+        dest[view._orderfield_key] = [str(getattr(view, view._orderfield_key))]
+        dest[view._orderdir_key] = [str(getattr(view, view._orderdir_key))]
 
-        for i, row in enumerate(getattr(view, self._filter_key)):
-            prefix = "{}[{}].".format(self._filter_key, i)
-            dest[prefix+self.FIELDNAME_KEY] = [
-                str(getattr(row, self.FIELDNAME_KEY))]
-            dest[prefix+self.OPERATOR_KEY] = [
-                str(getattr(row, self.OPERATOR_KEY))]
-            value = getattr(row, self.VALUE_KEY)
-            dest[prefix+self.VALUE_KEY] = [
-                getattr(type(row), self.VALUE_KEY).to_field_value(row, "text")
+        for i, row in enumerate(getattr(view, view._filter_key)):
+            prefix = "{}[{}].".format(dbview._filter_key, i)
+            dest[prefix+FIELDNAME_KEY] = [
+                str(getattr(row, FIELDNAME_KEY))]
+            dest[prefix+OPERATOR_KEY] = [
+                str(getattr(row, OPERATOR_KEY))]
+            value = getattr(row, VALUE_KEY)
+            dest[prefix+VALUE_KEY] = [
+                getattr(type(row), VALUE_KEY).to_field_value(row, "text")
             ]
 
     def __call__(self, callable):
