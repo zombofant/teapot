@@ -632,11 +632,18 @@ class TextDatabase:
         return self._cached_get_localizer(self._mapkey(locale))
 
     def get_localizer_by_client_preference(self, client_preferences):
-        candidates = client_preferences.get_candidates(
-            self.get_preference_list())
+        if len(self):
+            candidates = client_preferences.get_candidates(
+                self.get_preference_list())
 
-        best_pref = candidates.pop()[1]
-        return self.get_localizer(best_pref.values)
+            locale = candidates.pop()[1].values
+        else:
+            try:
+                locale = client_preferences.get_sorted_by_preference()[0].values
+            except IndexError:
+                locale = self.fallback_locale
+
+        return self.get_localizer(locale)
 
     def load_all(self, base_path):
         for filename in os.listdir(base_path):
