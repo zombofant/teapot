@@ -45,6 +45,7 @@ from .forms import FormProcessor
 from .safe import ForeachProcessor, IncludeProcessor, SafetyLevel, \
     FunctionProcessor, BranchingProcessor
 from .pipeline import Pipeline, XHTMLPipeline, XMLPipeline, TransformLoader
+from .sortable_table import SortableTableProcessor
 
 def make_pipeline(
         *sources,
