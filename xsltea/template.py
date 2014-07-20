@@ -852,11 +852,11 @@ def {}():
         """
         return self.ast_get_from_object("request", "context", sourceline)
 
-    def ast_get_stored(self, key, sourceline):
+    def ast_get_stored(self, key, sourceline, ctx=None):
         """
         Return an AST expression which evaluates to the stored object with the
         given *key* (as returned by :meth:`store`). The object can be used in
-        :class:`ast.Load` contexts.
+        the context given by *ctx* (defaults to :class:`ast.Load`).
 
         The AST is tagged to belong to the given *sourceline*.
         """
@@ -873,7 +873,7 @@ def {}():
                     col_offset=0),
                 lineno=sourceline,
                 col_offset=0),
-            ast.Load(),
+            ctx or ast.Load(),
             lineno=sourceline,
             col_offset=0)
 
