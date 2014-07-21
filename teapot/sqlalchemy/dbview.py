@@ -512,7 +512,7 @@ class dbview(teapot.routing.selectors.Selector):
         dest[view._orderdir_key] = [str(getattr(view, view._orderdir_key))]
 
         for i, row in enumerate(getattr(view, view._filter_key)):
-            prefix = "{}[{}].".format(dbview._filter_key, i)
+            prefix = "{}[{}].".format(view._filter_key, i)
             dest[prefix+FIELDNAME_KEY] = [
                 str(getattr(row, FIELDNAME_KEY))]
             dest[prefix+OPERATOR_KEY] = [
@@ -531,7 +531,7 @@ class dbview(teapot.routing.selectors.Selector):
                  dbsession,
                  **simple_filters):
         view = self.ViewForm(dbsession, self)
-        filter_rows = getattr(view, self._filter_key)
+        filter_rows = getattr(view, view._filter_key)
         for fieldname, value in simple_filters.items():
             try:
                 cls = self._fieldclasses[fieldname]
