@@ -117,17 +117,6 @@ from xsltea.namespaces import NamespaceMeta
 
 logger = logging.getLogger(__name__)
 
-def timezone_wrapper(to_wrap, timezone):
-    @functools.wraps(to_wrap)
-    def wrapper(value, *args, **kwargs):
-        if hasattr(value, "tzinfo"):
-            if not value.tzinfo:
-                value = timezone.fromutc(value)
-            else:
-                value = timezone.localize(value)
-        return to_wrap(value, *args, **kwargs)
-    return wrapper
-
 class Localizer:
     """
     A :class:`Localizer` is a convenience object to provide general
@@ -185,7 +174,19 @@ class Localizer:
 
             setattr(self, name, self.locale_ifyer(obj))
 
-    def _map_datetimes(self, from_module, namelist, timezone=None):
+    def _map_datetimes(self, from_module, namelist):
+        if self.timezone is not None:
+            def wrap(func):
+                @functools.wraps(func)
+                def wrapper(value, *args, **kwargs):
+                    if hasattr(value, "tzinfo"):
+                        value = self.to_timezone(value)
+                    return func(value, *args, **kwargs)
+                return wrapper
+        else:
+            def wrap(func):
+                return func
+
         for name in namelist:
             obj = getattr(from_module, name)
             # safeguard against babel adding non-callable module members with
@@ -193,9 +194,7 @@ class Localizer:
             if not hasattr(obj, "__call__"):
                 continue
 
-            if timezone is not None:
-                obj = timezone_wrapper(obj, timezone)
-            setattr(self, name, self.locale_ifyer(obj))
+            setattr(self, name, self.locale_ifyer(wrap(obj)))
 
     def __init__(self, locale, text_source_chain, timezone=None):
         if not text_source_chain:
@@ -204,6 +203,7 @@ class Localizer:
         self._locale = locale
         self._locale_str = teapot.accept.format_locale(locale)
         self._text_source_chain = tuple(text_source_chain)
+        self._timezone = timezone
 
         babel_locale_str = self._locale_str
         try:
@@ -226,7 +226,7 @@ class Localizer:
             functools.partial,
             locale=babel_locale_str)
 
-        self._map_datetimes(babel.dates, self.DATES_FUNCTIONS, timezone=timezone)
+        self._map_datetimes(babel.dates, self.DATES_FUNCTIONS)
         self._map_functions(babel.numbers, self.NUMBERS_FUNCTIONS)
 
     def __hash__(self):
@@ -263,6 +263,13 @@ class Localizer:
         """
         return self._text_source_chain
 
+    @property
+    def timezone(self):
+        """
+        The timezone used to display dates and times.
+        """
+        return self._timezone
+
     def gettext(self, key):
         last_error = None
         for source in self._text_source_chain:
@@ -282,6 +289,12 @@ class Localizer:
                 last_error = err
         else:
             raise last_error
+
+    def to_timezone(self, value):
+        if not value.tzinfo:
+            return self._timezone.fromutc(value)
+        else:
+            return value.astimezone(self._timezone)
 
     def __call__(self, value):
         if isinstance(value, numbers.Real):
