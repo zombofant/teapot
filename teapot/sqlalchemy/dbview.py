@@ -491,9 +491,12 @@ class dbview(teapot.routing.selectors.Selector):
 
     def select(self, request):
         dbsession = request.original_request.dbsession
-        view = self._ViewForm(dbsession,
-                              request=request,
-                              post_data=request.query_data)
+        try:
+            view = self._ViewForm(dbsession,
+                                  request=request,
+                                  post_data=request.query_data)
+        except ValueError:
+            return False
 
 
         request.kwargs[self._destarg] = view
