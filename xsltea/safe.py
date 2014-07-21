@@ -664,16 +664,16 @@ class IncludeProcessor(TemplateProcessor):
         elements = tree.xpath(xpath,
                               namespaces=ast.literal_eval(nsmap))
 
-        offset = offset * 1000
+        offset = (offset+1) * 1000000
 
         precode, elemcode, postcode = [], [], []
-        for element in elements:
+        for i, element in enumerate(elements):
             elem_precode, elem_elemcode, elem_postcode = \
-                template.parse_subtree(element, context, offset)
+                template.parse_subtree(element, context, offset+i)
 
             precode.extend(elem_precode)
             elemcode.extend(elem_elemcode)
-            postcode.extend(elem_postcode)
+            postcode[:0] = elem_postcode
 
         return precode, elemcode, postcode
 
