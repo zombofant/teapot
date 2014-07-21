@@ -117,6 +117,17 @@ from xsltea.namespaces import NamespaceMeta
 
 logger = logging.getLogger(__name__)
 
+def timezone_wrapper(to_wrap, timezone):
+    @functools.wraps(to_wrap)
+    def wrapper(value, *args, **kwargs):
+        if hasattr(value, "tzinfo"):
+            if not value.tzinfo:
+                value = timezone.fromutc(value)
+            else:
+                value = timezone.localize(value)
+        return to_wrap(value, *args, **kwargs)
+    return wrapper
+
 class Localizer:
     """
     A :class:`Localizer` is a convenience object to provide general
@@ -133,6 +144,11 @@ class Localizer:
     also has all formatting and introspection functions from the
     :mod:`babel.dates` and :mod:`babel.numbers` modules. Their *locale*
     parameter is pinned to the locale of this object.
+
+    If the *timezone* argument is not :data:`None`, it must be a valid timezone
+    for :class:`datetime.datetime` objects. All :class:`datetime.datetime`
+    objects will be translated into that timezone before printing. If the
+    objects have no timezone assigned, they are assumed to be UTC.
 
     Localizer objects are callable; calling a localizer will do something sane
     with the value, if it knows something sane to do (and :class:`TypeError`
@@ -169,7 +185,19 @@ class Localizer:
 
             setattr(self, name, self.locale_ifyer(obj))
 
-    def __init__(self, locale, text_source_chain):
+    def _map_datetimes(self, from_module, namelist, timezone=None):
+        for name in namelist:
+            obj = getattr(from_module, name)
+            # safeguard against babel adding non-callable module members with
+            # the name patterns from above here
+            if not hasattr(obj, "__call__"):
+                continue
+
+            if timezone is not None:
+                obj = timezone_wrapper(obj, timezone)
+            setattr(self, name, self.locale_ifyer(obj))
+
+    def __init__(self, locale, text_source_chain, timezone=None):
         if not text_source_chain:
             raise ValueError("At least one source must be given")
 
@@ -198,7 +226,7 @@ class Localizer:
             functools.partial,
             locale=babel_locale_str)
 
-        self._map_functions(babel.dates, self.DATES_FUNCTIONS)
+        self._map_datetimes(babel.dates, self.DATES_FUNCTIONS, timezone=timezone)
         self._map_functions(babel.numbers, self.NUMBERS_FUNCTIONS)
 
     def __hash__(self):
@@ -409,7 +437,7 @@ class TextDatabaseFallback(TextSource):
         assert False
 
 
-def _get_localizer(textdb, locale):
+def _get_localizer(textdb, locale, timezone):
     """
     .. warning::
 
@@ -442,7 +470,8 @@ def _get_localizer(textdb, locale):
 
     text_source_chain.append(textdb._fallback_handler)
 
-    return Localizer(locale, text_source_chain)
+    return Localizer(locale, text_source_chain,
+                     timezone=timezone)
 
 
 class TextDatabase:
@@ -607,7 +636,7 @@ class TextDatabase:
             len(variants)
             for variants in self._source_tree.values())
 
-    def get_localizer(self, locale):
+    def get_localizer(self, locale, timezone=None):
         """
         Return a :class:`Localizer` for the given locale. The following sources
         are added to the localizer, in this order, and only if available.
@@ -627,11 +656,22 @@ class TextDatabase:
         or adding texts) will affect living :class:`Localizer` objects. Adding
         or replacing texts sources will not affect already created
         :class:`Localizer` objects.
+
+        The *timezone* argument is passed to the :class:`Localizer` constructor.
         """
 
-        return self._cached_get_localizer(self._mapkey(locale))
+        return self._cached_get_localizer(self._mapkey(locale),
+                                          timezone=timezone)
 
-    def get_localizer_by_client_preference(self, client_preferences):
+    def get_localizer_by_client_preference(self, client_preferences,
+                                           **kwargs):
+        """
+        Determine the best possible language from the *client_preferences* and
+        the list of text sources available. The result of this is passed to
+        :meth:`get_localizer`, along with the *kwargs*, to create and return a
+        new :class:`Localizer`.
+        """
+
         if len(self):
             candidates = client_preferences.get_candidates(
                 self.get_preference_list())
@@ -643,7 +683,7 @@ class TextDatabase:
             except IndexError:
                 locale = self.fallback_locale
 
-        return self.get_localizer(locale)
+        return self.get_localizer(locale, **kwargs)
 
     def load_all(self, base_path):
         for filename in os.listdir(base_path):
@@ -714,6 +754,9 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
     * if the request has an ``localizer`` attribute, its value is taken
     * otherwise, use the :attr:`teapot.request.Request.accept_language`
       attribute to negotiate a language.
+
+      In that case, if the request has a ``timezone`` attribute, it will be used
+      to specify the output timezone.
 
     The namespace of ``i18n:`` elements is
     ``https://xmlns.zombofant.net/xsltea/i18n``.
@@ -896,8 +939,14 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
         if hasattr(request, "localizer") and request.localizer is not None:
             return request.localizer
 
+        if hasattr(request, "timezone"):
+            timezone = request.timezone
+        else:
+            timezone = pytz.UTC
+
         return self._textdb.get_localizer_by_client_preference(
-            request.accept_language)
+            request.accept_language,
+            timezone=timezone)
 
     def provide_vars(self, template, tree, context):
         precode = [
