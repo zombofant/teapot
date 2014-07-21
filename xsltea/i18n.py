@@ -741,6 +741,9 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
       the current *safety_level*. Replaces the element with the text obtained
       from the call.
 
+    * ``i18n:timezone``: Translate the timezone name of the given timezone or
+      datetime object, using :func:`babel.dates.get_timezone_name`.
+
     * ``@i18n:*``: The contents of attributes in the ``i18n:`` namespace on
       arbitrary elements are taken as a key for a ``gettext`` lookup. The result
       is used as the new attribute value, with the namespace removed from the
@@ -780,6 +783,10 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
                 functools.partial(
                     self.handle_elem_type,
                     None)],
+            (str(self.xmlns), "timezone"): [
+                functools.partial(
+                    self.handle_elem_type,
+                    "get_timezone_name")],
             (str(self.xmlns), "date"): [
                 functools.partial(
                     self.handle_elem_type,
