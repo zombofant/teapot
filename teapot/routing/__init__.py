@@ -364,6 +364,7 @@ class Context:
         result = Context.from_request(self)
         result._args = copy.copy(self._args)
         result._kwargs = copy.copy(self._kwargs)
+        result._query_data = copy.deepcopy(self.query_data)
         result.content_types = copy.copy(self.content_types)
         result.languages = copy.copy(self.languages)
         return result
