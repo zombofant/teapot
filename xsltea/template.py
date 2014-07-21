@@ -18,6 +18,7 @@ import functools
 import itertools
 import logging
 import random
+import types
 
 import teapot
 import teapot.routing
@@ -70,9 +71,6 @@ def split_tag(tag):
         ns = None
 
     return ns, name
-
-class Namespace:
-    pass
 
 class _TreeFormatter:
     """
@@ -423,7 +421,7 @@ def {}():
         return self.default_subtree(elem, context, offset)
 
     def parse_tree(self, tree, context, global_precode, global_postcode):
-        self.utils = Namespace()
+        self.utils = types.SimpleNamespace()
 
         root = tree.getroot()
 
@@ -594,6 +592,12 @@ def {}():
                                       col_offset=0)
         return body
 
+    def compose_context(self, arguments, request=None):
+        context = types.SimpleNamespace()
+        context.request = request
+        context.href = functools.partial(self.href, request)
+        return context
+
     def process(self, arguments, request=None):
         """
         Evaluate the template using the given *arguments*. The contents of
@@ -608,9 +612,7 @@ def {}():
         original exception being attached as context.
         """
         try:
-            context = Namespace()
-            context.request = request
-            context.href = functools.partial(self.href, request)
+            context = self.compose_context(arguments, request=request)
             return self._process(context, arguments)
         except Exception as err:
             raise TemplateEvaluationError(
