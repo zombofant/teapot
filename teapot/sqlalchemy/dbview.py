@@ -122,6 +122,8 @@ class View(teapot.forms.Form):
     new objects. This is to simplify unrouting.
     """
 
+    _VALID_OBJECT_MODES = ["fields", "primary", "objects"]
+
     def __init__(self, dbsession, request=None, **kwargs):
         super().__init__(request=request, **kwargs)
         self.dbsession = dbsession
@@ -134,7 +136,17 @@ class View(teapot.forms.Form):
             return self._query
 
         dbsession = self.dbsession
-        fields = []
+        objects = [self._primary_object]
+        self._itermap = None
+        if self._objects == "fields":
+            self._itermap = lambda x: x[1:]
+        elif self._objects == "primary":
+            pass
+        elif self._objects == "objects":
+            objects += [
+                obj
+                for _, obj in self._supplemental_objects]
+
         fieldmap = {}
         joins = []
         for obj in self._supplemental_objects:
@@ -149,12 +161,11 @@ class View(teapot.forms.Form):
                 subquery = field._evaluate(dbsession).subquery()
                 field = getattr(subquery.c, fieldname)
                 joins.append(("outerjoin", subquery))
-            fields.append(field)
+            if self._objects == "fields":
+                objects.append(field)
             fieldmap[fieldname] = field
 
-        query = dbsession.query(
-            self._primary_object,
-            *fields)
+        query = dbsession.query(*objects)
         for join in joins:
             jointype = join[0]
             args = join[1:]
@@ -258,12 +269,12 @@ class View(teapot.forms.Form):
         Iterate over all items returned by this view (that is, all items on this
         page).
         """
-        if self._provide_primary_object:
-            return iter(self.query)
+        # we need to fetch query first, for _itermap to initialize
+        query = self.query
+        if self._itermap is None:
+            return iter(query)
         else:
-            return (
-                row[1:]
-                for row in self.query)
+            return iter(map(self._itermap, query))
 
     def at_page(self, new_pageno):
         """
@@ -354,7 +365,7 @@ def make_form(
         name="View",
         default_orderfield=None,
         default_orderdir="asc",
-        provide_primary_object=False,
+        objects="fields",
         itemsperpage=25,
         custom_filter=None):
     """
@@ -387,9 +398,15 @@ def make_form(
 
     *itemsperpage* is the amount of items returned in one pagination step.
 
-    If *provide_primary_object* is true, the first element of the result tuple
-    in an iteration of the query result will be the *primary_object* associated
-    with the row.
+    The *objects* parameter determines which objects are returned in the
+    iterable. There are three supported values:
+
+    * ``"fields"`` (the default) provides the fields specified in the *fields*
+      array, and nothing more.
+    * ``"primary"`` provides the *primary_object* instance associated with the
+      row.
+    * ``"objects"`` provides the *primary_object* alongside with the (possibly
+      automatically detected) *supplemental_objects*.
 
     *custom_filter* can be a callable which is called on the final query object,
     before any limiting and ordering is applied. It must return a new query
@@ -406,6 +423,10 @@ def make_form(
     The methods available on all forms created by this decorator are documented
     in :class:`View`.
     """
+
+    if objects not in View._VALID_OBJECT_MODES:
+        raise ValueError("{} is not a valid value for objects argument".format(
+            objects))
 
     if autojoin and not supplemental_objects:
         # generate supplemental_objects by inspecting the fields
@@ -464,7 +485,7 @@ def make_form(
         "_orderfield_key": orderfield_key,
         "_orderdir_key": orderdir_key,
         "_pageno_key": pageno_key,
-        "_provide_primary_object": provide_primary_object
+        "_objects": objects
     }
 
     ViewForm = teapot.forms.Meta(

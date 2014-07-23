@@ -256,3 +256,56 @@ class TestView(DBTestCase):
         self.assertSequenceEqual(
             list(f.at_page(2)),
             data[2:4])
+
+    def test_objects_primary(self):
+        all_as, all_bs = self.insert_test_data()
+
+        self._full_test(
+            A,
+            [
+                ("id", A.a_id, None),
+                ("value1", A.value1, None),
+                ("valueb", B.valueb, None),
+            ],
+            supplemental_objects=[
+                ("outerjoin", B)
+            ],
+            objects="primary",
+            query_data={
+                "p": ["1"],
+                "d": ["desc"],
+                "ob": ["id"],
+            },
+            expected_sequence=list(reversed(all_as))
+        )
+
+    def test_objects_objects(self):
+        all_as, all_bs = self.insert_test_data()
+
+        self._full_test(
+            A,
+            [
+                ("id", A.a_id, None),
+                ("value1", A.value1, None),
+                ("valueb", B.valueb, None),
+            ],
+            supplemental_objects=[
+                ("outerjoin", B)
+            ],
+            objects="objects",
+            query_data={
+                "p": ["1"],
+                "d": ["desc"],
+                "ob": ["id"],
+            },
+            expected_sequence=list(reversed(list(zip(all_as, all_bs+[None]))))
+        )
+
+    def test_objects_invalid_mode(self):
+        with self.assertRaises(ValueError):
+            dbview.make_form(
+                A,
+                [
+                    ("id", A.a_id, None),
+                ],
+                objects="foo")
