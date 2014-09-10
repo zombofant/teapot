@@ -268,7 +268,7 @@ useragent_html5_support = {
 useragent_prefixed_xhtml_support = {
     UserAgentFamily.firefox: None,
     UserAgentFamily.opera: (12, 0),
-    UserAgentFamily.chrome: (20, 0),
+    UserAgentFamily.chrome: None,
     UserAgentFamily.safari: None,
     UserAgentFamily.internet_explorer: None
 }
