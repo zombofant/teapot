@@ -12,7 +12,8 @@ __all__ = [
     "IntField",
     "DateTimeField",
     "CheckboxField",
-    "EnumField"
+    "EnumField",
+    "PasswordField"
 ]
 
 class Supermode:
@@ -348,3 +349,38 @@ class EnumField(teapot.forms.EnumField, HTMLField):
     @property
     def field_type(self):
         return "select"
+
+class PasswordField(TextField):
+    """
+    A password field is a specialized text field, which uses the HTML
+    ``"password"`` input type. In addition to that, values entered into the
+    password field are not reflected to the client.
+    """
+
+    @property
+    def field_type(self):
+        return "password"
+
+    def get_default(self, instance):
+        return ""
+
+    def _tag_error(self, instance, original_value, error):
+        """
+        This overrides the default implementation on
+        :meth:`teapot.forms.CustomField._tag_error`, to prevent the original
+        value to be sent back to the client (this is generally not desirable for
+        password fields).
+        """
+
+        if isinstance(error, teapot.forms.ValidationError):
+            error.field = self
+            error.instance = instance
+            return
+
+        return teapot.forms.ValidationError(
+            error,
+            self,
+            instance)
+
+    def to_field_value(self, instance, view_type):
+        return ""
