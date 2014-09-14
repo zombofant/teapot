@@ -676,6 +676,8 @@ class Request:
         if self.scriptname:
             segments.append(self.scriptname)
         segments.append(self._path)
+        if segments[-2].endswith("/") and segments[-1].startswith("/"):
+            segments[-1] = segments[-1][1:]
 
         if self._query_data:
             segments.append("?")
