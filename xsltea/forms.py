@@ -303,19 +303,22 @@ class FormProcessor(TemplateProcessor):
         if elem.get("value") == strvalue:
             elem.set("checked", "checked")
 
-    def _elemcode_input_select(self, request, form, field, elem, put_options):
+    def _elemcode_input_select(self, context, form, field, elem, put_options):
         field_value = field.to_field_value(form, "select")
 
         if put_options:
-            for key, value in field.get_options(form, request):
-                option = etree.SubElement(
-                    elem,
-                    xhtml_ns.option)
-                option.set("value", key)
-                option.text = value
+            if hasattr(field, "get_html_options"):
+                field.get_html_options(form, context, elem)
+            else:
+                for key, value in field.get_options(form, context):
+                    option = etree.SubElement(
+                        elem,
+                        xhtml_ns.option)
+                    option.set("value", key)
+                    option.text = value
 
-                if key == field_value:
-                    option.set("selected", "selected")
+                    if key == field_value:
+                        option.set("selected", "selected")
         else:
             for option in elem.xpath(".//html:option",
                                      namespaces={"html": str(xhtml_ns)}):
@@ -340,12 +343,13 @@ class FormProcessor(TemplateProcessor):
                 elem.set("value", value)
 
     def elemcode_input(self,
-                       makeelement,
+                       context,
                        append_children,
-                       request,
                        field_type,
                        form, field, childfun,
                        attrib):
+        makeelement = context.makeelement
+
         if not isinstance(form, teapot.forms.Form):
             raise ValueError("Not a valid form object: {}".format(form))
 
@@ -382,7 +386,7 @@ class FormProcessor(TemplateProcessor):
             self._elemcode_input_radio(form, field, elem)
         elif field_type == "select":
             put_options = childfun is None or len(elem) == 0
-            self._elemcode_input_select(request, form, field, elem,
+            self._elemcode_input_select(context, form, field, elem,
                                         put_options)
         else:
             self._elemcode_input_default(form, field, field_type,
@@ -445,16 +449,13 @@ class FormProcessor(TemplateProcessor):
                     template.ast_store_and_call(
                         self.elemcode_input,
                         [
-                            template.ast_get_from_object(
-                                "makeelement",
+                            ast.Name(
                                 "context",
-                                sourceline),
+                                ast.Load(),
+                                lineno=sourceline,
+                                col_offset=0),
                             template.ast_get_util(
                                 "append_children",
-                                sourceline),
-                            template.ast_get_from_object(
-                                "request",
-                                "context",
                                 sourceline),
                             input_type,
                             form_ast,
