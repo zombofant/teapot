@@ -22,6 +22,20 @@ def process_tree(tree, filename, **kwargs):
     for node in tree.xpath("//i18n:_ | //i18n:n", namespaces=nsmap):
         logger.debug("found node: %s", node)
         yield xsltea.i18n.node_to_msgid(node, filename, **kwargs)
+    ns_prefix = "{"+str(xmlns)+"}"
+    for node in tree.xpath("//*[@i18n:*]", namespaces=nsmap):
+        logger.debug("found node with attrs: %s")
+        if node.tag.startswith(ns_prefix):
+            logger.debug("skipping i18n node")
+            continue
+        for value in (value for key, value in node.attrib.items()
+                     if key.startswith(ns_prefix)):
+            msg = xsltea.i18n.Message()
+            msg.filename = filename
+            msg.singular = value
+            msg.sourceline = node.sourceline
+            yield msg
+
 
 def split_msgstr_lines(lines):
     for line in lines:
