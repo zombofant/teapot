@@ -33,19 +33,19 @@ datetime_formats = [
 ]
 
 operators = {
-    "endswith": "ends with",
-    "startswith": "starts with",
-    "like": "is like",
-    "contains": "contains",
-    "notlike": "is not like",
-    "notin_": "not in",
-    "in_": "in",
-    "__le__": "≤",
-    "__lt__": "<",
-    "__eq__": "=",
-    "__ne__": "≠",
-    "__ge__": "≥",
-    "__gt__": ">"
+    "endswith",
+    "startswith",
+    "like",
+    "contains",
+    "notlike",
+    "notin_",
+    "in_",
+    "__le__",
+    "__lt__",
+    "__eq__",
+    "__ne__",
+    "__ge__",
+    "__gt__",
 }
 
 order_operators = {
@@ -63,7 +63,7 @@ type_mapping = {
         order_operators),
     str: (
         lambda **kwargs: teapot.html.TextField(**kwargs),
-        frozenset(operators) - {"notin_", "in_"}),
+        operators - {"notin_", "in_"}),
     bool: (
         lambda **kwargs: teapot.html.CheckboxField(**kwargs),
         {"__eq__", "__ne__"}),
