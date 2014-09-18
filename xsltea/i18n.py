@@ -198,10 +198,11 @@ class Localizer:
 
             setattr(self, name, self.locale_ifyer(wrap(obj)))
 
-    def __init__(self, locale, text_source_chain, timezone=None):
+    def __init__(self, textdb, locale, text_source_chain, timezone=None):
         if not text_source_chain:
             raise ValueError("At least one source must be given")
 
+        self._textdb = textdb
         self._locale = locale
         self._locale_str = teapot.accept.format_locale(locale)
         self._text_source_chain = tuple(text_source_chain)
@@ -250,6 +251,13 @@ class Localizer:
 
     def __ne__(self, other):
         return not (self == other)
+
+    @property
+    def textdb(self):
+        """
+        The text database from which this :class:`Localizer` was created.
+        """
+        return self._textdb
 
     @property
     def locale(self):
@@ -485,7 +493,9 @@ def _get_localizer(textdb, locale, timezone):
 
     text_source_chain.append(textdb._fallback_handler)
 
-    return Localizer(locale, text_source_chain,
+    return Localizer(textdb,
+                     locale,
+                     text_source_chain,
                      timezone=timezone)
 
 
