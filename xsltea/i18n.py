@@ -124,6 +124,13 @@ logger = logging.getLogger(__name__)
 class xmlns(metaclass=NamespaceMeta):
     xmlns = "https://xmlns.zombofant.net/xsltea/i18n"
 
+class TextLookupError(LookupError):
+    def __init__(self, key, ctxt=None):
+        super_key = key
+        if ctxt is not None:
+            super_key = (super_key, ctxt)
+        super().__init__(super_key)
+
 class Localizer:
     """
     A :class:`Localizer` is a convenience object to provide general
@@ -285,21 +292,22 @@ class Localizer:
         """
         return self._timezone
 
-    def gettext(self, key):
+    def gettext(self, key, ctxt=None):
         last_error = None
         for source in self._text_source_chain:
             try:
-                return source.gettext(key)
+                return source.gettext(key, ctxt=ctxt)
             except LookupError as err:
                 last_error = err
         else:
             raise last_error
 
-    def ngettext(self, singular_key, plural_key, n):
+    def ngettext(self, singular_key, plural_key, n, ctxt=None):
         last_error = None
         for source in self._text_source_chain:
             try:
-                return source.ngettext(singular_key, plural_key, n)
+                return source.ngettext(singular_key, plural_key, n,
+                                       ctxt=None)
             except LookupError as err:
                 last_error = err
         else:
@@ -311,19 +319,19 @@ class Localizer:
         else:
             return value.astimezone(self._timezone)
 
-    def __call__(self, value):
+    def __call__(self, value, **kwargs):
         if isinstance(value, numbers.Real):
-            return self.format_number(value)
+            return self.format_number(value, **kwargs)
         elif isinstance(value, datetime):
-            return self.format_datetime(value)
+            return self.format_datetime(value, **kwargs)
         elif isinstance(value, date):
-            return self.format_date(value)
+            return self.format_date(value, **kwargs)
         elif isinstance(value, time):
-            return self.format_time(value)
+            return self.format_time(value, **kwargs)
         elif isinstance(value, timedelta):
-            return self.format_timedelta(value)
+            return self.format_timedelta(value, **kwargs)
         elif isinstance(value, str):
-            return self.gettext(value)
+            return self.gettext(value, **kwargs)
         else:
             raise TypeError("Unsupported type for magic call: {}".format(
                 type(value)))
@@ -336,25 +344,28 @@ class TextSource(metaclass=abc.ABCMeta):
     """
 
     @staticmethod
-    def lookup_error(key):
-        return LookupError(key)
+    def lookup_error(key, ctxt=None):
+        return TextLookupError(key, ctxt=ctxt)
 
     @abc.abstractmethod
-    def gettext(self, key):
+    def gettext(self, key, ctxt=None):
         """
-        Return the translation keyed by *key*.
+        Return the translation keyed by *key* in the given context *ctxt*.
         """
 
         raise self.lookup_error(key)
 
-    def ngettext(self, singular_key, plural_key, n):
+    def ngettext(self, singular_key, plural_key, n, ctxt=None):
         """
         Return the translation of *singular_key* if *n* equals 1 and the
         translation of *plural_key* otherwise. By default, this method delegates
         to :meth:`gettext`, so the same implications apply.
+
+        *ctxt* is passed to :meth:`gettext` directly.
         """
 
-        return self.gettext(singular_key if n == 1 else plural_key)
+        return self.gettext(singular_key if n == 1 else plural_key,
+                            ctxt=ctxt)
 
 
 class GNUCatalog(TextSource):
@@ -364,31 +375,37 @@ class GNUCatalog(TextSource):
     *sourcefile*.
     """
 
-    class RaisingFallback:
+    class RaisingFallback(TextSource):
         """
         This is a helper class which can be used to throw if a :mod:`gettext`
         lookup fails (instead of returning the key).
         """
 
-        def gettext(self, key):
-            raise TextSource.lookup_error(key)
-
-        def ngettext(self, singular_key, plural_key, n):
-            raise TextSource.lookup_error(
-                singular_key if n == 1 else plural_key)
+        def gettext(self, key, ctxt=None):
+            if "\x04" in key:
+                ctxt, key = key.split("\x04", 1)
+            raise TextSource.lookup_error(key, ctxt=ctxt)
 
     def __init__(self, sourcefile):
         super().__init__()
         self.translations = gettext.GNUTranslations(sourcefile)
         self.translations.add_fallback(self.RaisingFallback())
 
-    def gettext(self, key):
-        result = self.translations.gettext(key)
+    @staticmethod
+    def _mangle_key(key, ctxt):
+        if ctxt is not None:
+            key = ctxt + "\x04" + key
+        return key
+
+    def gettext(self, key, ctxt=None):
+        result = self.translations.gettext(self._mangle_key(key, ctxt))
         logger.debug("lookup: %s -> %s", key, result)
         return result
 
-    def ngettext(self, singular, plural, n):
-        return self.translations.ngettext(singular, plural, n)
+    def ngettext(self, singular, plural, n, ctxt=None):
+        return self.translations.ngettext(
+            self._mangle_key(singular, ctxt),
+            self._mangle_key(plural, ctxt), n)
 
 
 class DictLookup(TextSource):
@@ -405,11 +422,13 @@ class DictLookup(TextSource):
         super().__init__()
         self.texts = text_dict
 
-    def gettext(self, key):
+    def gettext(self, key, ctxt=None):
         """
         Return the *key* from the :attr:`texts` dictionary, or raise
         :class:`KeyError` if the key is not available.
         """
+        if ctxt is not None:
+            key = (ctxt, key)
         return self.texts[key]
 
 
@@ -453,10 +472,10 @@ class TextDatabaseFallback(TextSource):
 
         self._mode = value
 
-    def _gettext_error(self, key):
-        raise self.lookup_error(key)
+    def _gettext_error(self, key, ctxt=None):
+        raise self.lookup_error(key, ctxt=ctxt)
 
-    def _gettext_key(self, key):
+    def _gettext_key(self, key, ctxt=None):
         return key
 
     def gettext(self, key):
