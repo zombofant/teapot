@@ -109,6 +109,8 @@ import babel.numbers
 
 import pytz
 
+import lxml.etree as etree
+
 import teapot.accept
 
 import xsltea.template
@@ -118,6 +120,9 @@ import xsltea.exec
 from xsltea.namespaces import NamespaceMeta
 
 logger = logging.getLogger(__name__)
+
+class xmlns(metaclass=NamespaceMeta):
+    xmlns = "https://xmlns.zombofant.net/xsltea/i18n"
 
 class Localizer:
     """
@@ -730,6 +735,56 @@ class TextDatabase:
         catalog = GNUCatalog(sourcefile)
         self[for_locale] = catalog
 
+class Message:
+    singular = None
+    plural = None
+    context = None
+    filename = None
+    sourceline = None
+
+def filter_msgid(text):
+    parts = []
+    if text and text[0].isspace():
+        parts.append("")
+    parts.extend(text.split())
+    if text and text[-1].isspace():
+        parts.append("")
+    text = " ".join(parts)
+
+    return text
+
+def _node_to_msgid_process_child(node):
+    if node.tag == xmlns.p:
+        yield (filter_msgid(node.get("s")), filter_msgid(node.text))
+    elif xmlns.id not in node.attrib:
+        for child in node:
+            yield from _node_to_msgid_process_child(child)
+    else:
+        yield ("<xml id={!r}>".format(node.get(xmlns.id)), )*2
+        yield from _node_to_msgid_process_node(node)
+        yield ("</xml>", )*2
+
+def _node_to_msgid_process_node(node):
+    if node.text:
+        yield (filter_msgid(node.text), )*2
+    for child in node:
+        yield from _node_to_msgid_process_child(child)
+        if child.tail:
+            yield (filter_msgid(child.tail), )*2
+
+def node_to_msgid(node, filename=None, **kwargs):
+    msg = Message()
+    msg.singular, msg.plural = functools.reduce(
+        lambda prev, x: tuple(map(lambda y: y[0] + y[1], zip(prev, x))),
+        _node_to_msgid_process_node(node, **kwargs),
+        ("", ""))
+    if msg.singular == msg.plural:
+        msg.plural = None
+
+    msg.context = node.get("ctx", node.get("ctxt"))
+    msg.filename = filename
+    msg.sourceline = node.sourceline
+    return msg
 
 class I18NProcessor(xsltea.processor.TemplateProcessor):
     """
@@ -782,8 +837,7 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
     ``https://xmlns.zombofant.net/xsltea/i18n``.
     """
 
-    class xmlns(metaclass=NamespaceMeta):
-        xmlns = "https://xmlns.zombofant.net/xsltea/i18n"
+    xmlns = xmlns
 
     def __init__(self, textdb,
                  safety_level=xsltea.safe.SafetyLevel.conservative,
@@ -792,10 +846,13 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
         super().__init__(**kwargs)
 
         self.attrhooks = {
+            (str(self.xmlns), "id"): [self.skip_id],
             (str(self.xmlns), None): [self.handle_attr],
         }
         self.elemhooks = {
             (str(self.xmlns), "_"): [self.handle_elem],
+            (str(self.xmlns), "n"): [self.handle_elem],
+            (str(self.xmlns), "p"): [self.drop_plural],
             (str(self.xmlns), "any"): [
                 functools.partial(
                     self.handle_elem_type,
@@ -838,9 +895,7 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
             sourceline,
             ctx=ctx)
 
-    def _lookup_type(self, template, key, type_, sourceline, attrs={}):
-        lookup_key = template.ast_or_str(key, sourceline)
-
+    def _make_attrs_dict(self, attrs, sourceline):
         attrs_dict = ast.Dict([], [], lineno=sourceline, col_offset=0)
         for key, value in attrs.items():
             attrs_dict.keys.append(
@@ -849,7 +904,12 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
                     lineno=sourceline,
                     col_offset=0))
             attrs_dict.values.append(value)
+        return attrs_dict
 
+    def _lookup_type(self, template, key, type_, sourceline, attrs={}):
+        lookup_key = template.ast_or_str(key, sourceline)
+
+        attrs_dict = self._make_attrs_dict(attrs, sourceline)
         to_call = self._access_var(template, ast.Load(), sourceline)
 
         if type_ is not None:
@@ -902,11 +962,122 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
 
         return [], [], keycode, valuecode, []
 
+    def skip_id(self, template, elem, key, value, context):
+        sourceline = elem.sourceline
+        keycode = ast.Str(key,
+                          lineno=sourceline,
+                          col_offset=0)
+        valuecode = ast.Str(value,
+                            lineno=sourceline,
+                            col_offset=0)
+        return [], [], keycode, valuecode, []
+
+    def drop_plural(self, template, elem, context, offset):
+        sourceline = elem.sourceline
+
+        elemcode = [template.ast_yield(
+            ast.Str(elem.text,
+                    lineno=sourceline,
+                    col_offset=0),
+            sourceline)]
+        elemcode.extend(template.preserve_tail_code(elem, context))
+
+        if len(elem) > 0:
+            raise template.compilation_error(
+                "i18n:p does not support children. Use i18n:p inside the"
+                "individual children instead.",
+                context,
+                sourceline)
+
+
+        return [], elemcode, []
+
+    def elemcode_main(self, context, append_children, childfun, msgid, n,
+                      attrs):
+        nsmap = {"i18n": str(xmlns)}
+
+        if n is not None:
+            translated = context.i18n.ngettext(msgid.singular,
+                                               msgid.plural,
+                                               n)
+        else:
+            translated = context.i18n.gettext(msgid.singular)
+
+        text = etree.fromstring("<root>"+translated+"</root>")
+        if text.text:
+            yield text.text.format(**attrs)
+        tail = None
+        buffer_element = context.makeelement("buffer")
+        append_children(buffer_element, childfun())
+        for child in text.xpath("//xml"):
+            id = child.get("id")
+            try:
+                dest = buffer_element.xpath(
+                    "descendant-or-self::*[@i18n:id={!r}]".format(id),
+                    namespaces=nsmap)[0]
+            except IndexError:
+                dest = None
+            else:
+                dest.text = child.text.format(**attrs)
+
+            if not child.tail:
+                continue
+
+            # find out to which parent this belongs
+            if child.getparent() == text:
+                tail = child.tail.format(**attrs)
+                continue
+
+            if dest is None:
+                # we cannot do something sensible here
+                continue
+
+            # to find the matching parent, we walk up the dest tree until we
+            # find the id of the parent of child. when we found it, we set the
+            # tail of the child which has the matching parent to the value of
+            # this child
+            target_parent_id = child.getparent().get("id")
+            curr = dest
+            parent = curr.getparent()
+            while parent != buffer_element:
+                if parent.get(xmlns.id) == target_parent_id:
+                    curr.tail = child.tail.format(**attrs)
+                    break
+
+                curr = parent
+                parent = curr.getparent()
+
+        for child in buffer_element:
+            yield child
+
     def handle_elem(self, template, elem, context, offset):
         sourceline = elem.sourceline or 0
 
+        original_attrs = dict(elem.attrib)
+        if elem.tag.endswith("}n"):
+            try:
+                nexpr_source = original_attrs.pop(
+                    xsltea.exec.ExecProcessor.xmlns.n)
+            except KeyError:
+                try:
+                    nexpr_source = int(original_attrs.pop(n))
+                except KeyError:
+                    raise template.compilation_error(
+                        "i18n:n requires @exec:n or @n attribute",
+                        context,
+                        sourceline) from None
+            if isinstance(nexpr_source, int):
+                nexpr = ast.Num(nexpr_source)
+            else:
+                nexpr = compile(nexpr_source, context.filename, "eval",
+                                ast.PyCF_ONLY_AST).body
+                self._safety_level.check_safety(nexpr)
+        else:
+            nexpr = ast.Name("None", ast.Load(),
+                             lineno=sourceline, col_offset=0)
+
         attrs = {}
-        for key, value in elem.attrib.items():
+        for key, value in original_attrs.items():
             ns, name = xsltea.template.split_tag(key)
             if ns == str(xsltea.exec.ExecProcessor.xmlns):
                 expr = compile(value,
@@ -928,16 +1099,44 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
                     context,
                     sourceline)
 
-        elemcode = [
-            template.ast_yield(
-                self._lookup_type(template, elem.text,
-                                  "gettext",
-                                  sourceline, attrs),
-                sourceline)
-        ]
+        childfun_name = "children{}".format(offset)
+        precode = template.compose_childrenfun(
+            elem, context, childfun_name)
+
+        elemcode = []
+
+        msgid = node_to_msgid(elem)
+        elemcode.append(
+            ast.Expr(
+                ast.YieldFrom(
+                    template.ast_store_and_call(
+                        self.elemcode_main,
+                        [
+                            ast.Name(
+                                "context",
+                                ast.Load(),
+                                lineno=sourceline,
+                                col_offset=0),
+                            template.ast_get_util(
+                                "append_children",
+                                sourceline),
+                            childfun_name if precode else "None",
+                            template.ast_get_stored(
+                                template.store(msgid),
+                                sourceline),
+                            nexpr,
+                            self._make_attrs_dict(attrs, sourceline)
+                        ],
+                        sourceline=sourceline).value,
+                    lineno=sourceline,
+                    col_offset=0),
+                lineno=sourceline,
+                col_offset=0)
+        )
+
         elemcode.extend(template.preserve_tail_code(elem, context))
 
-        return [], elemcode, []
+        return precode, elemcode, []
 
     def handle_elem_type(self, type_, template, elem, context, offset):
         sourceline = elem.sourceline or 0
