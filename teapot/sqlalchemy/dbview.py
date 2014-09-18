@@ -554,19 +554,19 @@ class dbview(teapot.routing.selectors.Selector):
     def new_view(self,
                  dbsession,
                  **simple_filters):
-        view = self.ViewForm(dbsession, self)
+        view = self._ViewForm(dbsession)
         filter_rows = getattr(view, view._filter_key)
         for fieldname, value in simple_filters.items():
             try:
-                cls = self._fieldclasses[fieldname]
+                cls = self._ViewForm.f._fieldclasses[fieldname]
             except KeyError:
                 raise ValueError("Field `{}' is not filterable".format(
                     fieldname))
 
             row = cls()
-            setattr(row, self.FIELDNAME_KEY, fieldname)
-            setattr(row, self.OPERATOR_KEY, "__eq__")
-            setattr(row, self.VALUE_KEY, value)
+            setattr(row, FIELDNAME_KEY, fieldname)
+            setattr(row, OPERATOR_KEY, "__eq__")
+            setattr(row, VALUE_KEY, value)
             filter_rows.append(row)
 
         return view
