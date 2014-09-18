@@ -717,9 +717,6 @@ class TextDatabase:
             locale, _ = os.path.splitext(filename)
             locale = teapot.accept.parse_locale(locale)
 
-            if locale == self._fallback_locale:
-                continue
-
             with open(os.path.join(base_path, filename), "rb") as f:
                 self.load_catalog(locale, f)
 
@@ -730,12 +727,7 @@ class TextDatabase:
             raise ValueError("Locale {} already loaded".format(
                 "_".join(for_locale)))
 
-        try:
-            fallback = self.catalog_for_locale(self._fallback_locale).translations
-        except KeyError:
-            fallback = None
-
-        catalog = GNUCatalog(for_locale, sourcefile, fallback=fallback)
+        catalog = GNUCatalog(sourcefile)
         self[for_locale] = catalog
 
 
