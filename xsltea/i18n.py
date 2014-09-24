@@ -210,7 +210,7 @@ class Localizer:
 
             setattr(self, name, self.locale_ifyer(wrap(obj)))
 
-    def __init__(self, textdb, locale, text_source_chain, timezone=None):
+    def __init__(self, locale, text_source_chain, timezone=None, textdb=None):
         if not text_source_chain:
             raise ValueError("At least one source must be given")
 
@@ -517,10 +517,10 @@ def _get_localizer(textdb, locale, timezone):
 
     text_source_chain.append(textdb._fallback_handler)
 
-    return Localizer(textdb,
-                     locale,
+    return Localizer(locale,
                      text_source_chain,
-                     timezone=timezone)
+                     timezone=timezone,
+                     textdb=textdb)
 
 
 class TextDatabase:
