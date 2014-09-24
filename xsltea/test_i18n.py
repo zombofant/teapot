@@ -77,7 +77,8 @@ class TextDatabaseTest:
             })
         textdb["en", "gb"] = i18n.DictLookup(
             {
-                "key": "british english"
+                "key": "british english",
+                """foo <xml id='strong'>bar</xml> baz""": """FOO <xml id="strong">BAR</xml> BAZ"""
             })
         textdb["en", "us"] = i18n.DictLookup(
             {
@@ -257,6 +258,11 @@ class TestI18NProcessor(TextDatabaseTest, unittest.TestCase):
       xmlns:i18n="https://xmlns.zombofant.net/xsltea/i18n"
     ><i18n:any>arguments['value']</i18n:any></test>"""
 
+    xmlsrc_with_markup = """<?xml version="1.0" ?>
+<test xmlns:exec="https://xmlns.zombofant.net/xsltea/exec"
+      xmlns:i18n="https://xmlns.zombofant.net/xsltea/i18n"
+    ><i18n:_>foo <strong i18n:id="strong">bar</strong> baz</i18n:_></test>"""
+
     def setUp(self):
         super().setUp()
         self._loader = template.XMLTemplateLoader()
@@ -297,6 +303,18 @@ class TestI18NProcessor(TextDatabaseTest, unittest.TestCase):
         self.assertIsInstance(
             ctx.exception.__context__,
             LookupError)
+
+    def test_gettext_with_markup(self):
+        tree = self._process_xml(self.xmlsrc_with_markup)
+        self.assertEqual(
+            tree.getroot().text,
+            "FOO ")
+        self.assertEqual(
+            tree.getroot()[0].text,
+            "BAR")
+        self.assertEqual(
+            tree.getroot()[0].tail,
+            " BAZ")
 
     def test_magic_key(self):
         tree = self._process_xml(
