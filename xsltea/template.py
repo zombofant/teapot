@@ -171,7 +171,7 @@ class Template:
 
         if args or kwargs:
             raise TypeError("href only takes additional arguments if first "
-                            "argument is routable.")
+                            "argument is routable (got {}).".format(url))
 
         if url.startswith("/"):
             url = url[1:]
