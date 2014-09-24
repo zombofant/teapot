@@ -46,6 +46,8 @@ is a :class:`xsltea.template.TemplateLoader`::
   # a processor for a loader is initialized as simple as this
   loader.add_processor(I18NProcessor(textdb))
 
+For XML examples, see :class:`I18NProcessor`.
+
 Text sources
 ============
 
@@ -820,6 +822,29 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
       on the result of the lookup. Attributes in the ``exec:`` namespace are
       first interpreted according to the specified *safety_level* and then
       passed to :meth:`str.format`.
+
+      ``i18n:_`` supports aribtrary XML child elements. Any descendant elements
+      of which content is to be translated must be marked with an ``@i18n:id``
+      attribute. These elements are replaced with an ``<xml id='...'>`` element
+      in the lookup key. The ``@id`` of that element is equal to the
+      ``@i18n:id``. Any elements without an ``@i18n:id`` attributes are ignored:
+      their text is not in the lookup key and their tail is only included if
+      their parent element is in the lookup key. However, descendants of
+      elements without ``@i18n:id`` may themselves have an ``@i18n:id``
+      attribute and will be included.
+
+      Thus, the following example::
+
+        <i18n:_>foo <strong i18n:id="emphasis">bar</strong> baz</i18n:_>
+
+      translates to the following lookup string::
+
+        foo <xml id="emphasis">bar</xml> baz
+
+      The result of the lookup should include the same xml content, but
+      appropriate mitigiations are taken inside the code to make the best of
+      missing (or surplus) elements. In general, existing text will be taken for
+      missing elements.
 
     * ``i18n:date``, ``i18n:datetime``, ``i18n:time``, ``i18n:timedelta``,
       ``i18n:number``: Format the respective datatype using the current
