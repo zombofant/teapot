@@ -1044,7 +1044,7 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
 
             # find out to which parent this belongs
             if child.getparent() == text:
-                tail = child.tail.format(**attrs)
+                dest.tail = child.tail.format(**attrs)
                 continue
 
             if dest is None:
