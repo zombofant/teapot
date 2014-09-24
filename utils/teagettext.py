@@ -25,9 +25,15 @@ def process_tree(tree, filename, **kwargs):
     ns_prefix = "{"+str(xmlns)+"}"
     for node in tree.xpath("//*[@i18n:*]", namespaces=nsmap):
         logger.debug("found node with attrs: %s")
-        if node.tag.startswith(ns_prefix):
-            logger.debug("skipping i18n node")
+        parent = node
+        while parent is not None:
+            if parent.tag.startswith(ns_prefix):
+                logger.debug("skipping i18n node")
+                break
+            parent = parent.getparent()
+        if parent is not None:
             continue
+
         for value in (value for key, value in node.attrib.items()
                      if key.startswith(ns_prefix)):
             msg = xsltea.i18n.Message()
