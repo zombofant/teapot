@@ -252,10 +252,11 @@ is tested against in a testsuite.
 import abc
 import copy
 import functools
-import string
-import re
 import itertools
 import logging
+import re
+import string
+import sys
 
 import teapot.errors
 import teapot.mime
@@ -814,6 +815,15 @@ class Router:
         raise teapot.errors.make_response_error(
             400, "cannot find accepted charset for response")
 
+    def handle_internal_server_error(self, request, exc_info):
+        """
+        Handle an internal server error.
+
+        By default, this raises an ``500 Internal Server Error`` error.
+        """
+        raise teapot.errors.make_response_error(
+            500, "Internal Server Error")
+
     def post_response_cleanup(self, request):
         """
         After the result has been delivered to the web gateway, this function is
@@ -909,18 +919,37 @@ class Router:
         Routes a given *request* using the set up routing root and returns the
         response format described at :meth:`wrap_result`.
         """
-        self.pre_route_hook(request)
+        try:
+            self.pre_route_hook(request)
+        except teapot.errors.ResponseError:
+            # re-raise
+            raise
+        except Exception as err:
+            yield from self.wrap_result(
+                request,
+                self.handle_internal_server_error(request, sys.exc_info()))
+            return
 
         try:
-            success, data = find_route(self._root, request)
+            try:
+                success, data = find_route(self._root, request)
 
-            if not success:
-                if data is None:
-                    return self.handle_not_found(request)
-                raise data
+                if not success:
+                    if data is None:
+                        return self.handle_not_found(request)
+                    raise data
 
-            request.current_routable = data.routable
-            result = data()
+                request.current_routable = data.routable
+                result = data()
+            except teapot.errors.ResponseError:
+                # re-raise
+                raise
+            except Exception as err:
+                yield from self.wrap_result(
+                    request,
+                    self.handle_internal_server_error(request, sys.exc_info()))
+                return
+
             yield from self.wrap_result(request, result)
         finally:
             self.post_response_cleanup(request)

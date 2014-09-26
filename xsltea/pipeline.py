@@ -128,7 +128,7 @@ class Pipeline:
             yield from self._chain_to.iter_output_types()
         yield from self._output_types.keys()
 
-    def _default_handler(self, request, tree):
+    def _default_handler(self, request):
         raise teapot.errors.make_response_error(
             406, "{} content type not supported".format(
                 request.accepted_content_type))
@@ -383,6 +383,7 @@ class XHTMLPipeline(XMLPipeline):
             # incorrect / deprecated MIME types for xhtml
             teapot.mime.Type("application", "xhtml"): self._negotiate,
             teapot.mime.Type("text", "xhtml"): self._negotiate,
+            None: self._negotiate
         }
 
         if not strict:
