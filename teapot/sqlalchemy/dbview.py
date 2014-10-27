@@ -122,7 +122,12 @@ class View(teapot.forms.Form):
     new objects. This is to simplify unrouting.
     """
 
-    _VALID_OBJECT_MODES = ["fields", "primary", "objects"]
+    _VALID_OBJECT_COMBOS = set((
+        frozenset(("fields", "primary")),
+        frozenset(("primary",)),
+        frozenset(("fields",)),
+        frozenset(("objects",))
+    ))
 
     def __init__(self, dbsession, request=None, **kwargs):
         super().__init__(request=request, **kwargs)
@@ -138,11 +143,15 @@ class View(teapot.forms.Form):
         dbsession = self.dbsession
         objects = [self._primary_object]
         self._itermap = None
-        if self._objects == "fields":
-            self._itermap = lambda x: x[1:]
-        elif self._objects == "primary":
+
+        if "fields" in self._objects:
+            if "primary" in self._objects:
+                self._itermap = lambda x: x
+            else:
+                self._itermap = lambda x: x[1:]
+        elif "primary" in self._objects:
             pass
-        elif self._objects == "objects":
+        elif "objects" in self._objects:
             objects += [
                 obj
                 for _, obj in self._supplemental_objects]
@@ -161,7 +170,7 @@ class View(teapot.forms.Form):
                 subquery = field._evaluate(dbsession).subquery()
                 field = getattr(subquery.c, fieldname)
                 joins.append(("outerjoin", subquery))
-            if self._objects == "fields":
+            if "fields" in self._objects:
                 objects.append(field)
             fieldmap[fieldname] = field
 
@@ -424,9 +433,13 @@ def make_form(
     in :class:`View`.
     """
 
-    if objects not in View._VALID_OBJECT_MODES:
+    if isinstance(objects, str):
+        objects = (item.strip() for item in objects.split(","))
+    objects = frozenset(objects)
+
+    if objects not in View._VALID_OBJECT_COMBOS:
         raise ValueError("{} is not a valid value for objects argument".format(
-            objects))
+            ", ".join(objects)))
 
     if autojoin and not supplemental_objects:
         # generate supplemental_objects by inspecting the fields
