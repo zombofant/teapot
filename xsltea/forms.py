@@ -303,8 +303,12 @@ class FormProcessor(TemplateProcessor):
         if elem.get("value") == strvalue:
             elem.set("checked", "checked")
 
-    def _elemcode_input_select(self, context, form, field, elem, put_options):
+    def _elemcode_input_select(self, context, form, field, elem,
+                               put_options,
+                               multiple):
         field_value = field.to_field_value(form, "select")
+        if multiple:
+            elem.set("multiple", "multiple")
 
         if put_options:
             if hasattr(field, "get_html_options"):
@@ -359,6 +363,11 @@ class FormProcessor(TemplateProcessor):
             except AttributeError:
                 raise ValueError("Can not infer type of field {}".format(field))
 
+        if not isinstance(field_type, str):
+            field_type, *attributes = field_type
+        else:
+            attributes = ()
+
         if field_type in {"select", "textarea"}:
             elem = makeelement(getattr(xhtml_ns, field_type), **attrib)
         else:
@@ -387,7 +396,8 @@ class FormProcessor(TemplateProcessor):
         elif field_type == "select":
             put_options = childfun is None or len(elem) == 0
             self._elemcode_input_select(context, form, field, elem,
-                                        put_options)
+                                        put_options,
+                                        "multiple" in attributes)
         else:
             self._elemcode_input_default(form, field, field_type,
                                          elem, original_value)

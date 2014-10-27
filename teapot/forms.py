@@ -593,6 +593,27 @@ class EnumField(StaticDefaultField):
             yield ValueError("Not a valid value")
         return value
 
+class SetField(StaticDefaultField):
+    def __init__(self, *, options=[], default=None, **kwargs):
+        super().__init__(default=default, **kwargs)
+        self._options = list(options)
+        self._option_map = dict(self._options)
+
+    def get_options(self, instance, request):
+        return list(self._options)
+
+    def _extract_value(self, values):
+        return (set(values), )
+
+    def input_validate(self, request, values):
+        result_values = set()
+        for value in values:
+            if value in self._option_map:
+                result_values.add(value)
+        if len(result_values) < len(values):
+            yield ValueError("Contains invalid value")
+        return result_values
+
 
 class RowList(teapot.utils.InstrumentedList):
     """

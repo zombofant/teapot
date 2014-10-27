@@ -350,6 +350,11 @@ class EnumField(teapot.forms.EnumField, HTMLField):
     def field_type(self):
         return "select"
 
+class MultipleOptionField(teapot.forms.SetField, HTMLField):
+    @property
+    def field_type(self):
+        return "select", "multiple"
+
 class PasswordField(TextField):
     """
     A password field is a specialized text field, which uses the HTML
