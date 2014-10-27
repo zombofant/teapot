@@ -305,7 +305,8 @@ class CustomField(metaclass=abc.ABCMeta):
         """
 
         if len(values) != 1:
-            raise ValueError("Too much or no field data supplied")
+            raise ValueError("Too much or no field data supplied",
+                             self.name, values)
 
         return (values.pop(), )
 
