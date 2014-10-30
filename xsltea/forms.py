@@ -405,7 +405,7 @@ class FormProcessor(TemplateProcessor):
         if elem.get("id") is None:
             elem.set("id", elem.get("name"))
 
-        yield elem
+        return elem
 
     def handle_input(self, template, elem, context, offset):
         attrib = elem.attrib
@@ -447,42 +447,63 @@ class FormProcessor(TemplateProcessor):
                 lineno=sourceline,
                 col_offset=0)
 
-        sanitized_attribs = {
-            key: value
-            for key, value in attrib.items()
-            if xsltea.template.split_tag(key)[0] != str(self.xmlns)
-        }
+        attr_precode, attr_elemcode, d, attr_postcode = template.compose_attrdict(
+            elem, context,
+            attrib_filter=lambda key: (xsltea.template.split_tag(key)[0] !=
+                                       str(self.xmlns))
+        )
+
+        precode.extend(attr_precode)
+        postcode = attr_postcode
 
         elemcode = [
+            ast.Assign(
+                [
+                    ast.Name(
+                        "elem",
+                        ast.Store(),
+                        lineno=sourceline,
+                        col_offset=0),
+                ],
+                template.ast_store_and_call(
+                    self.elemcode_input,
+                    [
+                        ast.Name(
+                            "context",
+                            ast.Load(),
+                            lineno=sourceline,
+                            col_offset=0),
+                        template.ast_get_util(
+                            "append_children",
+                            sourceline),
+                        input_type,
+                        form_ast,
+                        self._ast_field(form_ast, field, sourceline),
+                        childfun_name if precode else "None",
+                        d
+                    ],
+                    sourceline=sourceline).value,
+                lineno=sourceline,
+                col_offset=0),
+        ]
+
+        elemcode.extend(attr_elemcode)
+
+        elemcode.append(
             ast.Expr(
-                ast.YieldFrom(
-                    template.ast_store_and_call(
-                        self.elemcode_input,
-                        [
-                            ast.Name(
-                                "context",
-                                ast.Load(),
-                                lineno=sourceline,
-                                col_offset=0),
-                            template.ast_get_util(
-                                "append_children",
-                                sourceline),
-                            input_type,
-                            form_ast,
-                            self._ast_field(form_ast, field, sourceline),
-                            childfun_name if precode else "None",
-                            template.ast_get_stored(
-                                template.store(sanitized_attribs),
-                                sourceline)
-                        ],
-                        sourceline=sourceline).value,
+                ast.Yield(
+                    ast.Name(
+                        "elem",
+                        ast.Load(),
+                        lineno=sourceline,
+                        col_offset=0),
                     lineno=sourceline,
                     col_offset=0),
                 lineno=sourceline,
                 col_offset=0)
-        ]
+        )
 
-        return precode, elemcode, []
+        return precode, elemcode, postcode
 
 
     def warn_attr_usage(self, template, elem, key, value, context):

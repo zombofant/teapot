@@ -264,33 +264,44 @@ class Template:
         self.tree = tree
         del self._reverse_storage
 
-    def default_attrhandler(self, elem, key, value, context):
+    def default_attrhandler(self, key, value, context, sourceline):
         precode = []
         elemcode = []
         keycode = ast.Str(key,
-                          lineno=elem.sourceline or 0,
+                          lineno=sourceline,
                           col_offset=0)
         valuecode = ast.Str(value,
-                            lineno=elem.sourceline or 0,
+                            lineno=sourceline,
                             col_offset=0)
         postcode = []
         return precode, elemcode, keycode, valuecode, postcode
 
-    def compose_attrdict(self, elem, context):
+    def compose_attrdict(self, elem, context, attrib_filter=None):
         """
         Create code which constructs the attributes for the given *elem*.
+
+        If *attrib_filter* is not :data:`None`, attributes for which
+        the *attrib_filter* callable returns a false value will be skipped. The
+        *attrib_filter* callable receives the attributes name as the first
+        (and only) argument.
 
         Returns ``(precode, elemcode, dictcode, postcode)``. The *dictcode* is a
         :class:`ast.Dict` instance which describes the dictionary which can be
         passed to the ``attrib``-kwarg of ``makeelement``.
         """
+
+        sourceline = elem.sourceline or 0
+
         precode = []
         elemcode = []
         postcode = []
-        d = ast.Dict(lineno=elem.sourceline or 0, col_offset=0)
+        d = ast.Dict(lineno=sourceline, col_offset=0)
         d.keys = []
         d.values = []
         for key, value in elem.attrib.items():
+            if attrib_filter is not None and not attrib_filter(key):
+                continue
+
             try:
                 handlers = self.lookup_attrhook(context.attrhooks, elem.tag, key)
             except KeyError:
@@ -300,7 +311,8 @@ class Template:
                 if result:
                     break
             else:
-                result = self.default_attrhandler(elem, key, value, context)
+                result = self.default_attrhandler(key, value, context,
+                                                  sourceline)
             attr_precode, attr_elemcode, \
             attr_keycode, attr_valuecode, \
             attr_postcode = result
