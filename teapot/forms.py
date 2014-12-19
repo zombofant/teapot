@@ -6,7 +6,7 @@ Teapot provides sophisticated means to deal with web forms, whose contents are
 submitted as POST data.
 
 To create a form, the easiest way is to inherit from the :class:`Form` class and
-use the field classes provided by this module:
+use the field classes provided by this module::
 
     class Form(teapot.forms.Form):
         test_int = teapot.forms.IntField()
