@@ -372,6 +372,14 @@ class XHTMLPipeline(XMLPipeline):
           <xsl:value-of select="." />
         </xsl:attribute>
     </xsl:template>
+
+    <!-- remove NS prefix from SVG elements -->
+    <xsl:template match="*[namespace-uri() = 'http://www.w3.org/2000/svg']">
+        <xsl:element name="{local-name()}" namespace="http://www.w3.org/2000/svg">
+          <xsl:apply-templates select="@*|node()" />
+        </xsl:element>
+    </xsl:template>
+
 </xsl:stylesheet>"""))
 
     def __init__(self, *, strict=True, html_version=5, **kwargs):
