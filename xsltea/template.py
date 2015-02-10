@@ -453,21 +453,29 @@ def {}():
             self.compose_attrdict(root, context)
 
         rootfun_body = []
+
+        import sys
+        arguments_args = dict(
+            args=[
+                ast.arg("utils", None),
+                ast.arg("context", None),
+                ast.arg("arguments", None)
+            ],
+            vararg=None,
+            varargannotation=None,
+            kwonlyargs=[],
+            kwarg=None,
+            kwargannotation=None,
+            defaults=[],
+            kw_defaults=[]
+        )
+        if (sys.version_info[0], sys.version_info[1]) >= (3, 4):
+            arguments_args.pop("varargannotation")
+            arguments_args.pop("kwargannotation")
+
         rootfun = ast.FunctionDef(
             "root",
-            ast.arguments(
-                [
-                    ast.arg("utils", None),
-                    ast.arg("context", None),
-                    ast.arg("arguments", None)
-                ],
-                None,
-                None,
-                [],
-                None,
-                None,
-                [],
-                []),
+            ast.arguments(**arguments_args),
             rootfun_body,
             [],
             None,
