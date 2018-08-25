@@ -30,6 +30,7 @@ import xsltea.exec
 import xsltea.template
 from .processor import TemplateProcessor
 from .namespaces import shared_ns
+from . import astwrap
 
 logger = logging.getLogger(__name__)
 
@@ -340,7 +341,7 @@ class BranchingProcessor(TemplateProcessor):
             body.append(
                 ast.Expr(
                     ast.YieldFrom(
-                        ast.Call(
+                        astwrap.Call(
                             ast.Name(
                                 childfun_name,
                                 ast.Load(),
@@ -828,7 +829,7 @@ def func(utils, context, {}):
             # yield from self(**arguments)
             return [ast.Expr(
                 ast.YieldFrom(
-                    ast.Call(
+                    astwrap.Call(
                         template.ast_get_stored(
                             template.store(self),
                             sourceline),

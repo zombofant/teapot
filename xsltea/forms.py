@@ -18,6 +18,7 @@ import xsltea.template
 
 from .processor import TemplateProcessor
 from .namespaces import NamespaceMeta, xhtml_ns, shared_ns
+from . import astwrap
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ class FormProcessor(TemplateProcessor):
 
     def _ast_field(self, form_ast, field_name, sourceline):
         return ast.Attribute(
-            ast.Call(
+            astwrap.Call(
                 ast.Name(
                     "type",
                     ast.Load(),
@@ -143,7 +144,7 @@ class FormProcessor(TemplateProcessor):
                         lineno=sourceline,
                         col_offset=0),
                 ast.Add(),
-                ast.Call(
+                astwrap.Call(
                     ast.Attribute(
                         form_ast,
                         "get_html_field_key",
@@ -212,7 +213,7 @@ class FormProcessor(TemplateProcessor):
             lineno=sourceline,
             col_offset=0)
 
-        value_ast = ast.Call(
+        value_ast = astwrap.Call(
             ast.Attribute(
                 field_ast,
                 "key",
@@ -257,7 +258,7 @@ class FormProcessor(TemplateProcessor):
                 lineno=sourceline,
                 col_offset=0)
 
-        errors_ast = ast.Call(
+        errors_ast = astwrap.Call(
             ast.Attribute(
                 ast.Attribute(
                     form_ast,

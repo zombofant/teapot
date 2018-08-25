@@ -31,6 +31,7 @@ from .namespaces import \
     internal_copyable_ns
 from .pipeline import PathResolver
 from .utils import sortedlist
+from . import astwrap
 
 xml_parser = etree.XMLParser(ns_clean=True,
                              remove_blank_text=True,
@@ -457,9 +458,9 @@ def {}():
         import sys
         arguments_args = dict(
             args=[
-                ast.arg("utils", None),
-                ast.arg("context", None),
-                ast.arg("arguments", None)
+                ast.arg("utils", None, lineno=0, col_offset=0),
+                ast.arg("context", None, lineno=0, col_offset=0),
+                ast.arg("arguments", None, lineno=0, col_offset=0)
             ],
             vararg=None,
             varargannotation=None,
@@ -493,7 +494,7 @@ def {}():
                         lineno=0,
                         col_offset=0),
                 ],
-                ast.Call(
+                astwrap.Call(
                     ast.Attribute(
                         ast.Name(
                             "etree",
@@ -559,7 +560,7 @@ def {}():
 
         rootfun_body.append(
             ast.Return(
-                ast.Call(
+                astwrap.Call(
                     ast.Attribute(
                         ast.Name(
                             "elem",
@@ -688,11 +689,11 @@ def {}():
         childfun = self.ast_or_name(childfun, sourceline)
 
         return ast.Expr(
-            ast.Call(
+            astwrap.Call(
                 self.ast_get_util("append_children", sourceline),
                 [
                     elem,
-                    ast.Call(
+                    astwrap.Call(
                         childfun,
                         [], [],
                         None, None,
@@ -775,7 +776,7 @@ def {}():
                 col_offset=0)
 
         return ast.Expr(
-            ast.Call(
+            astwrap.Call(
                 self.ast_get_stored(
                     self.store(callable),
                     sourceline),
@@ -809,7 +810,7 @@ def {}():
             default = self.ast_or_str(default, sourceline)
             args.append(default)
 
-        return ast.Call(
+        return astwrap.Call(
             self.ast_get_from_object(
                 "get",
                 self.ast_or_name(varname, sourceline),
@@ -907,7 +908,7 @@ def {}():
         If *from_* is a string, it is wrapped into an :class:`ast.Str`.
         """
 
-        return ast.Call(
+        return astwrap.Call(
             self.ast_get_href(sourceline),
             [
                 self.ast_or_str(from_, sourceline)
@@ -949,7 +950,7 @@ def {}():
                              col_offset=0))
             args.append(nsdict)
 
-        return ast.Call(
+        return astwrap.Call(
             self.ast_get_from_object("makeelement", "context", sourceline),
             args,
             [],
@@ -1098,7 +1099,7 @@ def {}():
         """
 
         return ast.Expr(
-            ast.Call(
+            astwrap.Call(
                 self.ast_get_from_object(
                     "set",
                     self.ast_or_name(varname, sourceline),

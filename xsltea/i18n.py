@@ -120,6 +120,7 @@ import xsltea.processor
 import xsltea.exec
 
 from xsltea.namespaces import NamespaceMeta
+from . import astwrap
 
 logger = logging.getLogger(__name__)
 
@@ -964,7 +965,7 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
                 lineno=sourceline,
                 col_offset=0)
 
-        lookup_result = ast.Call(
+        lookup_result = astwrap.Call(
             to_call,
             [
                 lookup_key
@@ -978,7 +979,7 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
         if not attrs:
             return lookup_result
 
-        return ast.Call(
+        return astwrap.Call(
             ast.Attribute(
                 lookup_result,
                 "format",
@@ -1230,7 +1231,7 @@ class I18NProcessor(xsltea.processor.TemplateProcessor):
                         lineno=0,
                         col_offset=0),
                 ],
-                ast.Call(
+                astwrap.Call(
                     template.ast_get_stored(
                         template.store(self.negotiate_language),
                         0),
